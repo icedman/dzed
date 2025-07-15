@@ -10,6 +10,7 @@ crossterm = "0.29.0"
 ncurses = "6.0.1"
 ratatui = "0.29.0"
 rope = { path = "../rope" }
+sum_tree = { path = "../sum_tree" }
 text = { path = "../text" }
 
 [lints]
