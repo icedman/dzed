@@ -1,17 +1,11 @@
-use std::fs::File;
-use std::io::{self, Read};
-use std::path::Path;
+use rope::Point;
+use std::io::{self};
+use sum_tree::Bias;
 use text::Anchor;
 use text::Buffer;
 use text::BufferId;
-use text::Selection;
-use text::SelectionGoal;
 use text::ToOffset;
 use text::ToPoint;
-
-use rope::Point;
-use rope::Rope;
-use sum_tree::Bias;
 
 pub trait BufferText {
     fn row_text(&self, row: u32) -> String;
@@ -30,6 +24,7 @@ pub trait WordOffsets {
     fn find_next_word(&self, position: usize) -> Option<(usize, usize, &str)>;
     fn find_previous_word(&self, position: usize) -> Option<(usize, usize, &str)>;
     fn find_current_word(&self, position: usize) -> Option<(usize, usize, &str)>;
+    fn find_next_same_word(&self, position: usize, word: &str) -> Option<(usize, usize, &str)>;
 }
 
 impl WordOffsets for str {
@@ -39,7 +34,7 @@ impl WordOffsets for str {
         let mut word_start = 0;
 
         for (idx, ch) in self.char_indices() {
-            if ch.is_whitespace() {
+            if !ch.is_alphanumeric() {
                 if in_word {
                     words.push((word_start, idx, &self[word_start..idx]));
                     in_word = false;
@@ -62,7 +57,7 @@ impl WordOffsets for str {
         let offsets = self.words_with_offsets();
         offsets
             .iter()
-            .find(|(start, _end, str)| *start > position)
+            .find(|(start, _end, _str)| *start > position)
             .copied()
     }
 
@@ -72,7 +67,7 @@ impl WordOffsets for str {
         offsets
             .iter()
             .rev()
-            .find(|(_start, end, str)| *end < position)
+            .find(|(_start, end, _str)| *end < position)
             .copied()
     }
 
@@ -82,6 +77,16 @@ impl WordOffsets for str {
         offsets
             .iter()
             .find(|(start, end, _)| *start <= position && position < *end)
+            .copied()
+    }
+
+    /// Find the next occurrence of the given word after the given position
+    fn find_next_same_word(&self, position: usize, word: &str) -> Option<(usize, usize, &str)> {
+        let offsets = self.words_with_offsets();
+        offsets
+            .iter()
+            .skip_while(|(start, _, _)| *start <= position)
+            .find(|(_, _, w)| *w == word)
             .copied()
     }
 }
@@ -114,6 +119,13 @@ impl Cursor {
 
     pub fn clear_selection(&mut self) {
         self.tail = self.head.clone();
+    }
+
+    pub fn selection_text(&self, buffer: &Buffer) -> String {
+        let cur = self.normalized();
+        let start = Point::new(cur.anchor_row, cur.anchor_col).to_offset(buffer);
+        let end = Point::new(cur.row, cur.col).to_offset(buffer);
+        buffer.as_rope().chunks_in_range(start..end).collect()
     }
 
     pub fn is_within(&self, row: u32, col: u32) -> bool {
@@ -152,10 +164,8 @@ impl Cursor {
 }
 
 pub struct Document {
-    file_path: String,
     buffer: Buffer,
     cursors: Vec<Cursor>,
-    next_cursor_id: usize,
 }
 
 impl Document {
@@ -164,7 +174,6 @@ impl Document {
         let buffer = Buffer::new(0, BufferId::new(1).unwrap(), contents);
 
         Ok(Self {
-            file_path: file_path.to_string(),
             buffer,
             cursors: vec![Cursor {
                 id: 0,
@@ -175,7 +184,6 @@ impl Document {
                 head: Anchor::MIN,
                 tail: Anchor::MIN,
             }],
-            next_cursor_id: 1,
         })
     }
 
@@ -189,10 +197,18 @@ impl Document {
 
     pub fn undo(&mut self) {
         self.buffer.undo();
+        self.cursors_compute();
     }
 
     pub fn redo(&mut self) {
         self.buffer.redo();
+        self.cursors_compute();
+    }
+
+    fn cursors_compute(&mut self) {
+        for cursor in &mut self.cursors {
+            cursor.compute(&self.buffer);
+        }
     }
 
     fn move_cursor<F>(&mut self, anchor: bool, movement: F)
@@ -216,7 +232,7 @@ impl Document {
             }
             cursor.head = buffer.anchor_at(
                 buffer.clip_offset(offset, cursor.head.bias),
-                cursor.head.bias,
+                Bias::Left, // cursor.head.bias,
             );
         });
     }
@@ -226,7 +242,7 @@ impl Document {
             let offset = buffer.offset_for_anchor(&cursor.head) + 1;
             cursor.head = buffer.anchor_at(
                 buffer.clip_offset(offset, cursor.head.bias),
-                cursor.head.bias,
+                Bias::Left, // cursor.head.bias,
             );
         });
     }
@@ -265,7 +281,7 @@ impl Document {
             let text = buffer.row_text(point.row);
             if let Some(word) = text.find_previous_word(point.column as usize) {
                 // Found previous word
-                let (start, end, w) = word;
+                let (start, _end, _w) = word;
                 point.column = start as u32;
             } else {
                 point.column = 0;
@@ -284,7 +300,7 @@ impl Document {
             let text = buffer.row_text(point.row);
             if let Some(word) = text.find_next_word(point.column as usize) {
                 // Found next word
-                let (start, end, w) = word;
+                let (_start, end, _w) = word;
                 point.column = (end - 1) as u32;
             } else {
                 point.column = buffer.line_len(point.row);
@@ -347,6 +363,46 @@ impl Document {
         });
     }
 
+    pub fn insert_text(&mut self, text: &str) {
+        for cursor in &mut self.cursors {
+            let cur = cursor.normalized();
+            let offset = Point::new(cur.row, cur.col).to_offset(&self.buffer);
+            self.buffer.edit([(offset..offset, text)]);
+        }
+    }
+
+    pub fn delete_text(&mut self, count: usize) {
+        for cursor in &mut self.cursors {
+            let cur = cursor.normalized();
+            let start = Point::new(cur.anchor_row, cur.anchor_col).to_offset(&self.buffer);
+            let mut end = Point::new(cur.row, cur.col).to_offset(&self.buffer);
+
+            if start == end {
+                end += count;
+            }
+
+            self.buffer.edit([(start..end, "")]);
+            cursor.compute(&self.buffer);
+        }
+    }
+
+    pub fn row_text(&self, row: u32) -> String {
+        return self.buffer.row_text(row);
+    }
+
+    pub fn cursor(&self, id: usize) -> Option<&Cursor> {
+        self.cursors.iter().find(|c| c.id == id)
+    }
+
+    pub fn clear_cursors(&mut self) {
+        if let Some(cursor) = self.cursor(0) {
+            let mut cur = cursor.clone();
+            cur.clear_selection();
+            cur.compute(&self.buffer);
+            self.cursors = vec![cur];
+        }
+    }
+
     pub fn select_current_word(&mut self) {
         for cursor in &mut self.cursors {
             if !cursor.has_selection() {
@@ -354,7 +410,7 @@ impl Document {
                 let text = self.buffer.row_text(point.row);
                 if let Some(word) = text.find_current_word(point.column as usize) {
                     // Found next word
-                    let (start, end, w) = word;
+                    let (start, end, _w) = word;
                     {
                         let mut p = point.clone();
                         p.column = end as u32;
@@ -380,34 +436,7 @@ impl Document {
         }
     }
 
-    pub fn insert_text(&mut self, text: &str) {
-        for cursor in &mut self.cursors {
-            let cur = cursor.normalized();
-            let offset = Point::new(cur.row, cur.col).to_offset(&self.buffer);
-            self.buffer.edit([(offset..offset, text)]);
-        }
-    }
-
-    pub fn delete_text(&mut self, count: usize) {
-        for cursor in &mut self.cursors {
-            let cur = cursor.normalized();
-            let mut start = Point::new(cur.anchor_row, cur.anchor_col).to_offset(&self.buffer);
-            let mut end = Point::new(cur.row, cur.col).to_offset(&self.buffer);
-
-            if start == end {
-                end += count;
-            }
-
-            self.buffer.edit([(start..end, "")]);
-            cursor.compute(&self.buffer);
-        }
-    }
-
-    pub fn row_text(&self, row: u32) -> String {
-        return self.buffer.row_text(row);
-    }
-
-    pub fn cursor(&self, id: usize) -> Option<&Cursor> {
-        self.cursors.iter().find(|c| c.id == id)
+    pub fn select_next_same_word(&mut self, text: &str) {
+        
     }
 }
