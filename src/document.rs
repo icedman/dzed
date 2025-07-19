@@ -1,11 +1,7 @@
 use rope::Point;
-use std::io::{self};
+use std::io;
 use sum_tree::Bias;
-use text::Anchor;
-use text::Buffer;
-use text::BufferId;
-use text::ToOffset;
-use text::ToPoint;
+use text::{Anchor, Buffer, BufferId, ToOffset, ToPoint};
 
 pub trait BufferText {
     fn row_text(&self, row: u32) -> String;
@@ -34,14 +30,14 @@ impl WordOffsets for str {
         let mut word_start = 0;
 
         for (idx, ch) in self.char_indices() {
-            if !ch.is_alphanumeric() {
-                if in_word {
-                    words.push((word_start, idx, &self[word_start..idx]));
-                    in_word = false;
+            if ch.is_alphanumeric() {
+                if !in_word {
+                    in_word = true;
+                    word_start = idx;
                 }
-            } else if !in_word {
-                in_word = true;
-                word_start = idx;
+            } else if in_word {
+                words.push((word_start, idx, &self[word_start..idx]));
+                in_word = false;
             }
         }
 
@@ -52,42 +48,30 @@ impl WordOffsets for str {
         words
     }
 
-    /// Find the next word after the given position
     fn find_next_word(&self, position: usize) -> Option<(usize, usize, &str)> {
-        let offsets = self.words_with_offsets();
-        offsets
-            .iter()
-            .find(|(start, _end, _str)| *start > position)
-            .copied()
+        self.words_with_offsets()
+            .into_iter()
+            .find(|(start, _, _)| *start > position)
     }
 
-    /// Find the previous word before the given position
     fn find_previous_word(&self, position: usize) -> Option<(usize, usize, &str)> {
-        let offsets = self.words_with_offsets();
-        offsets
-            .iter()
+        self.words_with_offsets()
+            .into_iter()
             .rev()
-            .find(|(_start, end, _str)| *end < position)
-            .copied()
+            .find(|(_, end, _)| *end < position)
     }
 
-    /// Find the word that contains the given position
     fn find_current_word(&self, position: usize) -> Option<(usize, usize, &str)> {
-        let offsets = self.words_with_offsets();
-        offsets
-            .iter()
+        self.words_with_offsets()
+            .into_iter()
             .find(|(start, end, _)| *start <= position && position < *end)
-            .copied()
     }
 
-    /// Find the next occurrence of the given word after the given position
     fn find_next_same_word(&self, position: usize, word: &str) -> Option<(usize, usize, &str)> {
-        let offsets = self.words_with_offsets();
-        offsets
-            .iter()
+        self.words_with_offsets()
+            .into_iter()
             .skip_while(|(start, _, _)| *start <= position)
             .find(|(_, _, w)| *w == word)
-            .copied()
     }
 }
 
@@ -394,6 +378,13 @@ impl Document {
         self.cursors.iter().find(|c| c.id == id)
     }
 
+    pub fn top_cursor_row(&self) -> u32 {
+        if let Some(cursor) = self.cursors.iter().min_by_key(|c| c.row) {
+            return cursor.row;
+        }
+        0
+    }
+
     pub fn clear_cursors(&mut self) {
         if let Some(cursor) = self.cursor(0) {
             let mut cur = cursor.clone();
@@ -436,7 +427,5 @@ impl Document {
         }
     }
 
-    pub fn select_next_same_word(&mut self, text: &str) {
-        
-    }
+    pub fn select_next_same_word(&mut self, text: &str) {}
 }

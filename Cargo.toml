@@ -12,7 +12,8 @@ ncurses = "6.0.1"
 ratatui = "0.29.0"
 rope = { path = "../rope" }
 sum_tree = { path = "../sum_tree" }
-syntect = "5.2.0"
+# syntect = "5.2.0"
+syntect = { git = "https://github.com/trishume/syntect" }
 text = { path = "../text" }
 
 [lints]
