@@ -12,70 +12,6 @@ use highlight::Highlights;
 use std::thread;
 use std::time::Duration;
 
-fn fill_to_eol(count: usize, pair_number: i16) {
-    // let space_ch = ' ' as u32 | COLOR_PAIR(pair_number) as u32;
-    for _ in 0..count {
-        print!(" ");
-    }
-}
-
-fn rgb_to_ncurses_scale(value: u8) -> i16 {
-    ((value as i32) * 1000 / 255) as i16
-}
-
-struct ColorPairManager {
-    color_slots: HashMap<Color, i16>,
-    pair_slots: HashMap<(Color, Color), i16>,
-    next_color_slot: i16,
-    next_pair_slot: i16,
-}
-
-impl ColorPairManager {
-    fn new() -> Self {
-        Self {
-            color_slots: HashMap::new(),
-            pair_slots: HashMap::new(),
-            next_color_slot: 16,
-            next_pair_slot: 1,
-        }
-    }
-
-    fn get_or_register_color(&mut self, color: Color) -> i16 {
-        *self.color_slots.entry(color).or_insert_with(|| {
-            let slot = self.next_color_slot;
-            // if can_change_color() {
-            //     init_color(
-            //         slot,
-            //         rgb_to_ncurses_scale(color.r),
-            //         rgb_to_ncurses_scale(color.g),
-            //         rgb_to_ncurses_scale(color.b),
-            //     );
-            // }
-            self.next_color_slot += 1;
-            slot
-        })
-    }
-
-    fn get_or_register_pair(&mut self, fg: Color, bg: Color) -> i16 {
-        let key = (fg, bg);
-
-        if let Some(&pair) = self.pair_slots.get(&key) {
-            return pair;
-        }
-
-        let fg_slot = self.get_or_register_color(fg);
-        let bg_slot = self.get_or_register_color(bg);
-
-        let pair = self.next_pair_slot;
-        // init_pair(pair, fg_slot, bg_slot);
-
-        self.pair_slots.insert(key, pair);
-        self.next_pair_slot += 1;
-
-        pair
-    }
-}
-
 use crossterm::{
     cursor::MoveTo,
     event,
@@ -84,6 +20,12 @@ use crossterm::{
     terminal::{Clear, ClearType},
 };
 use std::io::{stdout, Write};
+
+fn fill_to_eol(count: usize) {
+    for _ in 0..count {
+        print!(" ");
+    }
+}
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
@@ -102,21 +44,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let mut hl = Highlights::new(file_path);
-    let mut manager = ColorPairManager::new();
     let mut scroll_line: u32 = 0;
 
     let tab_size = 4;
 
     // Prepare default background pair
-    let default_pair_number = {
+    let (fg, bg) = {
         let style = &hl.get_default_style();
-        manager.get_or_register_pair(style.foreground, style.background)
+        (
+            crossterm::style::Color::Rgb {
+                r: style.foreground.r,
+                g: style.foreground.g,
+                b: style.foreground.b,
+            },
+            crossterm::style::Color::Rgb {
+                r: style.background.r,
+                g: style.background.g,
+                b: style.background.b,
+            },
+        )
     };
 
     crossterm::terminal::enable_raw_mode().unwrap();
+    let mut stdout = stdout();
 
     loop {
-        let mut stdout = stdout();
         execute!(stdout, crossterm::cursor::Hide).unwrap();
         // execute!(stdout, Clear(ClearType::All), MoveTo(0, 0)).unwrap();
         // println!("Hello World!");
@@ -168,7 +120,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     // use ranges safely here
                 } else {
                     // handle missing case, maybe skip or default:
-                    fill_to_eol(screen_cols as usize, default_pair_number);
+                    fill_to_eol(screen_cols as usize);
                     screen_row += 1;
                     continue;
                 }
@@ -186,30 +138,45 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
 
                     if let Some(style) = current_style {
-                        let pair_number =
-                            manager.get_or_register_pair(style.foreground, style.background);
-                        // attron(COLOR_PAIR(pair_number));
+                        execute!(
+                            stdout,
+                            crossterm::style::SetForegroundColor(crossterm::style::Color::Rgb {
+                                r: style.foreground.r,
+                                g: style.foreground.g,
+                                b: style.foreground.b
+                            })
+                        );
+
+                        execute!(
+                            stdout,
+                            crossterm::style::SetBackgroundColor(crossterm::style::Color::Rgb {
+                                r: style.background.r,
+                                g: style.background.g,
+                                b: style.background.b
+                            })
+                        );
                     }
 
                     if cursor.is_within(row, screen_col as u32) {
-                        // attron(A_REVERSE);
+                        execute!(
+                            stdout,
+                            crossterm::style::SetBackgroundColor(crossterm::style::Color::Rgb {
+                                r: 150,
+                                g: 150,
+                                b: 150
+                            })
+                        );
                     }
 
                     match ch {
                         '\t' => {
                             for _i in 0..tab_size {
-                                // addch(' ' as u32);
-                                // attroff(A_REVERSE);
+                                print!(" ");
                             }
                         }
                         _ => {
-                            // addch(ch as u32);
                             print!("{}", ch);
                         }
-                    }
-
-                    if cursor.is_within(row, screen_col as u32) {
-                        // attroff(A_REVERSE);
                     }
 
                     range_remaining = range_remaining.saturating_sub(1);
@@ -219,10 +186,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
 
-                fill_to_eol(
-                    (screen_cols - text.chars().count() as i32).max(0) as usize,
-                    default_pair_number,
-                );
+                fill_to_eol((screen_cols - text.chars().count() as i32).max(0) as usize);
 
                 screen_row += 1;
             }
@@ -338,5 +302,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     crossterm::terminal::disable_raw_mode().unwrap();
+    // execute!(stdout, Clear(ClearType::All), MoveTo(0, 0)).unwrap();
+    execute!(stdout, crossterm::cursor::Show).unwrap();
+
     Ok(())
 }
