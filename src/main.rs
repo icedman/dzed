@@ -81,6 +81,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
     };
 
+    let mut dirty_hl = true;
+
     loop {
         execute!(stdout, crossterm::cursor::Hide).unwrap();
 
@@ -115,11 +117,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let total_rows = buffer.row_count();
             let end_line = (scroll_y + visible_rows as u32).min(total_rows);
 
-            hl.highlight_lines(
-                doc.buffer(),
-                scroll_y as usize,
-                (end_line - scroll_y) as usize,
-            );
+            if dirty_hl {
+                hl.highlight_lines(
+                    doc.buffer(),
+                    scroll_y as usize,
+                    (end_line - scroll_y) as usize,
+                );
+            }
+            dirty_hl = true;
 
             let mut screen_row = 0;
             for row in scroll_y..end_line {
@@ -269,21 +274,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     //         SelectCurrentWord
                     //     }
                     // }
-
                     (KeyCode::Esc, _) => Action::ClearCursors,
 
                     (KeyCode::Tab, _) => Action::InsertTab,
                     (KeyCode::Enter, _) => Action::InsertNewLine,
 
-                    (KeyCode::Backspace, _) => Action::DeleteText { count: 1 },
-                    (KeyCode::Delete, _) => Action::DeleteText { count: 0 },
+                    (KeyCode::Backspace, _) => Action::Backspace,
+                    (KeyCode::Delete, _) => Action::Delete,
 
                     (KeyCode::Char('r'), KeyModifiers::CONTROL) => Action::Redo,
                     (KeyCode::Char('z'), KeyModifiers::CONTROL) => Action::Undo,
 
                     (KeyCode::Char(c), _) => Action::InsertText(c.to_string()),
 
-                    _ => Action::NoOp,
+                    _ => {
+                        dirty_hl = false;
+                        Action::NoOp
+                    }
                 };
 
                 doc.apply_action(&action);

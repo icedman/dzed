@@ -13,9 +13,12 @@ pub enum Action {
     MoveToEndOfLine { select: bool },
 
     InsertText(String),
-    DeleteText { count: usize },
     InsertNewLine,
     InsertTab,
+
+    DeleteText { count: usize },
+    Backspace,
+    Delete,
 
     Indent,
     Unindent,

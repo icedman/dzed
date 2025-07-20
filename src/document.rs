@@ -454,8 +454,21 @@ impl Document {
             Action::MoveToEndOfDocument { select } => self.move_to_end_of_document(*select),
             Action::MoveToStartOfLine { select } => self.move_to_start_of_line(*select),
             Action::MoveToEndOfLine { select } => self.move_to_end_of_line(*select),
-            Action::InsertText(text) => self.insert_text(text),
+            Action::InsertText(text) => {
+                self.delete_text(0);
+                self.insert_text(text);
+                self.move_right(false);
+            }
             Action::DeleteText { count } => self.delete_text(*count),
+            Action::Backspace => {
+                self.delete_text(0);
+                self.move_left(false);
+                self.delete_text(1);
+            }
+            Action::Delete => {
+                self.delete_text(0);
+                self.delete_text(1);
+            }
             Action::InsertNewLine => {
                 self.delete_text(0);
                 self.insert_text(&self.new_line().to_string());
