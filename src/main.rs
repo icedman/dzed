@@ -2,7 +2,6 @@ mod document;
 mod highlight;
 
 use document::Document;
-use ncurses::*;
 use std::collections::HashMap;
 use std::path::Path;
 use syntect::easy::HighlightLines;
@@ -14,9 +13,9 @@ use std::thread;
 use std::time::Duration;
 
 fn fill_to_eol(count: usize, pair_number: i16) {
-    let space_ch = ' ' as u32 | COLOR_PAIR(pair_number) as u32;
+    // let space_ch = ' ' as u32 | COLOR_PAIR(pair_number) as u32;
     for _ in 0..count {
-        addch(space_ch);
+        print!(" ");
     }
 }
 
@@ -44,14 +43,14 @@ impl ColorPairManager {
     fn get_or_register_color(&mut self, color: Color) -> i16 {
         *self.color_slots.entry(color).or_insert_with(|| {
             let slot = self.next_color_slot;
-            if can_change_color() {
-                init_color(
-                    slot,
-                    rgb_to_ncurses_scale(color.r),
-                    rgb_to_ncurses_scale(color.g),
-                    rgb_to_ncurses_scale(color.b),
-                );
-            }
+            // if can_change_color() {
+            //     init_color(
+            //         slot,
+            //         rgb_to_ncurses_scale(color.r),
+            //         rgb_to_ncurses_scale(color.g),
+            //         rgb_to_ncurses_scale(color.b),
+            //     );
+            // }
             self.next_color_slot += 1;
             slot
         })
@@ -68,7 +67,7 @@ impl ColorPairManager {
         let bg_slot = self.get_or_register_color(bg);
 
         let pair = self.next_pair_slot;
-        init_pair(pair, fg_slot, bg_slot);
+        // init_pair(pair, fg_slot, bg_slot);
 
         self.pair_slots.insert(key, pair);
         self.next_pair_slot += 1;
@@ -77,11 +76,20 @@ impl ColorPairManager {
     }
 }
 
-fn main() {
+use crossterm::{
+    cursor::MoveTo,
+    event,
+    event::{read, Event, KeyCode, KeyModifiers},
+    execute,
+    terminal::{Clear, ClearType},
+};
+use std::io::{stdout, Write};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
     if args.len() != 2 {
         eprintln!("Usage: {} <file_path>", args[0]);
-        return;
+        return Ok(());
     }
 
     let file_path = &args[1];
@@ -89,25 +97,12 @@ fn main() {
         Ok(doc) => doc,
         Err(err) => {
             eprintln!("Failed to open document: {}", err);
-            return;
+            return Ok(());
         }
     };
 
     let mut hl = Highlights::new(file_path);
-
-    // Setup ncurses
-    initscr();
-    start_color();
-    use_default_colors();
-    raw();
-    keypad(stdscr(), true);
-    noecho();
-    curs_set(CURSOR_VISIBILITY::CURSOR_INVISIBLE);
-
-    nodelay(stdscr(), true);
-
     let mut manager = ColorPairManager::new();
-    let mut last_ch = 0;
     let mut scroll_line: u32 = 0;
 
     let tab_size = 4;
@@ -118,10 +113,21 @@ fn main() {
         manager.get_or_register_pair(style.foreground, style.background)
     };
 
+    crossterm::terminal::enable_raw_mode().unwrap();
+
     loop {
-        let (mut screen_rows, mut screen_cols) = (0, 0);
-        refresh();
-        getmaxyx(stdscr(), &mut screen_rows, &mut screen_cols);
+        let mut stdout = stdout();
+        execute!(stdout, crossterm::cursor::Hide).unwrap();
+        // execute!(stdout, Clear(ClearType::All), MoveTo(0, 0)).unwrap();
+        // println!("Hello World!");
+
+        let (screen_cols, screen_rows) = {
+            let (cols, rows) = crossterm::terminal::size().unwrap();
+            (cols as i32, rows as i32)
+        };
+
+        // refresh();
+        // getmaxyx(stdscr(), &mut screen_rows, &mut screen_cols);
 
         let cursor = doc.cursor(0).unwrap().clone();
         let cursor_row = cursor.row as i32;
@@ -137,8 +143,10 @@ fn main() {
             cursor_screen_row = cursor_row - scroll_line as i32;
         }
 
-        // Render buffer
+        // render
         {
+            execute!(stdout, MoveTo(0, 0)).unwrap();
+
             let buffer = doc.buffer();
             let total_rows = buffer.row_count();
             let end_line = (scroll_line + visible_rows as u32).min(total_rows);
@@ -151,7 +159,7 @@ fn main() {
 
             let mut screen_row = 0;
             for row in scroll_line..end_line {
-                mv(screen_row, 0);
+                execute!(stdout, MoveTo(0, screen_row)).unwrap();
                 let text = doc.row_text(row) + " ";
 
                 let mut ranges;
@@ -180,27 +188,28 @@ fn main() {
                     if let Some(style) = current_style {
                         let pair_number =
                             manager.get_or_register_pair(style.foreground, style.background);
-                        attron(COLOR_PAIR(pair_number));
+                        // attron(COLOR_PAIR(pair_number));
                     }
 
                     if cursor.is_within(row, screen_col as u32) {
-                        attron(A_REVERSE);
+                        // attron(A_REVERSE);
                     }
 
                     match ch {
                         '\t' => {
                             for _i in 0..tab_size {
-                                addch(' ' as u32);
-                                attroff(A_REVERSE);
+                                // addch(' ' as u32);
+                                // attroff(A_REVERSE);
                             }
                         }
                         _ => {
-                            addch(ch as u32);
+                            // addch(ch as u32);
+                            print!("{}", ch);
                         }
                     }
 
                     if cursor.is_within(row, screen_col as u32) {
-                        attroff(A_REVERSE);
+                        // attroff(A_REVERSE);
                     }
 
                     range_remaining = range_remaining.saturating_sub(1);
@@ -217,116 +226,73 @@ fn main() {
 
                 screen_row += 1;
             }
-
-            // Clear remaining lines
-            while screen_row < visible_rows + 1 {
-                mv(screen_row, 0);
-                fill_to_eol(screen_cols as usize, default_pair_number);
-                screen_row += 1;
-            }
-
-            let (hl_cache_size, hl_start) = hl.stats();
-
-            // Status bar
-            attron(COLOR_PAIR(default_pair_number));
-            mvprintw(
-                screen_rows - 1,
-                0,
-                &format!(
-                    "[{}]  {},{} hl: {} {}",
-                    last_ch,
-                    cursor.row,
-                    cursor.col,
-                    hl_cache_size,
-                    hl_start,
-                    // doc.cursor(0).unwrap().selection_text(buffer)
-                ),
-            );
-            attroff(COLOR_PAIR(default_pair_number));
         }
 
-        let mut ch = 0;
-        loop {
-            ch = getch();
-            if ch != ERR {
-                break;
-            }
-            // background
-            thread::sleep(Duration::from_millis(10)); // 10ms pause (~100 FPS)
-        }
-
-        match ch {
-            KEY_PPAGE => {
-                for _ in 0..screen_rows {
-                    doc.move_up(false);
-                }
-            }
-            KEY_NPAGE => {
-                for _ in 0..screen_rows {
-                    doc.move_down(false);
-                }
-            }
-            554 => doc.move_to_previous_word(false), // CTRL+LEFT
-            569 => doc.move_to_next_word(false),     // CTRL+RIGHT
-            544 => doc.move_to_start_of_document(false),
-            539 => doc.move_to_end_of_document(false),
-            KEY_HOME => doc.move_to_start_of_line(false),
-            KEY_END => doc.move_to_end_of_line(false),
-            391 => doc.move_to_start_of_line(true), // SHIFT+HOME
-            386 => doc.move_to_end_of_line(true),   // SHIFT+END
-            4 => {
-                // CTRL+D
-                if cursor.has_selection() {
-                    let buffer = doc.buffer(); // Fetch buffer here
-                    let sel = cursor.selection_text(buffer);
-                    doc.select_next_same_word(&sel)
-                } else {
-                    doc.select_current_word();
-                }
-            }
-            17 => break,               // CTRL+Q
-            27 => doc.clear_cursors(), // ESCAPE
-            259 => doc.move_up(false),
-            258 => doc.move_down(false),
-            260 => doc.move_left(false),
-            261 => doc.move_right(false),
-            337 => doc.move_up(true),    // SHIFT+UP
-            336 => doc.move_down(true),  // SHIFT+DOWN
-            393 => doc.move_left(true),  // SHIFT+LEFT
-            402 => doc.move_right(true), // SHIFT+RIGHT
-            ch => {
-                last_ch = ch;
-                match ch {
-                    32..=126 => {
-                        // insert
-                        hl.update_from_line(doc.top_cursor_row() as usize);
-                        let s = (ch as u8 as char).to_string();
-                        let has_selection = cursor.has_selection();
-                        doc.delete_text(0);
-                        doc.insert_text(&s);
-                        doc.move_right(false);
-                        if has_selection {
-                            doc.move_left(false);
+        // input
+        if event::poll(Duration::from_millis(50))? {
+            if let Event::Key(key_event) = event::read()? {
+                match (key_event.code, key_event.modifiers) {
+                    (KeyCode::PageUp, _) => {
+                        for _ in 0..screen_rows {
+                            doc.move_up(false);
                         }
                     }
-                    9 => {
-                        // tab
+                    (KeyCode::PageDown, _) => {
+                        for _ in 0..screen_rows {
+                            doc.move_down(false);
+                        }
+                    }
+                    (KeyCode::Left, KeyModifiers::CONTROL) => doc.move_to_previous_word(false),
+                    (KeyCode::Right, KeyModifiers::CONTROL) => doc.move_to_next_word(false),
+                    (KeyCode::Home, KeyModifiers::CONTROL) => doc.move_to_start_of_document(false),
+                    (KeyCode::End, KeyModifiers::CONTROL) => doc.move_to_end_of_document(false),
+                    (KeyCode::Home, KeyModifiers::NONE) => doc.move_to_start_of_line(false),
+                    (KeyCode::End, KeyModifiers::NONE) => doc.move_to_end_of_line(false),
+                    (KeyCode::Home, KeyModifiers::SHIFT) => doc.move_to_start_of_line(true),
+                    (KeyCode::End, KeyModifiers::SHIFT) => doc.move_to_end_of_line(true),
+
+                    (KeyCode::Char('d'), KeyModifiers::CONTROL) => {
+                        if cursor.has_selection() {
+                            let buffer = doc.buffer();
+                            let sel = cursor.selection_text(buffer);
+                            doc.select_next_same_word(&sel);
+                        } else {
+                            doc.select_current_word();
+                        }
+                    }
+
+                    (KeyCode::Char('q'), KeyModifiers::CONTROL) => break, // CTRL+Q
+
+                    (KeyCode::Esc, _) => doc.clear_cursors(),
+
+                    (KeyCode::Up, KeyModifiers::NONE) => doc.move_up(false),
+                    (KeyCode::Down, KeyModifiers::NONE) => doc.move_down(false),
+                    (KeyCode::Left, KeyModifiers::NONE) => doc.move_left(false),
+                    (KeyCode::Right, KeyModifiers::NONE) => doc.move_right(false),
+
+                    (KeyCode::Up, KeyModifiers::SHIFT) => doc.move_up(true),
+                    (KeyCode::Down, KeyModifiers::SHIFT) => doc.move_down(true),
+                    (KeyCode::Left, KeyModifiers::SHIFT) => doc.move_left(true),
+                    (KeyCode::Right, KeyModifiers::SHIFT) => doc.move_right(true),
+
+                    // Special keys:
+                    (KeyCode::Tab, _) => {
                         hl.update_from_line(doc.top_cursor_row() as usize);
                         for _ in 0..4 {
                             doc.insert_text(" ");
                             doc.move_right(false);
                         }
                     }
-                    10 => {
-                        // newline
+
+                    (KeyCode::Enter, _) => {
                         hl.update_from_line(doc.top_cursor_row() as usize);
                         doc.delete_text(0);
                         let newline = doc.new_line().to_string();
                         doc.insert_text(&newline);
                         doc.move_right(false);
                     }
-                    263 => {
-                        // Backspace
+
+                    (KeyCode::Backspace, _) => {
                         hl.update_from_line(doc.top_cursor_row() as usize);
                         if cursor.has_selection() {
                             doc.delete_text(0);
@@ -335,26 +301,42 @@ fn main() {
                             doc.delete_text(1);
                         }
                     }
-                    330 => {
-                        // Delete key
+
+                    (KeyCode::Delete, _) => {
                         hl.update_from_line(doc.top_cursor_row() as usize);
                         doc.delete_text(0);
                     }
-                    18 => {
-                        // CTRL+R
+
+                    (KeyCode::Char('r'), KeyModifiers::CONTROL) => {
                         hl.update_from_line(0);
-                        doc.redo()
+                        doc.redo();
                     }
-                    26 => {
-                        // CTRL+Z
+
+                    (KeyCode::Char('z'), KeyModifiers::CONTROL) => {
                         hl.update_from_line(0);
-                        doc.undo()
+                        doc.undo();
                     }
+
+                    // Character input:
+                    (KeyCode::Char(c), _) => {
+                        hl.update_from_line(doc.top_cursor_row() as usize);
+                        let has_selection = cursor.has_selection();
+                        doc.delete_text(0);
+                        doc.insert_text(&c.to_string());
+                        doc.move_right(false);
+                        if has_selection {
+                            doc.move_left(false);
+                        }
+                    }
+
                     _ => {}
                 }
+            } else {
+                // do some background here?
             }
         }
     }
 
-    endwin();
+    crossterm::terminal::disable_raw_mode().unwrap();
+    Ok(())
 }
