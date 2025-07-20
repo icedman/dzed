@@ -7,7 +7,12 @@ use syntect::parsing::{ParseState, SyntaxReference, SyntaxSet};
 use text::{Anchor, Buffer, BufferId, ToOffset, ToPoint};
 
 const START_OFFSET: usize = 400;
-const CACHE_INTERVAL: usize = 200;
+const CACHE_INTERVAL: usize = 100;
+
+fn load_theme(tm_file: &str) -> Theme {
+    let tm_path = Path::new(tm_file);
+    ThemeSet::get_theme(tm_path).unwrap()
+}
 
 fn find_entry<T>(state_cache: &HashMap<usize, T>, target: usize) -> Option<(&usize, &T)> {
     let mut nearest_key = None;
@@ -42,6 +47,7 @@ pub struct Highlights {
     syntax: SyntaxReference,
     state_cache: HashMap<usize, StateCache>,
     style_cache: HashMap<usize, StyleCache>,
+    highlight_start: usize,
 }
 
 fn row_text(buffer: &Buffer, row: u32) -> String {
@@ -65,6 +71,7 @@ impl Highlights {
             .get("Solarized (dark)")
             .unwrap_or(&theme_set.themes["InspiredGitHub"]);
         // let theme = theme_set.themes.get("base16-ocean.dark").unwrap_or(&theme_set.themes["Solarized (dark)"]);
+        // let theme = load_theme("./themes/Dracula.tmTheme");
         let syntax = syntax_set
             .find_syntax_by_extension(&extension)
             .unwrap_or_else(|| syntax_set.find_syntax_plain_text());
@@ -75,6 +82,7 @@ impl Highlights {
             syntax: syntax.clone(),
             state_cache: HashMap::<usize, StateCache>::new(),
             style_cache: HashMap::<usize, StyleCache>::new(),
+            highlight_start: 0,
         }
     }
 
@@ -86,13 +94,19 @@ impl Highlights {
     pub fn highlight_lines(&mut self, buffer: &Buffer, start: usize, count: usize) {
         self.style_cache.clear();
         let mut hl = HighlightLines::new(&self.syntax, &self.theme);
+
+        // todo START_OFFSET should consider visible rows
         let mut sub_start: usize = start.saturating_sub(START_OFFSET);
+
+        self.highlight_start = 0;
+
         if let Some((key, value)) =
             find_entry::<StateCache>(&self.state_cache, start.saturating_sub(CACHE_INTERVAL))
         {
             let ln = value.line_number;
             if ln > sub_start && ln < start {
                 sub_start = ln;
+                self.highlight_start = ln;
                 hl = HighlightLines::from_state(
                     &self.theme,
                     value.highlight_state.clone(),
@@ -103,7 +117,7 @@ impl Highlights {
 
         let end = start + count;
         for row in sub_start..end {
-            let text = row_text(buffer, row as u32) + " ";
+            let text = row_text(buffer, row as u32) + "\n";
             let ranges = hl
                 .highlight_line(&text, &self.syntax_set)
                 .expect("handle empty range");
@@ -148,5 +162,11 @@ impl Highlights {
         let mut hl = HighlightLines::new(&self.syntax, &self.theme);
         let ranges = hl.highlight_line(" ", &self.syntax_set).unwrap();
         ranges.first().map(|(style, _)| style.clone()).unwrap()
+    }
+
+    pub fn stats(&self) -> (usize, usize) {
+        let cache_len = self.state_cache.len();
+        let highlight_start = self.highlight_start;
+        (cache_len, highlight_start)
     }
 }

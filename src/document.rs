@@ -120,7 +120,12 @@ impl Cursor {
         if row == cur.anchor_row && col < cur.anchor_col {
             return false;
         }
-        if row == cur.row && col > cur.col {
+        let end_col = if self.has_selection() {
+            cur.col.saturating_sub(1)
+        } else {
+            cur.col
+        };
+        if row == cur.row && col > end_col {
             return false;
         }
         true
@@ -352,6 +357,7 @@ impl Document {
             let cur = cursor.normalized();
             let offset = Point::new(cur.row, cur.col).to_offset(&self.buffer);
             self.buffer.edit([(offset..offset, text)]);
+            cursor.compute(&self.buffer);
         }
     }
 
@@ -360,11 +366,9 @@ impl Document {
             let cur = cursor.normalized();
             let start = Point::new(cur.anchor_row, cur.anchor_col).to_offset(&self.buffer);
             let mut end = Point::new(cur.row, cur.col).to_offset(&self.buffer);
-
             if start == end {
                 end += count;
             }
-
             self.buffer.edit([(start..end, "")]);
             cursor.compute(&self.buffer);
         }

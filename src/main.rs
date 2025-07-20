@@ -110,6 +110,8 @@ fn main() {
     let mut last_ch = 0;
     let mut scroll_line: u32 = 0;
 
+    let tab_size = 4;
+
     // Prepare default background pair
     let default_pair_number = {
         let style = &hl.get_default_style();
@@ -185,7 +187,17 @@ fn main() {
                         attron(A_REVERSE);
                     }
 
-                    addch(ch as u32);
+                    match ch {
+                        '\t' => {
+                            for _i in 0..tab_size {
+                                addch(' ' as u32);
+                                attroff(A_REVERSE);
+                            }
+                        }
+                        _ => {
+                            addch(ch as u32);
+                        }
+                    }
 
                     if cursor.is_within(row, screen_col as u32) {
                         attroff(A_REVERSE);
@@ -213,16 +225,20 @@ fn main() {
                 screen_row += 1;
             }
 
+            let (hl_cache_size, hl_start) = hl.stats();
+
             // Status bar
             attron(COLOR_PAIR(default_pair_number));
             mvprintw(
                 screen_rows - 1,
                 0,
                 &format!(
-                    "[{}]  {},{}",
+                    "[{}]  {},{} hl: {} {}",
                     last_ch,
                     cursor.row,
                     cursor.col,
+                    hl_cache_size,
+                    hl_start,
                     // doc.cursor(0).unwrap().selection_text(buffer)
                 ),
             );
@@ -285,9 +301,13 @@ fn main() {
                         // insert
                         hl.update_from_line(doc.top_cursor_row() as usize);
                         let s = (ch as u8 as char).to_string();
+                        let has_selection = cursor.has_selection();
                         doc.delete_text(0);
                         doc.insert_text(&s);
                         doc.move_right(false);
+                        if has_selection {
+                            doc.move_left(false);
+                        }
                     }
                     9 => {
                         // tab
