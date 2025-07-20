@@ -1,6 +1,8 @@
+mod actions;
 mod document;
 mod highlight;
 
+use actions::Action;
 use document::Document;
 use std::collections::HashMap;
 use std::path::Path;
@@ -15,11 +17,25 @@ use std::time::Duration;
 use crossterm::{
     cursor::MoveTo,
     event,
-    event::{read, Event, KeyCode, KeyModifiers},
+    event::{read, Event, KeyCode, KeyEvent, KeyModifiers},
     execute,
     terminal::{Clear, ClearType},
 };
 use std::io::{stdout, Write};
+
+pub trait ToCrossTerm {
+    fn rgb(&self) -> crossterm::style::Color;
+}
+
+impl ToCrossTerm for syntect::highlighting::Color {
+    fn rgb(&self) -> crossterm::style::Color {
+        return crossterm::style::Color::Rgb {
+            r: self.r,
+            g: self.g,
+            b: self.b,
+        };
+    }
+}
 
 fn fill_to_eol(count: usize) {
     for _ in 0..count {
@@ -28,6 +44,10 @@ fn fill_to_eol(count: usize) {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut stdout = stdout();
+    crossterm::terminal::enable_raw_mode().unwrap();
+    execute!(stdout, Clear(ClearType::All), MoveTo(0, 0)).unwrap();
+
     let args: Vec<String> = std::env::args().collect();
     if args.len() != 2 {
         eprintln!("Usage: {} <file_path>", args[0]);
@@ -44,56 +64,48 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let mut hl = Highlights::new(file_path);
-    let mut scroll_line: u32 = 0;
+    let mut scroll_x: u32 = 0;
+    let mut scroll_y: u32 = 0;
 
     let tab_size = 4;
 
     // Prepare default background pair
-    let (fg, bg) = {
-        let style = &hl.get_default_style();
+    let (cr, fg, bg, lh, sel) = {
+        let settings = hl.theme_settings();
         (
-            crossterm::style::Color::Rgb {
-                r: style.foreground.r,
-                g: style.foreground.g,
-                b: style.foreground.b,
-            },
-            crossterm::style::Color::Rgb {
-                r: style.background.r,
-                g: style.background.g,
-                b: style.background.b,
-            },
+            settings.caret.unwrap().rgb(),
+            settings.foreground.unwrap().rgb(),
+            settings.background.unwrap().rgb(),
+            settings.line_highlight.unwrap().rgb(),
+            settings.selection.unwrap().rgb(),
         )
     };
 
-    crossterm::terminal::enable_raw_mode().unwrap();
-    let mut stdout = stdout();
-
     loop {
         execute!(stdout, crossterm::cursor::Hide).unwrap();
-        // execute!(stdout, Clear(ClearType::All), MoveTo(0, 0)).unwrap();
-        // println!("Hello World!");
 
         let (screen_cols, screen_rows) = {
             let (cols, rows) = crossterm::terminal::size().unwrap();
             (cols as i32, rows as i32)
         };
 
-        // refresh();
-        // getmaxyx(stdscr(), &mut screen_rows, &mut screen_cols);
-
         let cursor = doc.cursor(0).unwrap().clone();
         let cursor_row = cursor.row as i32;
         let visible_rows = screen_rows - 1;
 
-        let mut cursor_screen_row = cursor_row - scroll_line as i32;
+        // scroll
+        let mut cursor_screen_row = cursor_row - scroll_y as i32;
         while cursor_screen_row >= visible_rows {
-            scroll_line += 1;
-            cursor_screen_row = cursor_row - scroll_line as i32;
+            scroll_y += 1;
+            cursor_screen_row = cursor_row - scroll_y as i32;
         }
-        while cursor_screen_row < 0 && scroll_line > 0 {
-            scroll_line -= 1;
-            cursor_screen_row = cursor_row - scroll_line as i32;
+        while cursor_screen_row < 0 && scroll_y > 0 {
+            scroll_y -= 1;
+            cursor_screen_row = cursor_row - scroll_y as i32;
         }
+
+        // bar
+        // print!("\x1b[5 q");
 
         // render
         {
@@ -101,16 +113,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             let buffer = doc.buffer();
             let total_rows = buffer.row_count();
-            let end_line = (scroll_line + visible_rows as u32).min(total_rows);
+            let end_line = (scroll_y + visible_rows as u32).min(total_rows);
 
             hl.highlight_lines(
                 doc.buffer(),
-                scroll_line as usize,
-                (end_line - scroll_line) as usize,
+                scroll_y as usize,
+                (end_line - scroll_y) as usize,
             );
 
             let mut screen_row = 0;
-            for row in scroll_line..end_line {
+            for row in scroll_y..end_line {
                 execute!(stdout, MoveTo(0, screen_row)).unwrap();
                 let text = doc.row_text(row) + " ";
 
@@ -120,6 +132,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     // use ranges safely here
                 } else {
                     // handle missing case, maybe skip or default:
+                    execute!(stdout, crossterm::style::SetBackgroundColor(bg)).unwrap();
                     fill_to_eol(screen_cols as usize);
                     screen_row += 1;
                     continue;
@@ -140,32 +153,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if let Some(style) = current_style {
                         execute!(
                             stdout,
-                            crossterm::style::SetForegroundColor(crossterm::style::Color::Rgb {
-                                r: style.foreground.r,
-                                g: style.foreground.g,
-                                b: style.foreground.b
-                            })
-                        );
+                            crossterm::style::SetForegroundColor(style.foreground.rgb())
+                        )
+                        .unwrap();
 
                         execute!(
                             stdout,
-                            crossterm::style::SetBackgroundColor(crossterm::style::Color::Rgb {
-                                r: style.background.r,
-                                g: style.background.g,
-                                b: style.background.b
-                            })
-                        );
+                            crossterm::style::SetBackgroundColor(style.background.rgb())
+                        )
+                        .unwrap();
                     }
 
+                    // within selection
                     if cursor.is_within(row, screen_col as u32) {
-                        execute!(
-                            stdout,
-                            crossterm::style::SetBackgroundColor(crossterm::style::Color::Rgb {
-                                r: 150,
-                                g: 150,
-                                b: 150
-                            })
-                        );
+                        execute!(stdout, crossterm::style::SetBackgroundColor(sel)).unwrap();
                     }
 
                     match ch {
@@ -186,6 +187,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
 
+                execute!(stdout, crossterm::style::SetBackgroundColor(bg));
                 fill_to_eol((screen_cols - text.chars().count() as i32).max(0) as usize);
 
                 screen_row += 1;
@@ -195,106 +197,96 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // input
         if event::poll(Duration::from_millis(50))? {
             if let Event::Key(key_event) = event::read()? {
+                // global actions
                 match (key_event.code, key_event.modifiers) {
-                    (KeyCode::PageUp, _) => {
-                        for _ in 0..screen_rows {
-                            doc.move_up(false);
-                        }
-                    }
-                    (KeyCode::PageDown, _) => {
-                        for _ in 0..screen_rows {
-                            doc.move_down(false);
-                        }
-                    }
-                    (KeyCode::Left, KeyModifiers::CONTROL) => doc.move_to_previous_word(false),
-                    (KeyCode::Right, KeyModifiers::CONTROL) => doc.move_to_next_word(false),
-                    (KeyCode::Home, KeyModifiers::CONTROL) => doc.move_to_start_of_document(false),
-                    (KeyCode::End, KeyModifiers::CONTROL) => doc.move_to_end_of_document(false),
-                    (KeyCode::Home, KeyModifiers::NONE) => doc.move_to_start_of_line(false),
-                    (KeyCode::End, KeyModifiers::NONE) => doc.move_to_end_of_line(false),
-                    (KeyCode::Home, KeyModifiers::SHIFT) => doc.move_to_start_of_line(true),
-                    (KeyCode::End, KeyModifiers::SHIFT) => doc.move_to_end_of_line(true),
-
-                    (KeyCode::Char('d'), KeyModifiers::CONTROL) => {
-                        if cursor.has_selection() {
-                            let buffer = doc.buffer();
-                            let sel = cursor.selection_text(buffer);
-                            doc.select_next_same_word(&sel);
-                        } else {
-                            doc.select_current_word();
-                        }
-                    }
-
-                    (KeyCode::Char('q'), KeyModifiers::CONTROL) => break, // CTRL+Q
-
-                    (KeyCode::Esc, _) => doc.clear_cursors(),
-
-                    (KeyCode::Up, KeyModifiers::NONE) => doc.move_up(false),
-                    (KeyCode::Down, KeyModifiers::NONE) => doc.move_down(false),
-                    (KeyCode::Left, KeyModifiers::NONE) => doc.move_left(false),
-                    (KeyCode::Right, KeyModifiers::NONE) => doc.move_right(false),
-
-                    (KeyCode::Up, KeyModifiers::SHIFT) => doc.move_up(true),
-                    (KeyCode::Down, KeyModifiers::SHIFT) => doc.move_down(true),
-                    (KeyCode::Left, KeyModifiers::SHIFT) => doc.move_left(true),
-                    (KeyCode::Right, KeyModifiers::SHIFT) => doc.move_right(true),
-
-                    // Special keys:
-                    (KeyCode::Tab, _) => {
-                        hl.update_from_line(doc.top_cursor_row() as usize);
-                        for _ in 0..4 {
-                            doc.insert_text(" ");
-                            doc.move_right(false);
-                        }
-                    }
-
-                    (KeyCode::Enter, _) => {
-                        hl.update_from_line(doc.top_cursor_row() as usize);
-                        doc.delete_text(0);
-                        let newline = doc.new_line().to_string();
-                        doc.insert_text(&newline);
-                        doc.move_right(false);
-                    }
-
-                    (KeyCode::Backspace, _) => {
-                        hl.update_from_line(doc.top_cursor_row() as usize);
-                        if cursor.has_selection() {
-                            doc.delete_text(0);
-                        } else {
-                            doc.move_left(false);
-                            doc.delete_text(1);
-                        }
-                    }
-
-                    (KeyCode::Delete, _) => {
-                        hl.update_from_line(doc.top_cursor_row() as usize);
-                        doc.delete_text(0);
-                    }
-
-                    (KeyCode::Char('r'), KeyModifiers::CONTROL) => {
-                        hl.update_from_line(0);
-                        doc.redo();
-                    }
-
-                    (KeyCode::Char('z'), KeyModifiers::CONTROL) => {
-                        hl.update_from_line(0);
-                        doc.undo();
-                    }
-
-                    // Character input:
-                    (KeyCode::Char(c), _) => {
-                        hl.update_from_line(doc.top_cursor_row() as usize);
-                        let has_selection = cursor.has_selection();
-                        doc.delete_text(0);
-                        doc.insert_text(&c.to_string());
-                        doc.move_right(false);
-                        if has_selection {
-                            doc.move_left(false);
-                        }
-                    }
-
+                    (KeyCode::Char('q'), KeyModifiers::CONTROL) => break,
                     _ => {}
                 }
+
+                // document actions
+                let action = match (key_event.code, key_event.modifiers) {
+                    (KeyCode::PageUp, _) => Action::MoveUp {
+                        select: false,
+                        count: screen_rows as usize,
+                    },
+                    (KeyCode::PageDown, _) => Action::MoveDown {
+                        select: false,
+                        count: screen_rows as usize,
+                    },
+
+                    (KeyCode::Left, KeyModifiers::CONTROL) => {
+                        Action::MoveToPreviousWord { select: false }
+                    }
+                    (KeyCode::Right, KeyModifiers::CONTROL) => {
+                        Action::MoveToNextWord { select: false }
+                    }
+
+                    (KeyCode::Home, KeyModifiers::CONTROL) => {
+                        Action::MoveToStartOfDocument { select: false }
+                    }
+                    (KeyCode::End, KeyModifiers::CONTROL) => {
+                        Action::MoveToEndOfDocument { select: false }
+                    }
+
+                    (KeyCode::Home, KeyModifiers::NONE) => {
+                        Action::MoveToStartOfLine { select: false }
+                    }
+                    (KeyCode::End, KeyModifiers::NONE) => Action::MoveToEndOfLine { select: false },
+
+                    (KeyCode::Home, KeyModifiers::SHIFT) => {
+                        Action::MoveToStartOfLine { select: true }
+                    }
+                    (KeyCode::End, KeyModifiers::SHIFT) => Action::MoveToEndOfLine { select: true },
+
+                    (KeyCode::Left, KeyModifiers::NONE) => Action::MoveLeft { select: false },
+                    (KeyCode::Right, KeyModifiers::NONE) => Action::MoveRight { select: false },
+                    (KeyCode::Left, KeyModifiers::SHIFT) => Action::MoveLeft { select: true },
+                    (KeyCode::Right, KeyModifiers::SHIFT) => Action::MoveRight { select: true },
+
+                    (KeyCode::Up, KeyModifiers::NONE) => Action::MoveUp {
+                        select: false,
+                        count: 1,
+                    },
+                    (KeyCode::Down, KeyModifiers::NONE) => Action::MoveDown {
+                        select: false,
+                        count: 1,
+                    },
+                    (KeyCode::Up, KeyModifiers::SHIFT) => Action::MoveUp {
+                        select: true,
+                        count: 1,
+                    },
+                    (KeyCode::Down, KeyModifiers::SHIFT) => Action::MoveDown {
+                        select: true,
+                        count: 1,
+                    },
+
+                    // (KeyCode::Char('d'), KeyModifiers::CONTROL) => {
+                    //     if cursor.has_selection() {
+                    //         let buffer = doc.buffer();
+                    //         let sel = cursor.selection_text(buffer);
+                    //         SelectNextSameWord(sel)
+                    //     } else {
+                    //         SelectCurrentWord
+                    //     }
+                    // }
+
+                    (KeyCode::Esc, _) => Action::ClearCursors,
+
+                    (KeyCode::Tab, _) => Action::InsertTab,
+                    (KeyCode::Enter, _) => Action::InsertNewLine,
+
+                    (KeyCode::Backspace, _) => Action::DeleteText { count: 1 },
+                    (KeyCode::Delete, _) => Action::DeleteText { count: 0 },
+
+                    (KeyCode::Char('r'), KeyModifiers::CONTROL) => Action::Redo,
+                    (KeyCode::Char('z'), KeyModifiers::CONTROL) => Action::Undo,
+
+                    (KeyCode::Char(c), _) => Action::InsertText(c.to_string()),
+
+                    _ => Action::NoOp,
+                };
+
+                doc.apply_action(&action);
             } else {
                 // do some background here?
             }
@@ -302,7 +294,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     crossterm::terminal::disable_raw_mode().unwrap();
-    // execute!(stdout, Clear(ClearType::All), MoveTo(0, 0)).unwrap();
+    execute!(stdout, Clear(ClearType::All), MoveTo(0, 0)).unwrap();
     execute!(stdout, crossterm::cursor::Show).unwrap();
 
     Ok(())

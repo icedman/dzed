@@ -1,3 +1,4 @@
+use crate::actions::Action;
 use rope::Point;
 use std::io;
 use sum_tree::Bias;
@@ -432,4 +433,49 @@ impl Document {
     }
 
     pub fn select_next_same_word(&mut self, text: &str) {}
+
+    pub fn apply_action(&mut self, action: &Action) {
+        match action {
+            Action::MoveUp { select, count } => {
+                for _ in 0..*count {
+                    self.move_up(*select);
+                }
+            }
+            Action::MoveDown { select, count } => {
+                for _ in 0..*count {
+                    self.move_down(*select);
+                }
+            }
+            Action::MoveLeft { select } => self.move_left(*select),
+            Action::MoveRight { select } => self.move_right(*select),
+            Action::MoveToPreviousWord { select } => self.move_to_previous_word(*select),
+            Action::MoveToNextWord { select } => self.move_to_next_word(*select),
+            Action::MoveToStartOfDocument { select } => self.move_to_start_of_document(*select),
+            Action::MoveToEndOfDocument { select } => self.move_to_end_of_document(*select),
+            Action::MoveToStartOfLine { select } => self.move_to_start_of_line(*select),
+            Action::MoveToEndOfLine { select } => self.move_to_end_of_line(*select),
+            Action::InsertText(text) => self.insert_text(text),
+            Action::DeleteText { count } => self.delete_text(*count),
+            Action::InsertNewLine => {
+                self.delete_text(0);
+                self.insert_text(&self.new_line().to_string());
+                self.move_right(false);
+            }
+            Action::InsertTab => {
+                for _ in 0..4 {
+                    self.insert_text(" ");
+                    self.move_right(false);
+                }
+            }
+            Action::Undo => self.undo(),
+            Action::Redo => self.redo(),
+            Action::SelectCurrentWord => self.select_current_word(),
+            Action::SelectNextSameWord(sel) => self.select_next_same_word(&sel),
+            Action::ClearCursors => self.clear_cursors(),
+
+            &Action::Indent | &Action::Unindent => {}
+
+            Action::NoOp => {}
+        }
+    }
 }

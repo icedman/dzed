@@ -2,7 +2,7 @@ use rope::Point;
 use std::collections::HashMap;
 use std::path::Path;
 use syntect::easy::HighlightLines;
-use syntect::highlighting::{Color, HighlightState, Style, Theme, ThemeSet};
+use syntect::highlighting::{Color, HighlightState, Style, Theme, ThemeSet, ThemeSettings};
 use syntect::parsing::{ParseState, SyntaxReference, SyntaxSet};
 use text::{Anchor, Buffer, BufferId, ToOffset, ToPoint};
 
@@ -66,12 +66,12 @@ impl Highlights {
 
         let syntax_set = SyntaxSet::load_defaults_newlines(); // Changed to handle new lines for better syntax parsing
         let theme_set = ThemeSet::load_defaults();
-        let theme = theme_set
-            .themes
-            .get("Solarized (dark)")
-            .unwrap_or(&theme_set.themes["InspiredGitHub"]);
+        // let theme = theme_set
+        //     .themes
+        //     .get("Solarized (dark)")
+        //     .unwrap_or(&theme_set.themes["InspiredGitHub"]);
         // let theme = theme_set.themes.get("base16-ocean.dark").unwrap_or(&theme_set.themes["Solarized (dark)"]);
-        // let theme = load_theme("./themes/Dracula.tmTheme");
+        let theme = load_theme("./themes/Dracula.tmTheme");
         let syntax = syntax_set
             .find_syntax_by_extension(&extension)
             .unwrap_or_else(|| syntax_set.find_syntax_plain_text());
@@ -162,6 +162,10 @@ impl Highlights {
         let mut hl = HighlightLines::new(&self.syntax, &self.theme);
         let ranges = hl.highlight_line(" ", &self.syntax_set).unwrap();
         ranges.first().map(|(style, _)| style.clone()).unwrap()
+    }
+
+    pub fn theme_settings(&self) -> &ThemeSettings {
+        return &self.theme.settings;
     }
 
     pub fn stats(&self) -> (usize, usize) {
