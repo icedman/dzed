@@ -4,6 +4,24 @@ use std::io;
 use sum_tree::Bias;
 use text::{Anchor, Buffer, BufferId, ToOffset, ToPoint};
 
+fn col_to_byte_indices(text: &str) -> Vec<usize> {
+    let mut indices = Vec::new();
+    let mut idx = 0;
+    for c in text.chars() {
+        indices.push(idx);
+        idx += c.len_utf8();
+    }
+    indices
+}
+
+fn col_to_byte_sizes(text: &str) -> Vec<usize> {
+    let mut indices = Vec::new();
+    for c in text.chars() {
+        indices.push(c.len_utf8());
+    }
+    indices
+}
+
 pub trait BufferText {
     fn row_text(&self, row: u32) -> String;
 }
@@ -356,6 +374,17 @@ impl Document {
     pub fn insert_text(&mut self, text: &str) {
         for cursor in &mut self.cursors {
             let cur = cursor.normalized();
+
+            // hack...
+            let row_text = self.buffer.row_text(cur.row);
+            let mut v = Vec::new();
+            let mut idx = 0;
+            for c in row_text.chars() {
+                v.push(idx);
+                idx += c.len_utf8();
+            }
+
+            // let offset = Point::new(cur.row, v[cur.col as usize].try_into().unwrap()).to_offset(&self.buffer);
             let offset = Point::new(cur.row, cur.col).to_offset(&self.buffer);
             self.buffer.edit([(offset..offset, text)]);
             cursor.compute(&self.buffer);
@@ -365,10 +394,34 @@ impl Document {
     pub fn delete_text(&mut self, count: usize) {
         for cursor in &mut self.cursors {
             let cur = cursor.normalized();
-            let start = Point::new(cur.anchor_row, cur.anchor_col).to_offset(&self.buffer);
-            let mut end = Point::new(cur.row, cur.col).to_offset(&self.buffer);
+
+            // hack...
+            let start_v = {
+                let row_text = self.buffer.row_text(cur.anchor_row);
+                let mut v = Vec::new();
+                let mut idx = 0;
+                for c in row_text.chars() {
+                    v.push(idx);
+                    idx += c.len_utf8();
+                }
+                v
+            };
+
+            let end_v = {
+                let row_text = self.buffer.row_text(cur.row);
+                let mut v = Vec::new();
+                let mut idx = 0;
+                for c in row_text.chars() {
+                    v.push(idx);
+                    idx += c.len_utf8();
+                }
+                v
+            };
+
+            let start = Point::new(cur.anchor_row, start_v[cur.anchor_col as usize].try_into().unwrap()).to_offset(&self.buffer);
+            let mut end = Point::new(cur.row, end_v[cur.col as usize].try_into().unwrap()).to_offset(&self.buffer);
             if start == end {
-                end += count;
+                end = Point::new(cur.row, end_v[cur.col as usize + count].try_into().unwrap()).to_offset(&self.buffer);
             }
             self.buffer.edit([(start..end, "")]);
             cursor.compute(&self.buffer);
@@ -400,6 +453,12 @@ impl Document {
     }
 
     pub fn select_current_word(&mut self) {
+        let cursor = self.cursor(0).unwrap().clone();
+        if cursor.has_selection() {
+            let sel = cursor.selection_text(&self.buffer);
+            return;
+        }
+        
         for cursor in &mut self.cursors {
             if !cursor.has_selection() {
                 let point = cursor.head.to_point(&self.buffer);

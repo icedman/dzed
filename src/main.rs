@@ -9,6 +9,7 @@ use std::path::Path;
 use syntect::easy::HighlightLines;
 use syntect::highlighting::{Color, Style, ThemeSet};
 use syntect::parsing::SyntaxSet;
+use text::{Buffer, BufferId};
 
 use highlight::Highlights;
 use std::thread;
@@ -25,6 +26,8 @@ use std::io::{stdout, Write};
 
 pub trait ToCrossTerm {
     fn rgb(&self) -> crossterm::style::Color;
+    fn lighten(&self, amount: u8) -> syntect::highlighting::Color;
+    fn darken(&self, amount: u8) -> syntect::highlighting::Color;
 }
 
 impl ToCrossTerm for syntect::highlighting::Color {
@@ -34,6 +37,24 @@ impl ToCrossTerm for syntect::highlighting::Color {
             g: self.g,
             b: self.b,
         };
+    }
+
+    fn lighten(&self, amount: u8) -> syntect::highlighting::Color {
+        syntect::highlighting::Color {
+            r: self.r.saturating_add(amount),
+            g: self.g.saturating_add(amount),
+            b: self.b.saturating_add(amount),
+            a: self.a,
+        }
+    }
+
+    fn darken(&self, amount: u8) -> syntect::highlighting::Color {
+        syntect::highlighting::Color {
+            r: self.r.saturating_sub(amount),
+            g: self.g.saturating_sub(amount),
+            b: self.b.saturating_sub(amount),
+            a: self.a
+        }
     }
 }
 
@@ -70,14 +91,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let tab_size = 4;
 
     // Prepare default background pair
-    let (cr, fg, bg, lh, sel) = {
+    let (clr_fg, clr_bg, clr_caret, clr_current_line, clr_select, clr_gutter) = {
         let settings = hl.theme_settings();
+        let fg = settings.foreground.unwrap();
+        let bg = settings.background.unwrap();
         (
-            settings.caret.unwrap().rgb(),
-            settings.foreground.unwrap().rgb(),
-            settings.background.unwrap().rgb(),
-            settings.line_highlight.unwrap().rgb(),
-            settings.selection.unwrap().rgb(),
+            fg.rgb(),
+            bg.rgb(),
+            settings.caret.unwrap_or(fg).rgb(),
+            settings.line_highlight.unwrap_or(bg.lighten(10)).rgb(),
+            settings.selection.unwrap_or(bg.lighten(10)).rgb(),
+            settings.gutter.unwrap_or(bg.darken(10)).rgb(),
         )
     };
 
@@ -112,6 +136,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // render
         {
             execute!(stdout, MoveTo(0, 0)).unwrap();
+            // execute!(stdout, Clear(ClearType::All), MoveTo(0, 0)).unwrap();
 
             let buffer = doc.buffer();
             let total_rows = buffer.row_count();
@@ -137,7 +162,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     // use ranges safely here
                 } else {
                     // handle missing case, maybe skip or default:
-                    execute!(stdout, crossterm::style::SetBackgroundColor(bg)).unwrap();
+                    execute!(stdout, crossterm::style::SetBackgroundColor(clr_bg)).unwrap();
                     fill_to_eol(screen_cols as usize);
                     screen_row += 1;
                     continue;
@@ -148,7 +173,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let mut range_remaining = current_range.map_or(0, |(_, s, e)| e - s);
                 let mut current_style = current_range.map(|(style, _, _)| style);
 
-                for (screen_col, ch) in text.chars().enumerate() {
+                let mut screen_col = 0;
+                for (_, ch) in text.chars().enumerate() {
                     if range_remaining == 0 {
                         current_range = range_iter.next();
                         range_remaining = current_range.map_or(0, |(_, s, e)| e - s);
@@ -171,13 +197,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                     // within selection
                     if cursor.is_within(row, screen_col as u32) {
-                        execute!(stdout, crossterm::style::SetBackgroundColor(sel)).unwrap();
+                        execute!(stdout, crossterm::style::SetBackgroundColor(clr_select)).unwrap();
                     }
 
                     match ch {
                         '\t' => {
                             for _i in 0..tab_size {
                                 print!(" ");
+                                if !cursor.is_within(row, (screen_col + 1) as u32) {
+                                    execute!(stdout, crossterm::style::SetBackgroundColor(clr_bg)).unwrap();
+                                }
                             }
                         }
                         _ => {
@@ -187,16 +216,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                     range_remaining = range_remaining.saturating_sub(1);
 
+                    screen_col += 1;
                     if screen_col as i32 >= screen_cols {
                         break;
                     }
                 }
 
-                execute!(stdout, crossterm::style::SetBackgroundColor(bg));
+                execute!(stdout, crossterm::style::SetBackgroundColor(clr_bg));
                 fill_to_eol((screen_cols - text.chars().count() as i32).max(0) as usize);
 
                 screen_row += 1;
+                if screen_row + 1 > screen_rows as u16 {
+                    break;
+                }
             }
+
+            // statusbar
+            {
+                execute!(stdout, MoveTo(0, screen_rows as u16)).unwrap();
+                execute!(stdout, crossterm::style::SetBackgroundColor(clr_gutter));
+                fill_to_eol(screen_cols as usize);
+            }
+
+            std::io::stdout().flush().unwrap();
         }
 
         // input
@@ -264,16 +306,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         select: true,
                         count: 1,
                     },
-
-                    // (KeyCode::Char('d'), KeyModifiers::CONTROL) => {
-                    //     if cursor.has_selection() {
-                    //         let buffer = doc.buffer();
-                    //         let sel = cursor.selection_text(buffer);
-                    //         SelectNextSameWord(sel)
-                    //     } else {
-                    //         SelectCurrentWord
-                    //     }
-                    // }
+                    (KeyCode::Char('d'), KeyModifiers::CONTROL) => Action::SelectCurrentWord,
                     (KeyCode::Esc, _) => Action::ClearCursors,
 
                     (KeyCode::Tab, _) => Action::InsertTab,
@@ -305,4 +338,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     execute!(stdout, crossterm::cursor::Show).unwrap();
 
     Ok(())
+}
+
+fn _main() {
+    let s = "* 🍐✅ *";
+    let mut v = Vec::new();
+    let mut idx = 0;
+    for c in s.chars() {
+        v.push(idx);
+        idx += c.len_utf8();
+    }
+
+    let mut buffer = Buffer::new(0, BufferId::new(1).unwrap(), s);
+    let s = 3;
+    let e = s + 0;
+    buffer.edit([(v[s]..v[e], "abcd")]);
+    let chars = buffer.chars_at(rope::Point::new(0, 0));
+    println!("{}", chars.collect::<String>());
 }
