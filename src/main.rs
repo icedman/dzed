@@ -5,16 +5,21 @@ mod selections;
 
 use actions::Action;
 use document::Document;
+use rope::Point;
 use std::collections::HashMap;
 use std::path::Path;
+use sum_tree::Bias;
 use syntect::easy::HighlightLines;
 use syntect::highlighting::{Color, Style, ThemeSet};
 use syntect::parsing::SyntaxSet;
-use text::{Buffer, BufferId};
+use text::{Anchor, AnchorRangeExt, Buffer, BufferId, BufferSnapshot, Selection, SelectionGoal};
+use text::{ToOffset, ToPoint};
 
 use highlight::Highlights;
 use std::thread;
 use std::time::Duration;
+
+use std::{cmp::Ordering, fmt::Debug, ops::Range};
 
 use crossterm::{
     cursor::MoveTo,
@@ -118,8 +123,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             (cols as i32, rows as i32)
         };
 
-        let cursor = doc.cursor(0).unwrap().clone();
-        let cursor_row = cursor.row as i32;
+        let cursor = doc.first_selection();
+        let cursor_head = cursor.head();
+        let cursor_tail = cursor.tail();
+        let cursor_range = if cursor_head.cmp(&cursor_tail, &doc.buffer()) == Ordering::Less {
+            Range {
+                start: cursor_head,
+                end: cursor_tail,
+            }
+        } else {
+            Range {
+                end: cursor_head,
+                start: cursor_tail,
+            }
+        };
+        let cursor_point = cursor_head.to_point(&doc.buffer());
+        let cursor_row = cursor_point.row as i32;
         let visible_rows = screen_rows - 1;
 
         // scroll
@@ -177,7 +196,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let mut current_style = current_range.map(|(style, _, _)| style);
 
                 let mut screen_col = 0;
-                for (_, ch) in text.chars().enumerate() {
+
+                for (column, ch) in text.chars().enumerate() {
                     if range_remaining == 0 {
                         current_range = range_iter.next();
                         range_remaining = current_range.map_or(0, |(_, s, e)| e - s);
@@ -198,8 +218,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .unwrap();
                     }
 
-                    // within selection
-                    if cursor.is_within(row, screen_col as u32) {
+                    let current_position = buffer.anchor_at(
+                        Point {
+                            row,
+                            column: column as u32,
+                        },
+                        Bias::Left,
+                    );
+                    let cur = Range {
+                        start: current_position.clone(),
+                        end: current_position.clone(),
+                    };
+
+                    let mut at_cursor = false;
+                    if current_position.cmp(&cursor_head, &buffer) == Ordering::Equal {
+                        // at cursor head
+                        execute!(stdout, crossterm::style::SetForegroundColor(clr_caret)).unwrap();
+                        execute!(stdout, crossterm::style::SetBackgroundColor(clr_select)).unwrap();
+                        at_cursor = true
+                    } else if cursor_range.overlaps(&cur, &buffer) {
+                        // within selection
+                        execute!(stdout, crossterm::style::SetForegroundColor(clr_fg)).unwrap();
                         execute!(stdout, crossterm::style::SetBackgroundColor(clr_select)).unwrap();
                     }
 
@@ -207,7 +246,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         '\t' => {
                             for _i in 0..tab_size {
                                 print!(" ");
-                                if !cursor.is_within(row, (screen_col + 1) as u32) {
+                                if at_cursor {
                                     execute!(stdout, crossterm::style::SetBackgroundColor(clr_bg))
                                         .unwrap();
                                 }
@@ -241,7 +280,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 execute!(stdout, MoveTo(0, screen_rows as u16)).unwrap();
                 fill_to_eol(screen_cols as usize);
                 execute!(stdout, MoveTo(0, screen_rows as u16)).unwrap();
-                print!("x:{}", doc.first_selection().head().offset);
+                print!(
+                    "hx:{} tx:{}",
+                    doc.first_selection().head().offset,
+                    doc.first_selection().tail().offset
+                );
             }
 
             std::io::stdout().flush().unwrap();
