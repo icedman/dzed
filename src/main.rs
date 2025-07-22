@@ -126,7 +126,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let cursor = doc.first_selection();
         let cursor_head = cursor.head();
         let cursor_tail = cursor.tail();
-        let cursor_range = if cursor_head.cmp(&cursor_tail, &doc.buffer()) == Ordering::Less {
+        let mut cursor_range = if cursor_head.cmp(&cursor_tail, &doc.buffer()) == Ordering::Less {
             Range {
                 start: cursor_head,
                 end: cursor_tail,
@@ -137,6 +137,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 start: cursor_tail,
             }
         };
+
         let cursor_point = cursor_head.to_point(&doc.buffer());
         let cursor_row = cursor_point.row as i32;
         let visible_rows = screen_rows - 1;
@@ -190,6 +191,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     continue;
                 }
 
+                // style range
                 let mut range_iter = ranges.iter();
                 let mut current_range = range_iter.next();
                 let mut range_remaining = current_range.map_or(0, |(_, s, e)| e - s);
@@ -204,18 +206,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         current_style = current_range.map(|(style, _, _)| style);
                     }
 
-                    if let Some(style) = current_style {
-                        execute!(
-                            stdout,
-                            crossterm::style::SetForegroundColor(style.foreground.rgb())
-                        )
-                        .unwrap();
+                    let mut fg = clr_fg.clone();
+                    let mut bg = clr_bg.clone();
 
-                        execute!(
-                            stdout,
-                            crossterm::style::SetBackgroundColor(style.background.rgb())
-                        )
-                        .unwrap();
+                    if let Some(style) = current_style {
+                        fg = style.foreground.rgb();
+                        bg = style.background.rgb();
                     }
 
                     let current_position = buffer.anchor_at(
@@ -233,14 +229,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let mut at_cursor = false;
                     if current_position.cmp(&cursor_head, &buffer) == Ordering::Equal {
                         // at cursor head
-                        execute!(stdout, crossterm::style::SetForegroundColor(clr_caret)).unwrap();
-                        execute!(stdout, crossterm::style::SetBackgroundColor(clr_select)).unwrap();
+                        fg = clr_caret;
+                        bg = clr_select;
                         at_cursor = true
                     } else if cursor_range.overlaps(&cur, &buffer) {
                         // within selection
-                        execute!(stdout, crossterm::style::SetForegroundColor(clr_fg)).unwrap();
-                        execute!(stdout, crossterm::style::SetBackgroundColor(clr_select)).unwrap();
+                        // fg = clr_fg;
+                        bg = clr_select;
                     }
+
+                    execute!(stdout, crossterm::style::SetForegroundColor(fg)).unwrap();
+                    execute!(stdout, crossterm::style::SetBackgroundColor(bg)).unwrap();
 
                     match ch {
                         '\t' => {

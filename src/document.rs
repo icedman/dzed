@@ -48,6 +48,7 @@ impl BufferText for Buffer {
     fn row_len(&self, row: u32) -> u32 {
         let l = self.line_len(row).saturating_sub(1) as usize;
         let text = self.row_text(row);
+        // text.chars().count()
         let indices = string_to_byte_sizes(&text);
         let sizes = string_to_byte_sizes(&text);
         (indices[l] + sizes[l]) as u32
@@ -154,7 +155,7 @@ impl Document {
     }
 
     pub fn move_left(&mut self, anchor: bool) {
-        let mut cursor = self.first_selection();
+        let cursor = self.first_selection();
         let point = cursor.head().to_point(&self.buffer);
         let (v, l) = {
             let row_text = self.buffer.row_text(point.row);
@@ -178,7 +179,7 @@ impl Document {
     }
 
     pub fn move_right(&mut self, anchor: bool) {
-        let mut cursor = self.first_selection();
+        let cursor = self.first_selection();
         let point = cursor.head().to_point(&self.buffer);
         let (v, l) = {
             let row_text = self.buffer.row_text(point.row);
@@ -203,7 +204,7 @@ impl Document {
         let mut point = cursor.head().to_point(&self.buffer);
         point.row = point.row.saturating_sub(1);
         point = self.buffer.clip_point(point, cursor.head().bias);
-        let mut offset = point.to_offset(&self.buffer);
+        let offset = point.to_offset(&self.buffer);
         let new_head = self.buffer.anchor_at(offset, Bias::Left);
         self.selections.update(&{
             Selection {
@@ -221,7 +222,7 @@ impl Document {
         let mut point = cursor.head().to_point(&self.buffer);
         point.row += 1;
         point = self.buffer.clip_point(point, cursor.head().bias);
-        let mut offset = point.to_offset(&self.buffer);
+        let offset = point.to_offset(&self.buffer);
         let new_head = self.buffer.anchor_at(offset, Bias::Left);
         self.selections.update(&{
             Selection {
@@ -235,41 +236,51 @@ impl Document {
     }
 
     pub fn move_to_previous_word(&mut self, anchor: bool) {
-        // self.move_cursor(anchor, |cursor, buffer| {
-        // let mut point = cursor.head().to_point(buffer);
-        // let text = buffer.row_text(point.row);
-        // if let Some(word) = text.find_previous_word(point.column as usize) {
-        //     // Found previous word
-        //     let (start, _end, _w) = word;
-        //     point.column = start as u32;
-        // } else {
-        //     point.column = 0;
-        // }
-        // let offset = point.to_offset(buffer);
-        // cursor.head = buffer.anchor_at(
-        //     buffer.clip_offset(offset, cursor.head().bias),
-        //     cursor.head().bias,
-        // );
-        // });
+        let cursor = self.first_selection();
+        let mut point = cursor.head().to_point(&self.buffer);
+        let text = self.buffer.row_text(point.row);
+        if let Some(word) = text.find_previous_word(point.column as usize) {
+            // Found next word
+            let (start, _end, _w) = word;
+            point.column = (start) as u32;
+        } else {
+            point.column = 0;
+        }
+        let offset = point.to_offset(&self.buffer);
+        let new_head = self.buffer.anchor_at(offset, Bias::Left);
+        self.selections.update(&{
+            Selection {
+                id: cursor.id,
+                start: new_head,
+                end: if anchor { cursor.tail() } else { new_head },
+                reversed: true,
+                goal: SelectionGoal::None,
+            }
+        });
     }
 
     pub fn move_to_next_word(&mut self, anchor: bool) {
-        // self.move_cursor(anchor, |cursor, buffer| {
-        // let mut point = cursor.head().to_point(buffer);
-        // let text = buffer.row_text(point.row);
-        // if let Some(word) = text.find_next_word(point.column as usize) {
-        //     // Found next word
-        //     let (_start, end, _w) = word;
-        //     point.column = (end - 1) as u32;
-        // } else {
-        //     point.column = buffer.line_len(point.row);
-        // }
-        // let offset = point.to_offset(buffer);
-        // cursor.head = buffer.anchor_at(
-        //     buffer.clip_offset(offset, cursor.head().bias),
-        //     cursor.head().bias,
-        // );
-        // });
+        let cursor = self.first_selection();
+        let mut point = cursor.head().to_point(&self.buffer);
+        let text = self.buffer.row_text(point.row);
+        if let Some(word) = text.find_next_word(point.column as usize) {
+            // Found next word
+            let (_start, end, _w) = word;
+            point.column = (end - 1) as u32;
+        } else {
+            point.column = self.buffer.line_len(point.row);
+        }
+        let offset = point.to_offset(&self.buffer);
+        let new_head = self.buffer.anchor_at(offset, Bias::Left);
+        self.selections.update(&{
+            Selection {
+                id: cursor.id,
+                start: new_head,
+                end: if anchor { cursor.tail() } else { new_head },
+                reversed: true,
+                goal: SelectionGoal::None,
+            }
+        });
     }
 
     pub fn move_to_start_of_line(&mut self, anchor: bool) {
@@ -277,7 +288,7 @@ impl Document {
         let mut point = cursor.head().to_point(&self.buffer);
         point.column = 0;
         point = self.buffer.clip_point(point, cursor.head().bias);
-        let mut offset = point.to_offset(&self.buffer);
+        let offset = point.to_offset(&self.buffer);
         let new_head = self.buffer.anchor_at(offset, Bias::Left);
         self.selections.update(&{
             Selection {
@@ -295,7 +306,7 @@ impl Document {
         let mut point = cursor.head().to_point(&self.buffer);
         point.column = self.buffer.line_len(point.row);
         point = self.buffer.clip_point(point, cursor.head().bias);
-        let mut offset = point.to_offset(&self.buffer);
+        let offset = point.to_offset(&self.buffer);
         let new_head = self.buffer.anchor_at(offset, Bias::Left);
         self.selections.update(&{
             Selection {
@@ -309,29 +320,38 @@ impl Document {
     }
 
     pub fn move_to_start_of_document(&mut self, anchor: bool) {
-        // self.move_cursor(anchor, |cursor, buffer| {
-        // let mut point = cursor.head().to_point(buffer);
-        // point.row = 0;
-        // point.column = 0;
-        // let offset = point.to_offset(buffer);
-        // cursor.head = buffer.anchor_at(
-        //     buffer.clip_offset(offset, cursor.head().bias),
-        //     cursor.head().bias,
-        // );
-        // });
+        let cursor = self.first_selection();
+        let point = Point { row: 0, column: 0 };
+        let offset = point.to_offset(&self.buffer);
+        let new_head = self.buffer.anchor_at(offset, Bias::Left);
+        self.selections.update(&{
+            Selection {
+                id: cursor.id,
+                start: new_head,
+                end: if anchor { cursor.tail() } else { new_head },
+                reversed: true,
+                goal: SelectionGoal::None,
+            }
+        });
     }
 
     pub fn move_to_end_of_document(&mut self, anchor: bool) {
-        // self.move_cursor(anchor, |cursor, buffer| {
-        // let mut point = cursor.head().to_point(buffer);
-        // point.row = buffer.row_count();
-        // point.column = 0;
-        // let offset = point.to_offset(buffer);
-        // cursor.head = buffer.anchor_at(
-        //     buffer.clip_offset(offset, cursor.head().bias),
-        //     cursor.head().bias,
-        // );
-        // });
+        let cursor = self.first_selection();
+        let point = Point {
+            row: self.buffer.row_count(),
+            column: 0,
+        };
+        let offset = point.to_offset(&self.buffer);
+        let new_head = self.buffer.anchor_at(offset, Bias::Left);
+        self.selections.update(&{
+            Selection {
+                id: cursor.id,
+                start: new_head,
+                end: if anchor { cursor.tail() } else { new_head },
+                reversed: true,
+                goal: SelectionGoal::None,
+            }
+        });
     }
 
     pub fn insert_text(&mut self, text: &str) {
@@ -371,42 +391,48 @@ impl Document {
     }
 
     pub fn select_current_word(&mut self) {
-        // let cursor = self.cursor(0).unwrap().clone();
-        // if cursor.has_selection() {
-        //     let sel = cursor.selection_text(&self.buffer);
-        //     return;
-        // }
+        let cursor = self.first_selection();
+        if cursor.start.cmp(&cursor.end, &self.buffer) != Ordering::Equal {
+            return;
+        }
 
-        // for cursor in &mut self.cursors {
-        //     if !cursor.has_selection() {
-        //         let point = cursor.head().to_point(&self.buffer);
-        //         let text = self.buffer.row_text(point.row);
-        //         if let Some(word) = text.find_current_word(point.column as usize) {
-        //             // Found next word
-        //             let (start, end, _w) = word;
-        //             {
-        //                 let mut p = point.clone();
-        //                 p.column = end as u32;
-        //                 let offset = p.to_offset(&self.buffer);
-        //                 // cursor.head = self.buffer.anchor_at(
-        //                 //     self.buffer.clip_offset(offset, cursor.head().bias),
-        //                 //     Bias::Right,
-        //                 // );
-        //             }
+        let point = cursor.head().to_point(&self.buffer);
+        let text = self.buffer.row_text(point.row);
+        if let Some(word) = text.find_current_word(point.column as usize) {
+            // Found next word
+            let mut head = Anchor::MIN;
+            let mut tail = Anchor::MIN;
+            let (start, end, _w) = word;
+            {
+                let mut p = point.clone();
+                p.column = end as u32;
+                let offset = p.to_offset(&self.buffer);
+                head = self.buffer.anchor_at(
+                    self.buffer.clip_offset(offset, cursor.head().bias),
+                    Bias::Right,
+                );
+            }
 
-        //             {
-        //                 let mut p = point.clone();
-        //                 p.column = start as u32;
-        //                 let offset = p.to_offset(&self.buffer);
-        //                 // cursor.tail = self.buffer.anchor_at(
-        //                 //     self.buffer.clip_offset(offset, cursor.head().bias),
-        //                 //     Bias::Left,
-        //                 // );
-        //             }
-        //             cursor.compute(&self.buffer);
-        //         }
-        //     }
-        // }
+            {
+                let mut p = point.clone();
+                p.column = start as u32;
+                let offset = p.to_offset(&self.buffer);
+                tail = self.buffer.anchor_at(
+                    self.buffer.clip_offset(offset, cursor.head().bias),
+                    Bias::Left,
+                );
+            }
+
+            self.selections.update(&{
+                Selection {
+                    id: cursor.id,
+                    start: tail,
+                    end: head,
+                    reversed: false,
+                    goal: SelectionGoal::None,
+                }
+            });
+        }
     }
 
     pub fn select_next_same_word(&mut self, text: &str) {}
