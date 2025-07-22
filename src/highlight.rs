@@ -6,8 +6,8 @@ use syntect::highlighting::{Color, HighlightState, Style, Theme, ThemeSet, Theme
 use syntect::parsing::{ParseState, SyntaxReference, SyntaxSet};
 use text::{Anchor, Buffer, BufferId, ToOffset, ToPoint};
 
-const START_OFFSET: usize = 400;
-const CACHE_INTERVAL: usize = 100;
+const START_OFFSET: usize = 240;
+const CACHE_INTERVAL: usize = 80;
 
 fn load_theme(tm_file: &str) -> Theme {
     let tm_path = Path::new(tm_file);

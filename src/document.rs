@@ -1,8 +1,9 @@
 use crate::actions::Action;
+use crate::selections::SelectionCollection;
 use rope::Point;
 use std::io;
 use sum_tree::Bias;
-use text::{Anchor, Buffer, BufferId, ToOffset, ToPoint};
+use text::{Selection, Anchor, Buffer, BufferId, ToOffset, ToPoint};
 
 fn col_to_byte_indices(text: &str) -> Vec<usize> {
     let mut indices = Vec::new();
@@ -11,15 +12,23 @@ fn col_to_byte_indices(text: &str) -> Vec<usize> {
         indices.push(idx);
         idx += c.len_utf8();
     }
+    // pad
+    for _i in 0..16 {
+        indices.push(idx);
+    }
     indices
 }
 
 fn col_to_byte_sizes(text: &str) -> Vec<usize> {
-    let mut indices = Vec::new();
+    let mut sizes = Vec::new();
     for c in text.chars() {
-        indices.push(c.len_utf8());
+        sizes.push(c.len_utf8());
     }
-    indices
+    // pad
+    for _i in 0..16 {
+        sizes.push(0);
+    }
+    sizes
 }
 
 pub trait BufferText {
@@ -174,11 +183,20 @@ impl Cursor {
 pub struct Document {
     buffer: Buffer,
     cursors: Vec<Cursor>,
+    selections: SelectionCollection
 }
 
 impl Document {
     pub fn new(file_path: &str) -> io::Result<Self> {
-        let contents = std::fs::read_to_string(file_path)?;
+        // let contents = std::fs::read_to_string(file_path)?;
+        let contents = if std::path::Path::new(file_path).exists() {
+            match std::fs::read_to_string(file_path) {
+                Ok(s) => s,
+                Err(_) => "File not found".to_string(),
+            }
+        } else {
+            " ".to_string()
+        };
         let buffer = Buffer::new(0, BufferId::new(1).unwrap(), contents);
 
         Ok(Self {
@@ -192,6 +210,7 @@ impl Document {
                 head: Anchor::MIN,
                 tail: Anchor::MIN,
             }],
+            selections: SelectionCollection::new()
         })
     }
 
@@ -234,10 +253,12 @@ impl Document {
 
     pub fn move_left(&mut self, anchor: bool) {
         self.move_cursor(anchor, |cursor, buffer| {
+            let v = {
+                let row_text = buffer.row_text(cursor.row);
+                col_to_byte_sizes(&row_text)
+            };
             let mut offset = buffer.offset_for_anchor(&cursor.head);
-            if offset > 0 {
-                offset -= 1;
-            }
+            offset = offset.saturating_sub(v[cursor.col.saturating_sub(1) as usize]);
             cursor.head = buffer.anchor_at(
                 buffer.clip_offset(offset, cursor.head.bias),
                 Bias::Left, // cursor.head.bias,
@@ -247,7 +268,11 @@ impl Document {
 
     pub fn move_right(&mut self, anchor: bool) {
         self.move_cursor(anchor, |cursor, buffer| {
-            let offset = buffer.offset_for_anchor(&cursor.head) + 1;
+            let (v, l) = {
+                let row_text = buffer.row_text(cursor.row);
+                (col_to_byte_sizes(&row_text), row_text.len())
+            };
+            let offset = buffer.offset_for_anchor(&cursor.head) + v[cursor.col as usize];
             cursor.head = buffer.anchor_at(
                 buffer.clip_offset(offset, cursor.head.bias),
                 Bias::Left, // cursor.head.bias,
@@ -372,6 +397,8 @@ impl Document {
     }
 
     pub fn insert_text(&mut self, text: &str) {
+        // let offset = self.first_selection().head().offset;
+        // self.buffer.edit([(offset..offset, text)]);
         for cursor in &mut self.cursors {
             let cur = cursor.normalized();
 
@@ -398,30 +425,24 @@ impl Document {
             // hack...
             let start_v = {
                 let row_text = self.buffer.row_text(cur.anchor_row);
-                let mut v = Vec::new();
-                let mut idx = 0;
-                for c in row_text.chars() {
-                    v.push(idx);
-                    idx += c.len_utf8();
-                }
-                v
+                col_to_byte_indices(&row_text)
             };
 
             let end_v = {
                 let row_text = self.buffer.row_text(cur.row);
-                let mut v = Vec::new();
-                let mut idx = 0;
-                for c in row_text.chars() {
-                    v.push(idx);
-                    idx += c.len_utf8();
-                }
-                v
+                col_to_byte_indices(&row_text)
             };
 
-            let start = Point::new(cur.anchor_row, start_v[cur.anchor_col as usize].try_into().unwrap()).to_offset(&self.buffer);
-            let mut end = Point::new(cur.row, end_v[cur.col as usize].try_into().unwrap()).to_offset(&self.buffer);
+            let start = Point::new(
+                cur.anchor_row,
+                start_v[cur.anchor_col as usize].try_into().unwrap(),
+            )
+            .to_offset(&self.buffer);
+            let mut end = Point::new(cur.row, end_v[cur.col as usize].try_into().unwrap())
+                .to_offset(&self.buffer);
             if start == end {
-                end = Point::new(cur.row, end_v[cur.col as usize + count].try_into().unwrap()).to_offset(&self.buffer);
+                end = Point::new(cur.row, end_v[cur.col as usize + count].try_into().unwrap())
+                    .to_offset(&self.buffer);
             }
             self.buffer.edit([(start..end, "")]);
             cursor.compute(&self.buffer);
@@ -458,7 +479,7 @@ impl Document {
             let sel = cursor.selection_text(&self.buffer);
             return;
         }
-        
+
         for cursor in &mut self.cursors {
             if !cursor.has_selection() {
                 let point = cursor.head.to_point(&self.buffer);
@@ -549,5 +570,13 @@ impl Document {
 
             Action::NoOp => {}
         }
+    }
+
+    pub fn first_selection(&self) -> Selection<Anchor> {
+        self.selections.first().unwrap().clone()
+    }
+
+    pub fn add_selection(&mut self) -> Selection<Anchor> {
+        return self.selections.add(&self.buffer, 0);
     }
 }

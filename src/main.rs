@@ -1,6 +1,7 @@
 mod actions;
 mod document;
 mod highlight;
+mod selections;
 
 use actions::Action;
 use document::Document;
@@ -53,7 +54,7 @@ impl ToCrossTerm for syntect::highlighting::Color {
             r: self.r.saturating_sub(amount),
             g: self.g.saturating_sub(amount),
             b: self.b.saturating_sub(amount),
-            a: self.a
+            a: self.a,
         }
     }
 }
@@ -83,6 +84,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             return Ok(());
         }
     };
+
+    doc.add_selection();
 
     let mut hl = Highlights::new(file_path);
     let mut scroll_x: u32 = 0;
@@ -205,7 +208,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             for _i in 0..tab_size {
                                 print!(" ");
                                 if !cursor.is_within(row, (screen_col + 1) as u32) {
-                                    execute!(stdout, crossterm::style::SetBackgroundColor(clr_bg)).unwrap();
+                                    execute!(stdout, crossterm::style::SetBackgroundColor(clr_bg))
+                                        .unwrap();
                                 }
                             }
                         }
@@ -233,9 +237,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // statusbar
             {
-                execute!(stdout, MoveTo(0, screen_rows as u16)).unwrap();
                 execute!(stdout, crossterm::style::SetBackgroundColor(clr_gutter));
+                execute!(stdout, MoveTo(0, screen_rows as u16)).unwrap();
                 fill_to_eol(screen_cols as usize);
+                execute!(stdout, MoveTo(0, screen_rows as u16)).unwrap();
+                print!("x:{}", doc.first_selection().head().offset);
             }
 
             std::io::stdout().flush().unwrap();
