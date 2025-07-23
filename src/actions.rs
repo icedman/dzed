@@ -1,4 +1,3 @@
-// actions.rs
 #[derive(Debug, Clone)]
 pub enum Action {
     MoveUp { select: bool, count: usize },
@@ -26,8 +25,9 @@ pub enum Action {
     Undo,
     Redo,
 
-    SelectCurrentWord,
-    SelectNextSameWord(String),
+    SelectWord,
+    SelectNext(String),
+    SelectPrevious(String),
 
     ClearCursors,
 

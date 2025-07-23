@@ -1,9 +1,11 @@
+use std::{collections::HashMap, path::Path};
+
 use rope::Point;
-use std::collections::HashMap;
-use std::path::Path;
-use syntect::easy::HighlightLines;
-use syntect::highlighting::{Color, HighlightState, Style, Theme, ThemeSet, ThemeSettings};
-use syntect::parsing::{ParseState, SyntaxReference, SyntaxSet};
+use syntect::{
+    easy::HighlightLines,
+    highlighting::{Color, HighlightState, Style, Theme, ThemeSet, ThemeSettings},
+    parsing::{ParseState, SyntaxReference, SyntaxSet},
+};
 use text::{Anchor, Buffer, BufferId, ToOffset, ToPoint};
 
 const START_OFFSET: usize = 240;
@@ -70,8 +72,11 @@ impl Highlights {
         //     .themes
         //     .get("Solarized (dark)")
         //     .unwrap_or(&theme_set.themes["InspiredGitHub"]);
-        // // let theme = theme_set.themes.get("base16-ocean.dark").unwrap_or(&theme_set.themes["Solarized (dark)"]);
-        let theme = load_theme("./themes/Dracula.tmTheme");
+        let theme = theme_set
+            .themes
+            .get("base16-ocean.dark")
+            .unwrap_or(&theme_set.themes["Solarized (dark)"]);
+        // let theme = load_theme("./themes/Dracula.tmTheme");
         let syntax = syntax_set
             .find_syntax_by_extension(&extension)
             .unwrap_or_else(|| syntax_set.find_syntax_plain_text());

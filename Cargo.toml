@@ -12,6 +12,7 @@ sum_tree = { path = "../sum_tree" }
 # syntect = { git = "https://github.com/trishume/syntect", default-features = false, features = ["default-fancy"] }
 syntect = { git = "https://github.com/trishume/syntect" }
 text = { path = "../text" }
+clock = { path = "../clock" }
 
 [lints]
 workspace = true

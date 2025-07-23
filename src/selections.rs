@@ -1,9 +1,8 @@
-use text::AnchorRangeExt;
-use text::{Anchor, Buffer, Selection, SelectionGoal};
+use text::{Anchor, AnchorRangeExt, Buffer, Selection, SelectionGoal};
 
 pub struct SelectionCollection {
+    pub id: usize,
     pub selections: Vec<Selection<Anchor>>,
-    id: usize,
 }
 
 impl SelectionCollection {
@@ -44,4 +43,8 @@ impl SelectionCollection {
     pub fn clear(&mut self) {
         self.selections.clear();
     }
+
+    // pub fn render_line(&self, line: usize) -> Option<&StyleCache> {
+    //     self.style_cache.get(&line)
+    // }
 }

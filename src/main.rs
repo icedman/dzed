@@ -1,34 +1,45 @@
 mod actions;
 mod document;
 mod highlight;
+mod movement;
 mod selections;
 
-use actions::Action;
-use document::Document;
-use rope::Point;
-use std::collections::HashMap;
-use std::path::Path;
-use sum_tree::Bias;
-use syntect::easy::HighlightLines;
-use syntect::highlighting::{Color, Style, ThemeSet};
-use syntect::parsing::SyntaxSet;
-use text::{Anchor, AnchorRangeExt, Buffer, BufferId, BufferSnapshot, Selection, SelectionGoal};
-use text::{ToOffset, ToPoint};
-
-use highlight::Highlights;
-use std::thread;
-use std::time::Duration;
-
-use std::{cmp::Ordering, fmt::Debug, ops::Range};
+use std::{
+    cmp::Ordering,
+    collections::HashMap,
+    fmt::Debug,
+    io::{stdout, Write},
+    ops::Range,
+    path::Path,
+    thread,
+    time::Duration,
+};
 
 use crossterm::{
     cursor::MoveTo,
-    event,
-    event::{read, Event, KeyCode, KeyEvent, KeyModifiers},
+    event::{self, read, Event, KeyCode, KeyEvent, KeyModifiers},
     execute,
     terminal::{Clear, ClearType},
 };
-use std::io::{stdout, Write};
+
+use rope::Point;
+use sum_tree::Bias;
+use syntect::{
+    easy::HighlightLines,
+    highlighting::{Color, Style, ThemeSet},
+    parsing::SyntaxSet,
+};
+use text::{
+    Anchor, AnchorRangeExt, Buffer, BufferId, BufferSnapshot, Selection, SelectionGoal, ToOffset,
+    ToPoint,
+};
+
+use actions::Action;
+use document::{BufferText, Document};
+use highlight::Highlights;
+use selections::SelectionCollection;
+
+use clock;
 
 pub trait ToCrossTerm {
     fn rgb(&self) -> crossterm::style::Color;
@@ -71,10 +82,6 @@ fn fill_to_eol(count: usize) {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut stdout = stdout();
-    crossterm::terminal::enable_raw_mode().unwrap();
-    execute!(stdout, Clear(ClearType::All), MoveTo(0, 0)).unwrap();
-
     let args: Vec<String> = std::env::args().collect();
     if args.len() != 2 {
         eprintln!("Usage: {} <file_path>", args[0]);
@@ -90,7 +97,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    doc.add_selection();
+    let mut stdout = stdout();
+    crossterm::terminal::enable_raw_mode().unwrap();
+    execute!(stdout, Clear(ClearType::All), MoveTo(0, 0)).unwrap();
 
     let mut hl = Highlights::new(file_path);
     let mut scroll_x: u32 = 0;
@@ -107,22 +116,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             fg.rgb(),
             bg.rgb(),
             settings.caret.unwrap_or(fg).rgb(),
-            settings.line_highlight.unwrap_or(bg.lighten(10)).rgb(),
+            settings.line_highlight.unwrap_or(bg.darken(10)).rgb(),
             settings.selection.unwrap_or(bg.lighten(10)).rgb(),
             settings.gutter.unwrap_or(bg.darken(10)).rgb(),
         )
     };
 
+    execute!(stdout, crossterm::cursor::Hide).unwrap();
+
     let mut dirty_hl = true;
+    let mut should_redraw = false;
+    let mut prev_screen_rows = 0;
+    let mut prev_screen_cols = 0;
 
     loop {
-        execute!(stdout, crossterm::cursor::Hide).unwrap();
-
+        // get screen dimensions
         let (screen_cols, screen_rows) = {
             let (cols, rows) = crossterm::terminal::size().unwrap();
             (cols as i32, rows as i32)
         };
+        // dimensions has changed
+        if prev_screen_cols != screen_cols && prev_screen_rows != screen_rows {
+            should_redraw = true;
+        }
+        prev_screen_rows = screen_rows;
+        prev_screen_cols = screen_cols;
 
+        // get cursor information
         let cursor = doc.first_selection();
         let cursor_head = cursor.head();
         let cursor_tail = cursor.tail();
@@ -137,12 +157,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 start: cursor_tail,
             }
         };
-
         let cursor_point = cursor_head.to_point(&doc.buffer());
         let cursor_row = cursor_point.row as i32;
+        let cursor_col = cursor_point.column as i32;
         let visible_rows = screen_rows - 1;
+        let visible_cols = screen_cols;
 
-        // scroll
+        // scroll based on cursor position
         let mut cursor_screen_row = cursor_row - scroll_y as i32;
         while cursor_screen_row >= visible_rows {
             scroll_y += 1;
@@ -152,13 +173,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             scroll_y -= 1;
             cursor_screen_row = cursor_row - scroll_y as i32;
         }
+        let mut cursor_screen_col = cursor_col - scroll_x as i32;
+        while cursor_screen_col >= visible_cols {
+            scroll_x += 1;
+            cursor_screen_col = cursor_col - scroll_x as i32;
+        }
+        while cursor_screen_col < 0 && scroll_x > 0 {
+            scroll_x -= 1;
+            cursor_screen_col = cursor_col - scroll_x as i32;
+        }
 
         // bar
         // print!("\x1b[5 q");
 
+        //------------------
         // render
-        {
-            execute!(stdout, MoveTo(0, 0)).unwrap();
+        //------------------
+        if should_redraw {
+            should_redraw = false;
+
+            // execute!(stdout, MoveTo(0, 0)).unwrap();
             // execute!(stdout, Clear(ClearType::All), MoveTo(0, 0)).unwrap();
 
             let buffer = doc.buffer();
@@ -177,7 +211,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut screen_row = 0;
             for row in scroll_y..end_line {
                 execute!(stdout, MoveTo(0, screen_row)).unwrap();
-                let text = doc.row_text(row) + " ";
+                let text = doc.buffer().row_text(row) + " ";
 
                 let mut ranges;
                 if let Some(style_cache) = hl.render_line(row as usize) {
@@ -197,7 +231,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let mut range_remaining = current_range.map_or(0, |(_, s, e)| e - s);
                 let mut current_style = current_range.map(|(style, _, _)| style);
 
-                let mut screen_col = 0;
+                let mut x_scroll = scroll_x;
+                let mut cols_remaining = screen_cols;
+                let at_cursor_row = cursor_row == row as i32;
 
                 for (column, ch) in text.chars().enumerate() {
                     if range_remaining == 0 {
@@ -212,6 +248,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if let Some(style) = current_style {
                         fg = style.foreground.rgb();
                         bg = style.background.rgb();
+                    }
+
+                    if at_cursor_row {
+                        // bg = clr_current_line.clone();
                     }
 
                     let current_position = buffer.anchor_at(
@@ -241,31 +281,50 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     execute!(stdout, crossterm::style::SetForegroundColor(fg)).unwrap();
                     execute!(stdout, crossterm::style::SetBackgroundColor(bg)).unwrap();
 
-                    match ch {
-                        '\t' => {
-                            for _i in 0..tab_size {
-                                print!(" ");
-                                if at_cursor {
-                                    execute!(stdout, crossterm::style::SetBackgroundColor(clr_bg))
+                    if x_scroll > 0 {
+                        x_scroll = x_scroll.saturating_sub(1);
+                    } else {
+                        match ch {
+                            '\t' => {
+                                for _i in 0..tab_size {
+                                    print!(" ");
+                                    if at_cursor {
+                                        execute!(
+                                            stdout,
+                                            crossterm::style::SetBackgroundColor(clr_bg)
+                                        )
                                         .unwrap();
+                                    }
+                                    cols_remaining = cols_remaining.saturating_sub(1);
                                 }
                             }
-                        }
-                        _ => {
-                            print!("{}", ch);
+                            _ => {
+                                print!("{}", ch);
+                                cols_remaining = cols_remaining.saturating_sub(1);
+                            }
                         }
                     }
 
                     range_remaining = range_remaining.saturating_sub(1);
 
-                    screen_col += 1;
-                    if screen_col as i32 >= screen_cols {
+                    if cols_remaining <= 0 {
                         break;
                     }
                 }
 
-                execute!(stdout, crossterm::style::SetBackgroundColor(clr_bg));
-                fill_to_eol((screen_cols - text.chars().count() as i32).max(0) as usize);
+                execute!(
+                    stdout,
+                    crossterm::style::SetBackgroundColor({
+                        // if at_cursor_row {
+                        //     clr_current_line
+                        // } else {
+                        clr_bg
+                        // }
+                    })
+                );
+
+                // fill_to_eol((screen_cols - text.chars().count() as i32).max(0) as usize);
+                fill_to_eol(cols_remaining.max(0) as usize);
 
                 screen_row += 1;
                 if screen_row + 1 > screen_rows as u16 {
@@ -280,18 +339,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 fill_to_eol(screen_cols as usize);
                 execute!(stdout, MoveTo(0, screen_rows as u16)).unwrap();
                 print!(
-                    "hx:{} tx:{}",
+                    "{},{} v:{}",
+                    // scroll_x,
+                    // scroll_y,
                     doc.first_selection().head().offset,
-                    doc.first_selection().tail().offset
+                    doc.first_selection().tail().offset,
+                    &doc.buffer().version().get(0) // &doc.buffer().replica_id()
                 );
             }
 
-            std::io::stdout().flush().unwrap();
+            stdout.flush().unwrap();
         }
 
+        //------------------
         // input
+        //------------------
         if event::poll(Duration::from_millis(50))? {
             if let Event::Key(key_event) = event::read()? {
+                should_redraw = true;
+
                 // global actions
                 match (key_event.code, key_event.modifiers) {
                     (KeyCode::Char('q'), KeyModifiers::CONTROL) => break,
@@ -354,7 +420,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         select: true,
                         count: 1,
                     },
-                    (KeyCode::Char('d'), KeyModifiers::CONTROL) => Action::SelectCurrentWord,
+                    (KeyCode::Char('d'), KeyModifiers::CONTROL) => Action::SelectWord,
                     (KeyCode::Esc, _) => Action::ClearCursors,
 
                     (KeyCode::Tab, _) => Action::InsertTab,
@@ -376,7 +442,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 doc.apply_action(&action);
             } else {
-                // do some background here?
+                // do some background task here?
             }
         }
     }
@@ -386,21 +452,4 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     execute!(stdout, crossterm::cursor::Show).unwrap();
 
     Ok(())
-}
-
-fn _main() {
-    let s = "* 🍐✅ *";
-    let mut v = Vec::new();
-    let mut idx = 0;
-    for c in s.chars() {
-        v.push(idx);
-        idx += c.len_utf8();
-    }
-
-    let mut buffer = Buffer::new(0, BufferId::new(1).unwrap(), s);
-    let s = 3;
-    let e = s + 0;
-    buffer.edit([(v[s]..v[e], "abcd")]);
-    let chars = buffer.chars_at(rope::Point::new(0, 0));
-    println!("{}", chars.collect::<String>());
 }
