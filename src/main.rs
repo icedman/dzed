@@ -266,16 +266,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         end: current_position.clone(),
                     };
 
-                    let mut at_cursor = false;
-                    if current_position.cmp(&cursor_head, &buffer) == Ordering::Equal {
-                        // at cursor head
+                    let (selected, at_cursor) =
+                        doc.selections().is_selected(row, column as u32, &buffer);
+
+                    if selected {
+                        bg = clr_select;
+                    }
+                    if at_cursor {
                         fg = clr_caret;
-                        bg = clr_select;
-                        at_cursor = true
-                    } else if cursor_range.overlaps(&cur, &buffer) {
-                        // within selection
-                        // fg = clr_fg;
-                        bg = clr_select;
                     }
 
                     execute!(stdout, crossterm::style::SetForegroundColor(fg)).unwrap();

@@ -1,4 +1,7 @@
-use text::{Anchor, AnchorRangeExt, Buffer, Selection, SelectionGoal};
+use std::{cmp::Ordering, ops::Range};
+use text::{Anchor, AnchorRangeExt, Buffer, Selection, SelectionGoal, ToPoint};
+
+use sum_tree::Bias;
 
 pub struct SelectionCollection {
     pub id: usize,
@@ -22,16 +25,16 @@ impl SelectionCollection {
     }
 
     pub fn add(&mut self, buffer: &Buffer, offset: usize) -> Selection<Anchor> {
-        let anchor = Selection {
+        let sel = Selection {
             id: self.id,
-            start: Anchor::MIN,
-            end: Anchor::MIN,
+            start: buffer.anchor_at(offset, Bias::Left),
+            end: buffer.anchor_at(offset, Bias::Left),
             reversed: false,
             goal: SelectionGoal::None,
         };
-        self.selections.push(anchor.clone());
+        self.selections.push(sel.clone());
         self.id += 1;
-        anchor
+        sel
     }
 
     pub fn update(&mut self, selection: &Selection<Anchor>) {
@@ -44,7 +47,47 @@ impl SelectionCollection {
         self.selections.clear();
     }
 
-    // pub fn render_line(&self, line: usize) -> Option<&StyleCache> {
-    //     self.style_cache.get(&line)
-    // }
+    pub fn is_selected(&self, row: u32, column: u32, buffer: &Buffer) -> (bool, bool) {
+        let mut within = true;
+        let mut at_head = false;
+        for cursor in self.selections.iter() {
+            let cursor_head = cursor.head();
+            let head_point = cursor_head.to_point(&buffer);
+            if row == head_point.row && column == head_point.column {
+                at_head = true;
+            }
+
+            let cursor_tail = cursor.tail();
+            let mut cursor_range = if cursor_head.cmp(&cursor_tail, &buffer) == Ordering::Less {
+                Range {
+                    start: cursor_head,
+                    end: cursor_tail,
+                }
+            } else {
+                Range {
+                    end: cursor_head,
+                    start: cursor_tail,
+                }
+            };
+
+            let start = cursor_range.start.to_point(&buffer);
+            let end = cursor_range.end.to_point(&buffer);
+            if row < start.row || row > end.row {
+                within = false;
+                continue;
+            }
+            if row == start.row && column < start.column {
+                within = false;
+                continue;
+            }
+            if row == end.row && column > end.column {
+                within = false;
+                continue;
+            }
+            if within && at_head {
+                break;
+            }
+        }
+        (within, at_head)
+    }
 }

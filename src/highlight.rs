@@ -6,7 +6,7 @@ use syntect::{
     highlighting::{Color, HighlightState, Style, Theme, ThemeSet, ThemeSettings},
     parsing::{ParseState, SyntaxReference, SyntaxSet},
 };
-use text::{Anchor, Buffer, BufferId, ToOffset, ToPoint};
+use text::{Buffer, ToOffset};
 
 const START_OFFSET: usize = 240;
 const CACHE_INTERVAL: usize = 80;

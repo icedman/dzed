@@ -266,6 +266,10 @@ impl Document {
     pub fn add_selection(&mut self) -> Selection<Anchor> {
         self.selections.add(&self.buffer, 0)
     }
+
+    pub fn selections(&self) -> &SelectionCollection {
+        return &self.selections;
+    }
 }
 
 impl Movement for Document {
