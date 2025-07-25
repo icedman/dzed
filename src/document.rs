@@ -5,7 +5,7 @@ use crate::selections::SelectionCollection;
 use rope::Point;
 use std::{cmp::Ordering, io, ops::Range};
 use sum_tree::Bias;
-use text::{Anchor, Buffer, BufferId, Selection, SelectionGoal, ToOffset, ToPoint};
+use text::{Anchor, Buffer, BufferId, Selection, SelectionGoal, ToOffset, ToPoint, ToPointUtf16};
 
 pub fn string_to_byte_indices(text: &str) -> Vec<usize> {
     let mut indices = Vec::new();
@@ -35,7 +35,6 @@ pub fn string_to_byte_sizes(text: &str) -> Vec<usize> {
 
 pub trait BufferText {
     fn row_text(&self, row: u32) -> String;
-    fn row_len(&self, row: u32) -> u32;
 }
 
 impl BufferText for Buffer {
@@ -43,15 +42,6 @@ impl BufferText for Buffer {
         let start = Point::new(row, 0).to_offset(self);
         let end = Point::new(row, self.line_len(row)).to_offset(self);
         self.as_rope().chunks_in_range(start..end).collect()
-    }
-
-    fn row_len(&self, row: u32) -> u32 {
-        let l = self.line_len(row).saturating_sub(1) as usize;
-        let text = self.row_text(row);
-        // text.chars().count()
-        let indices = string_to_byte_sizes(&text);
-        let sizes = string_to_byte_sizes(&text);
-        (indices[l] + sizes[l]) as u32
     }
 }
 
@@ -122,7 +112,6 @@ pub struct Document {
 
 impl Document {
     pub fn new(file_path: &str) -> io::Result<Self> {
-        // let contents = std::fs::read_to_string(file_path)?;
         let contents = if std::path::Path::new(file_path).exists() {
             match std::fs::read_to_string(file_path) {
                 Ok(s) => s,
@@ -277,22 +266,17 @@ impl Movement for Document {
         let cursors = self.selections.selections.clone();
         for cursor in cursors.iter() {
             let mut point = cursor.head().to_point(&self.buffer);
-            let (v, l) = {
-                let row_text = self.buffer.row_text(point.row);
-                (string_to_byte_sizes(&row_text), row_text.len())
-            };
-            let mut offset = if point.column != 0 {
-                self.buffer
-                    .offset_for_anchor(&cursor.head())
-                    .saturating_sub(v[point.column.saturating_sub(1) as usize])
+            if point.column != 0 {
+                point.column = point.column.saturating_sub(1);
             } else {
                 if point.row > 0 {
                     point.row = point.row.saturating_sub(1);
                     point.column = self.buffer.line_len(point.row);
                 }
-                self.buffer
-                    .offset_for_anchor(&self.buffer.anchor_at(&point, Bias::Left))
             };
+            let mut offset = self
+                .buffer
+                .offset_for_anchor(&self.buffer.anchor_at(&point, Bias::Left));
             offset = self.buffer.clip_offset(offset, Bias::Left);
             let new_head = self.buffer.anchor_at(offset, Bias::Left);
             self.selections.update(&{
@@ -311,19 +295,20 @@ impl Movement for Document {
         let cursors = self.selections.selections.clone();
         for cursor in cursors.iter() {
             let mut point = cursor.head().to_point(&self.buffer);
-            let (v, l) = {
+            let l = {
                 let row_text = self.buffer.row_text(point.row);
-                (string_to_byte_sizes(&row_text), row_text.len())
+                row_text.len()
             };
-            let mut offset = if point.column < self.buffer.line_len(point.row) {
-                self.buffer.offset_for_anchor(&cursor.head()) + v[point.column as usize]
+            if point.column < l as u32 {
+                point.column += 1;
             } else {
                 point.row += 1;
                 point.column = 0;
-                self.buffer
-                    .offset_for_anchor(&self.buffer.anchor_at(&point, Bias::Left))
             };
-            offset = self.buffer.clip_offset(offset, Bias::Left);
+            let mut offset = self
+                .buffer
+                .offset_for_anchor(&self.buffer.anchor_at(&point, Bias::Left));
+            offset = self.buffer.clip_offset(offset, Bias::Right);
             let new_head = self.buffer.anchor_at(offset, Bias::Left);
             self.selections.update(&{
                 Selection {

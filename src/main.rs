@@ -8,11 +8,11 @@ use std::{
     cmp::Ordering,
     collections::HashMap,
     fmt::Debug,
-    io::{stdout, Write},
+    io::{stdout, Result, Write},
     ops::Range,
     path::Path,
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use crossterm::{
@@ -81,7 +81,8 @@ fn fill_to_eol(count: usize) {
     }
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    //fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
     if args.len() != 2 {
         eprintln!("Usage: {} <file_path>", args[0]);
@@ -123,6 +124,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     execute!(stdout, crossterm::cursor::Hide).unwrap();
+
+    let mut paste_buffer = String::new();
+    let mut last_char_time = Instant::now();
+    let paste_timeout = Duration::from_millis(5); // threshold to separate pastes from normal typing
 
     let mut dirty_hl = true;
     let mut should_redraw = false;
@@ -211,7 +216,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut screen_row = 0;
             for row in scroll_y..end_line {
                 execute!(stdout, MoveTo(0, screen_row)).unwrap();
-                let text = doc.buffer().row_text(row) + " ";
+                let text = doc.buffer().row_text(row); // + " ";
 
                 let mut ranges;
                 if let Some(style_cache) = hl.render_line(row as usize) {
@@ -235,6 +240,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let mut cols_remaining = screen_cols;
                 let at_cursor_row = cursor_row == row as i32;
 
+                let mut rc = 0;
                 for (column, ch) in text.chars().enumerate() {
                     if range_remaining == 0 {
                         current_range = range_iter.next();
@@ -254,21 +260,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         // bg = clr_current_line.clone();
                     }
 
-                    let current_position = buffer.anchor_at(
-                        Point {
-                            row,
-                            column: column as u32,
-                        },
-                        Bias::Left,
-                    );
-                    let cur = Range {
-                        start: current_position.clone(),
-                        end: current_position.clone(),
-                    };
-
-                    let (selected, at_cursor) =
-                        doc.selections().is_selected(row, column as u32, &buffer);
-
+                    let (selected, at_cursor) = doc.selections().is_selected(row, rc, &buffer);
                     if selected {
                         bg = clr_select;
                     }
@@ -294,11 +286,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         .unwrap();
                                     }
                                     cols_remaining = cols_remaining.saturating_sub(1);
+                                    rc += 1;
                                 }
                             }
                             _ => {
                                 print!("{}", ch);
                                 cols_remaining = cols_remaining.saturating_sub(1);
+                                rc += 1;
                             }
                         }
                     }
@@ -336,13 +330,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 execute!(stdout, MoveTo(0, screen_rows as u16)).unwrap();
                 fill_to_eol(screen_cols as usize);
                 execute!(stdout, MoveTo(0, screen_rows as u16)).unwrap();
+
+                let row_len = doc.buffer().line_len(cursor_row as u32);
                 print!(
-                    "{},{} v:{}",
+                    "{},{} v:{} rl:{}",
                     // scroll_x,
                     // scroll_y,
                     doc.first_selection().head().offset,
                     doc.first_selection().tail().offset,
-                    &doc.buffer().version().get(0) // &doc.buffer().replica_id()
+                    &doc.buffer().version().get(0), // &doc.buffer().replica_id()
+                    row_len
                 );
             }
 
@@ -353,6 +350,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // input
         //------------------
         if event::poll(Duration::from_millis(50))? {
+            // match event {
             if let Event::Key(key_event) = event::read()? {
                 should_redraw = true;
 

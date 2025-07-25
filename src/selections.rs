@@ -1,7 +1,19 @@
+use crate::document::BufferText;
 use std::{cmp::Ordering, ops::Range};
-use text::{Anchor, AnchorRangeExt, Buffer, Selection, SelectionGoal, ToPoint};
+use text::{Anchor, AnchorRangeExt, Buffer, Selection, SelectionGoal, ToOffset, ToPoint};
 
 use sum_tree::Bias;
+
+pub fn offset_to_column(text: &String, offset: usize) -> u32 {
+    let mut cc = 0;
+    for (i, c) in text.chars().enumerate() {
+        if cc == offset {
+            return i as u32;
+        }
+        cc += c.len_utf8();
+    }
+    0
+}
 
 pub struct SelectionCollection {
     pub id: usize,
@@ -74,15 +86,26 @@ impl SelectionCollection {
             let end = cursor_range.end.to_point(&buffer);
             if row < start.row || row > end.row {
                 within = false;
+                at_head = false;
                 continue;
             }
-            if row == start.row && column < start.column {
-                within = false;
-                continue;
+            if row == start.row {
+                let st = buffer.row_text(row);
+                let sc = offset_to_column(&st, start.column as usize);
+                if column < sc {
+                    within = false;
+                    at_head = false;
+                    continue;
+                }
             }
-            if row == end.row && column > end.column {
-                within = false;
-                continue;
+            if row == end.row {
+                let st = buffer.row_text(row);
+                let ec = offset_to_column(&st, end.column as usize);
+                if column > ec {
+                    within = false;
+                    at_head = false;
+                    continue;
+                }
             }
             if within && at_head {
                 break;
