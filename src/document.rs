@@ -7,32 +7,6 @@ use std::{cmp::Ordering, io, ops::Range};
 use sum_tree::Bias;
 use text::{Anchor, Buffer, BufferId, Selection, SelectionGoal, ToOffset, ToPoint, ToPointUtf16};
 
-pub fn string_to_byte_indices(text: &str) -> Vec<usize> {
-    let mut indices = Vec::new();
-    let mut idx = 0;
-    for c in text.chars() {
-        indices.push(idx);
-        idx += c.len_utf8();
-    }
-    // pad
-    for _i in 0..16 {
-        indices.push(idx);
-    }
-    indices
-}
-
-pub fn string_to_byte_sizes(text: &str) -> Vec<usize> {
-    let mut sizes = Vec::new();
-    for c in text.chars() {
-        sizes.push(c.len_utf8());
-    }
-    // pad
-    for _i in 0..16 {
-        sizes.push(0);
-    }
-    sizes
-}
-
 pub trait BufferText {
     fn row_text(&self, row: u32) -> String;
 }
@@ -215,14 +189,20 @@ impl Document {
                 self.insert_text(text);
                 self.move_right(false);
             }
-            Action::DeleteText { count } => self.delete_text(*count),
+            Action::DeleteText { count } => {
+                self.delete_text(*count);
+            }
             Action::Backspace => {
-                self.delete_text(0);
+                if self.delete_text(0) {
+                    return;
+                }
                 self.move_left(false);
                 self.delete_text(1);
             }
             Action::Delete => {
-                self.delete_text(0);
+                if self.delete_text(0) {
+                    return;
+                }
                 self.delete_text(1);
             }
             Action::InsertNewLine => {
@@ -499,7 +479,8 @@ impl Movement for Document {
         }
     }
 
-    fn delete_text(&mut self, count: usize) {
+    fn delete_text(&mut self, count: usize) -> bool {
+        let mut delete_count = 0;
         let cursors = self.selections.selections.clone();
         for cursor in cursors.iter() {
             let (start, mut end) = {
@@ -512,18 +493,14 @@ impl Movement for Document {
                 }
             };
 
-            if start == end && count != 0 {
-                let point = self.buffer.offset_to_point(start);
-                let (v, l) = {
-                    let row_text = self.buffer.row_text(point.row);
-                    (string_to_byte_sizes(&row_text), row_text.len())
-                };
-                end = self
-                    .buffer
-                    .clip_offset(start + v[point.column as usize], Bias::Left);
+            if (start == end && count != 0) || (start != end && count == 0) {
+                end = self.buffer.clip_offset(end + 1, Bias::Right);
             }
-
-            self.buffer.edit([(start..end, "")]);
+            if start != end {
+                delete_count += 1;
+                self.buffer.edit([(start..end, "")]);
+            }
         }
+        return delete_count > 0;
     }
 }

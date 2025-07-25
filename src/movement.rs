@@ -1,4 +1,4 @@
-use crate::document::{string_to_byte_sizes, BufferText, Document, WordOffsets};
+use crate::document::{BufferText, Document, WordOffsets};
 use rope::Point;
 use std::{cmp::Ordering, io, ops::Range};
 use sum_tree::Bias;
@@ -16,5 +16,5 @@ pub trait Movement {
     fn move_to_start_of_document(&mut self, anchor: bool);
     fn move_to_end_of_document(&mut self, anchor: bool);
     fn insert_text(&mut self, text: &str);
-    fn delete_text(&mut self, count: usize);
+    fn delete_text(&mut self, count: usize) -> bool;
 }

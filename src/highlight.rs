@@ -72,11 +72,11 @@ impl Highlights {
         //     .themes
         //     .get("Solarized (dark)")
         //     .unwrap_or(&theme_set.themes["InspiredGitHub"]);
-        let theme = theme_set
-            .themes
-            .get("base16-ocean.dark")
-            .unwrap_or(&theme_set.themes["Solarized (dark)"]);
-        // let theme = load_theme("./themes/Dracula.tmTheme");
+        //let theme = theme_set
+        //    .themes
+        //    .get("base16-ocean.dark")
+        //    .unwrap_or(&theme_set.themes["Solarized (dark)"]);
+        let theme = load_theme("./themes/Dracula.tmTheme");
         let syntax = syntax_set
             .find_syntax_by_extension(&extension)
             .unwrap_or_else(|| syntax_set.find_syntax_plain_text());

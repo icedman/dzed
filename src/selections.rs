@@ -65,22 +65,25 @@ impl SelectionCollection {
         for cursor in self.selections.iter() {
             let cursor_head = cursor.head();
             let head_point = cursor_head.to_point(&buffer);
-            if row == head_point.row && column == head_point.column {
-                at_head = true;
-            }
-
             let cursor_tail = cursor.tail();
-            let mut cursor_range = if cursor_head.cmp(&cursor_tail, &buffer) == Ordering::Less {
-                Range {
-                    start: cursor_head,
-                    end: cursor_tail,
-                }
-            } else {
-                Range {
-                    end: cursor_head,
-                    start: cursor_tail,
-                }
-            };
+            let (cursor_range, normalized) =
+                if cursor_head.cmp(&cursor_tail, &buffer) == Ordering::Less {
+                    (
+                        Range {
+                            start: cursor_head,
+                            end: cursor_tail,
+                        },
+                        false,
+                    )
+                } else {
+                    (
+                        Range {
+                            end: cursor_head,
+                            start: cursor_tail,
+                        },
+                        true,
+                    )
+                };
 
             let start = cursor_range.start.to_point(&buffer);
             let end = cursor_range.end.to_point(&buffer);
@@ -97,6 +100,9 @@ impl SelectionCollection {
                     at_head = false;
                     continue;
                 }
+                if !normalized && column == sc {
+                    at_head = true;
+                }
             }
             if row == end.row {
                 let st = buffer.row_text(row);
@@ -105,6 +111,9 @@ impl SelectionCollection {
                     within = false;
                     at_head = false;
                     continue;
+                }
+                if normalized && column == ec {
+                    at_head = true;
                 }
             }
             if within && at_head {

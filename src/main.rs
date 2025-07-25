@@ -290,7 +290,8 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                                 }
                             }
                             _ => {
-                                print!("{}", ch);
+                                let fc = if ch == ' ' && at_cursor { '_' } else { ch };
+                                print!("{}", fc);
                                 cols_remaining = cols_remaining.saturating_sub(1);
                                 rc += 1;
                             }
