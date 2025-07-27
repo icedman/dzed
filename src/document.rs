@@ -118,7 +118,7 @@ impl Document {
     }
 
     pub fn select_word(&mut self) {
-        let cursor = self.first_selection();
+        let cursor = self.selection();
         if cursor.start.cmp(&cursor.end, &self.buffer) != Ordering::Equal {
             return;
         }
@@ -228,7 +228,40 @@ impl Document {
         }
     }
 
-    pub fn first_selection(&self) -> Selection<Anchor> {
+    fn insert_text(&mut self, text: &str) {
+        let cursors = self.selections.selections.clone();
+        for cursor in cursors.iter() {
+            let start = self.buffer.offset_for_anchor(&cursor.head());
+            self.buffer.edit([(start..start, text)]);
+        }
+    }
+
+    fn delete_text(&mut self, count: usize) -> bool {
+        let mut delete_count = 0;
+        let cursors = self.selections.selections.clone();
+        for cursor in cursors.iter() {
+            let (start, mut end) = {
+                let start = self.buffer.offset_for_anchor(&cursor.head());
+                let end = self.buffer.offset_for_anchor(&cursor.tail());
+                if cursor.head().cmp(&cursor.tail(), &self.buffer) == Ordering::Less {
+                    (start, end)
+                } else {
+                    (end, start)
+                }
+            };
+
+            if (start == end && count != 0) || (start != end && count == 0) {
+                end = self.buffer.clip_offset(end + 1, Bias::Right);
+            }
+            if start != end {
+                delete_count += 1;
+                self.buffer.edit([(start..end, "")]);
+            }
+        }
+        return delete_count > 0;
+    }
+
+    pub fn selection(&self) -> Selection<Anchor> {
         self.selections.first().unwrap().clone()
     }
 
@@ -343,7 +376,7 @@ impl Movement for Document {
     }
 
     fn move_to_previous_word(&mut self, anchor: bool) {
-        let cursor = self.first_selection();
+        let cursor = self.selection();
         let mut point = cursor.head().to_point(&self.buffer);
         let text = self.buffer.row_text(point.row);
         if let Some(word) = text.find_previous_word(point.column as usize) {
@@ -469,38 +502,5 @@ impl Movement for Document {
                 }
             });
         }
-    }
-
-    fn insert_text(&mut self, text: &str) {
-        let cursors = self.selections.selections.clone();
-        for cursor in cursors.iter() {
-            let start = self.buffer.offset_for_anchor(&cursor.head());
-            self.buffer.edit([(start..start, text)]);
-        }
-    }
-
-    fn delete_text(&mut self, count: usize) -> bool {
-        let mut delete_count = 0;
-        let cursors = self.selections.selections.clone();
-        for cursor in cursors.iter() {
-            let (start, mut end) = {
-                let start = self.buffer.offset_for_anchor(&cursor.head());
-                let end = self.buffer.offset_for_anchor(&cursor.tail());
-                if cursor.head().cmp(&cursor.tail(), &self.buffer) == Ordering::Less {
-                    (start, end)
-                } else {
-                    (end, start)
-                }
-            };
-
-            if (start == end && count != 0) || (start != end && count == 0) {
-                end = self.buffer.clip_offset(end + 1, Bias::Right);
-            }
-            if start != end {
-                delete_count += 1;
-                self.buffer.edit([(start..end, "")]);
-            }
-        }
-        return delete_count > 0;
     }
 }

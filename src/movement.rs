@@ -15,6 +15,4 @@ pub trait Movement {
     fn move_to_end_of_line(&mut self, anchor: bool);
     fn move_to_start_of_document(&mut self, anchor: bool);
     fn move_to_end_of_document(&mut self, anchor: bool);
-    fn insert_text(&mut self, text: &str);
-    fn delete_text(&mut self, count: usize) -> bool;
 }

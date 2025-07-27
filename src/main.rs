@@ -148,7 +148,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         prev_screen_cols = screen_cols;
 
         // get cursor information
-        let cursor = doc.first_selection();
+        let cursor = doc.selection();
         let cursor_head = cursor.head();
         let cursor_tail = cursor.tail();
         let mut cursor_range = if cursor_head.cmp(&cursor_tail, &doc.buffer()) == Ordering::Less {
@@ -216,7 +216,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             let mut screen_row = 0;
             for row in scroll_y..end_line {
                 execute!(stdout, MoveTo(0, screen_row)).unwrap();
-                let text = doc.buffer().row_text(row); // + " ";
+                let text = doc.buffer().row_text(row) + " ";
 
                 let mut ranges;
                 if let Some(style_cache) = hl.render_line(row as usize) {
@@ -286,14 +286,14 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                                         .unwrap();
                                     }
                                     cols_remaining = cols_remaining.saturating_sub(1);
-                                    rc += 1;
+                                    rc += ch.len_utf8() as u32;
                                 }
                             }
                             _ => {
                                 let fc = if ch == ' ' && at_cursor { '_' } else { ch };
                                 print!("{}", fc);
                                 cols_remaining = cols_remaining.saturating_sub(1);
-                                rc += 1;
+                                rc += ch.len_utf8() as u32;
                             }
                         }
                     }
@@ -337,8 +337,8 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                     "{},{} v:{} rl:{}",
                     // scroll_x,
                     // scroll_y,
-                    doc.first_selection().head().offset,
-                    doc.first_selection().tail().offset,
+                    doc.selection().head().offset,
+                    doc.selection().tail().offset,
                     &doc.buffer().version().get(0), // &doc.buffer().replica_id()
                     row_len
                 );

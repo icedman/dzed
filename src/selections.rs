@@ -93,8 +93,7 @@ impl SelectionCollection {
                 continue;
             }
             if row == start.row {
-                let st = buffer.row_text(row);
-                let sc = offset_to_column(&st, start.column as usize);
+                let sc = start.column;
                 if column < sc {
                     within = false;
                     at_head = false;
@@ -105,8 +104,7 @@ impl SelectionCollection {
                 }
             }
             if row == end.row {
-                let st = buffer.row_text(row);
-                let ec = offset_to_column(&st, end.column as usize);
+                let ec = end.column;
                 if column > ec {
                     within = false;
                     at_head = false;
