@@ -1,7 +1,7 @@
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Action {
-    MoveUp { select: bool, count: usize },
-    MoveDown { select: bool, count: usize },
+    MoveUp { select: bool },
+    MoveDown { select: bool },
     MoveLeft { select: bool },
     MoveRight { select: bool },
     MoveToPreviousWord { select: bool },
@@ -18,6 +18,7 @@ pub enum Action {
     DeleteText { count: usize },
     Backspace,
     Delete,
+    DeleteCurrentLine,
 
     Indent,
     Unindent,

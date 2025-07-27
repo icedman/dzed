@@ -166,16 +166,8 @@ impl Document {
 
     pub fn apply_action(&mut self, action: &Action) {
         match action {
-            Action::MoveUp { select, count } => {
-                for _ in 0..*count {
-                    self.move_up(*select);
-                }
-            }
-            Action::MoveDown { select, count } => {
-                for _ in 0..*count {
-                    self.move_down(*select);
-                }
-            }
+            Action::MoveUp { select } => self.move_up(*select),
+            Action::MoveDown { select } => self.move_down(*select),
             Action::MoveLeft { select } => self.move_left(*select),
             Action::MoveRight { select } => self.move_right(*select),
             Action::MoveToPreviousWord { select } => self.move_to_previous_word(*select),
@@ -204,6 +196,9 @@ impl Document {
                     return;
                 }
                 self.delete_text(1);
+            }
+            Action::DeleteCurrentLine => {
+                self.delete_current_line();
             }
             Action::InsertNewLine => {
                 self.delete_text(0);
@@ -259,6 +254,36 @@ impl Document {
             }
         }
         return delete_count > 0;
+    }
+
+    pub fn delete_current_line(&mut self) {
+        if self.delete_text(0) {
+            return;
+        }
+        let cursors = self.selections.selections.clone();
+        for cursor in cursors.iter() {
+            let mut point = cursor.head().to_point(&self.buffer);
+            let (start, end) = {
+                point.column = 0;
+                let start = self
+                    .buffer
+                    .offset_for_anchor(&self.buffer.anchor_at(&point, Bias::Left));
+                if point.row < self.buffer.row_count() {
+                    point.row += 1;
+                } else {
+                    point.column = self.buffer.line_len(point.row);
+                }
+                let end = self.buffer.clip_offset(
+                    self.buffer
+                        .offset_for_anchor(&self.buffer.anchor_at(&point, Bias::Right)),
+                    Bias::Right,
+                );
+                (start, end)
+            };
+            if start != end {
+                self.buffer.edit([(start..end, "")]);
+            }
+        }
     }
 
     pub fn selection(&self) -> Selection<Anchor> {

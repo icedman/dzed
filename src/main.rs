@@ -37,6 +37,7 @@ use text::{
 use actions::Action;
 use document::{BufferText, Document};
 use highlight::Highlights;
+use movement::Mode;
 use selections::SelectionCollection;
 
 use clock;
@@ -97,6 +98,10 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             return Ok(());
         }
     };
+
+    let mut cmd = Document::new("");
+    let mut pending_cmd = "".to_string();
+    let mut mode = Mode::Normal;
 
     let mut stdout = stdout();
     crossterm::terminal::enable_raw_mode().unwrap();
@@ -334,13 +339,14 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
                 let row_len = doc.buffer().line_len(cursor_row as u32);
                 print!(
-                    "{},{} v:{} rl:{}",
+                    "{},{} v:{} rl:{} {}",
                     // scroll_x,
                     // scroll_y,
                     doc.selection().head().offset,
                     doc.selection().tail().offset,
                     &doc.buffer().version().get(0), // &doc.buffer().replica_id()
-                    row_len
+                    row_len,
+                    pending_cmd
                 );
             }
 
@@ -355,89 +361,84 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             if let Event::Key(key_event) = event::read()? {
                 should_redraw = true;
 
+                let current_mode = mode.clone();
+
                 // global actions
                 match (key_event.code, key_event.modifiers) {
                     (KeyCode::Char('q'), KeyModifiers::CONTROL) => break,
                     _ => {}
                 }
 
-                // document actions
-                let action = match (key_event.code, key_event.modifiers) {
-                    (KeyCode::PageUp, _) => Action::MoveUp {
-                        select: false,
-                        count: screen_rows as usize,
-                    },
-                    (KeyCode::PageDown, _) => Action::MoveDown {
-                        select: false,
-                        count: screen_rows as usize,
-                    },
+                let mut action = Action::NoOp;
+                let move_action = match (key_event.code, key_event.modifiers) {
+                    (KeyCode::Left, _) => Action::MoveLeft { select: false },
 
-                    (KeyCode::Left, KeyModifiers::CONTROL) => {
-                        Action::MoveToPreviousWord { select: false }
-                    }
-                    (KeyCode::Right, KeyModifiers::CONTROL) => {
-                        Action::MoveToNextWord { select: false }
-                    }
-
-                    (KeyCode::Home, KeyModifiers::CONTROL) => {
-                        Action::MoveToStartOfDocument { select: false }
-                    }
-                    (KeyCode::End, KeyModifiers::CONTROL) => {
-                        Action::MoveToEndOfDocument { select: false }
-                    }
-
-                    (KeyCode::Home, KeyModifiers::NONE) => {
-                        Action::MoveToStartOfLine { select: false }
-                    }
-                    (KeyCode::End, KeyModifiers::NONE) => Action::MoveToEndOfLine { select: false },
-
-                    (KeyCode::Home, KeyModifiers::SHIFT) => {
-                        Action::MoveToStartOfLine { select: true }
-                    }
-                    (KeyCode::End, KeyModifiers::SHIFT) => Action::MoveToEndOfLine { select: true },
-
-                    (KeyCode::Left, KeyModifiers::NONE) => Action::MoveLeft { select: false },
-                    (KeyCode::Right, KeyModifiers::NONE) => Action::MoveRight { select: false },
-                    (KeyCode::Left, KeyModifiers::SHIFT) => Action::MoveLeft { select: true },
-                    (KeyCode::Right, KeyModifiers::SHIFT) => Action::MoveRight { select: true },
-
-                    (KeyCode::Up, KeyModifiers::NONE) => Action::MoveUp {
-                        select: false,
-                        count: 1,
-                    },
-                    (KeyCode::Down, KeyModifiers::NONE) => Action::MoveDown {
-                        select: false,
-                        count: 1,
-                    },
-                    (KeyCode::Up, KeyModifiers::SHIFT) => Action::MoveUp {
-                        select: true,
-                        count: 1,
-                    },
-                    (KeyCode::Down, KeyModifiers::SHIFT) => Action::MoveDown {
-                        select: true,
-                        count: 1,
-                    },
-                    (KeyCode::Char('d'), KeyModifiers::CONTROL) => Action::SelectWord,
-                    (KeyCode::Esc, _) => Action::ClearCursors,
-
-                    (KeyCode::Tab, _) => Action::InsertTab,
-                    (KeyCode::Enter, _) => Action::InsertNewLine,
-
-                    (KeyCode::Backspace, _) => Action::Backspace,
-                    (KeyCode::Delete, _) => Action::Delete,
-
-                    (KeyCode::Char('r'), KeyModifiers::CONTROL) => Action::Redo,
-                    (KeyCode::Char('z'), KeyModifiers::CONTROL) => Action::Undo,
-
-                    (KeyCode::Char(c), _) => Action::InsertText(c.to_string()),
-
-                    _ => {
-                        dirty_hl = false;
-                        Action::NoOp
-                    }
+                    (KeyCode::Right, _) => Action::MoveRight { select: false },
+                    (KeyCode::Up, _) => Action::MoveUp { select: false },
+                    (KeyCode::Down, _) => Action::MoveDown { select: false },
+                    _ => Action::NoOp,
                 };
 
-                doc.apply_action(&action);
+                let normal_action = match (key_event.code, key_event.modifiers) {
+                    (KeyCode::Esc, _) => {
+                        mode = Mode::Normal;
+                        pending_cmd.clear();
+                        Action::NoOp
+                    }
+                    (KeyCode::Char('i'), _) => {
+                        mode = Mode::Insert;
+                        Action::NoOp
+                    }
+                    (KeyCode::Char('r'), KeyModifiers::CONTROL) => Action::Redo,
+                    (KeyCode::Char('u'), _) => Action::Undo,
+                    (KeyCode::Left, KeyModifiers::SHIFT) => {
+                        Action::MoveToPreviousWord { select: false }
+                    }
+                    (KeyCode::Right, KeyModifiers::SHIFT) => {
+                        Action::MoveToNextWord { select: false }
+                    }
+                    (KeyCode::Char('b'), _) => Action::MoveToPreviousWord { select: false },
+                    (KeyCode::Char('w'), _) => Action::MoveToNextWord { select: false },
+                    (KeyCode::Char(c), _) => {
+                        pending_cmd.push(c);
+                        match pending_cmd {
+                            ref s if s.ends_with("dd") => {
+                                pending_cmd.clear();
+                                Action::DeleteCurrentLine
+                            }
+                            ref s if s.ends_with("x") => {
+                                pending_cmd.clear();
+                                Action::Delete
+                            }
+                            _ => Action::NoOp,
+                        }
+                    }
+                    _ => Action::NoOp,
+                };
+
+                // document actions
+                let insert_action = match (key_event.code, key_event.modifiers) {
+                    (KeyCode::Char(c), _) => Action::InsertText(c.to_string()),
+                    _ => Action::NoOp,
+                };
+
+                match current_mode {
+                    Mode::Normal => {
+                        if normal_action != Action::NoOp {
+                            doc.apply_action(&normal_action);
+                        } else {
+                            doc.apply_action(&move_action);
+                        }
+                    }
+                    Mode::Insert => {
+                        if insert_action != Action::NoOp {
+                            doc.apply_action(&insert_action);
+                        } else {
+                            doc.apply_action(&move_action);
+                        }
+                    }
+                    _ => {}
+                }
             } else {
                 // do some background task here?
             }
