@@ -99,7 +99,12 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    let mut cmd = Document::new("");
+    let mut cmd = match Document::new("") {
+        Ok(doc) => doc,
+        Err(err) => {
+            return Ok(());
+        }
+    };
     let mut pending_cmd = "".to_string();
     let mut mode = Mode::Normal;
 
@@ -338,22 +343,27 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 execute!(stdout, MoveTo(0, screen_rows as u16)).unwrap();
 
                 let row_len = doc.buffer().line_len(cursor_row as u32);
-                print!(
-                    "{} {},{} v:{} rl:{} {}",
-                    match mode {
-                        Mode::Normal => "NORMAL",
-                        Mode::Insert => "INSERT",
-                        Mode::Visual => "VISUAL",
-                        _ => "",
-                    },
-                    // scroll_x,
-                    // scroll_y,
-                    doc.selection().head().offset,
-                    doc.selection().tail().offset,
-                    &doc.buffer().version().get(0), // &doc.buffer().replica_id()
-                    row_len,
-                    pending_cmd
-                );
+
+                if mode == Mode::Command {
+                    print!(":{}", cmd.buffer().row_text(cmd.buffer().row_count() - 1));
+                } else {
+                    print!(
+                        "{} {},{} v:{} rl:{} {}",
+                        match mode {
+                            Mode::Normal => "NORMAL",
+                            Mode::Insert => "INSERT",
+                            Mode::Visual => "VISUAL",
+                            _ => "",
+                        },
+                        // scroll_x,
+                        // scroll_y,
+                        doc.selection().head().offset,
+                        doc.selection().tail().offset,
+                        &doc.buffer().version().get(0), // &doc.buffer().replica_id()
+                        row_len,
+                        pending_cmd
+                    );
+                }
             }
 
             stdout.flush().unwrap();
@@ -373,6 +383,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 match (key_event.code, key_event.modifiers) {
                     (KeyCode::Esc, _) => {
                         mode = Mode::Normal;
+                        should_redraw = true;
                         if doc.has_selection() {
                             doc.apply_action(&Action::ClearCursors);
                         }
@@ -409,11 +420,21 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                         Action::NoOp
                     }
                     (KeyCode::Char('i'), _) => {
-                        mode = Mode::Insert;
+                        if mode != Mode::Command {
+                            mode = Mode::Insert;
+                        }
                         Action::NoOp
                     }
                     (KeyCode::Char('v'), _) => {
-                        mode = Mode::Visual;
+                        if mode != Mode::Command {
+                            mode = Mode::Visual;
+                        }
+                        Action::NoOp
+                    }
+                    (KeyCode::Char(':'), _) => {
+                        if mode != Mode::Command {
+                            mode = Mode::Command;
+                        }
                         Action::NoOp
                     }
                     (KeyCode::Char('r'), KeyModifiers::CONTROL) => Action::Redo,
@@ -470,13 +491,21 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 let visual_action = Action::NoOp;
 
                 // document actions
-                let insert_action = if mode == Mode::Insert {
+                let insert_action = if mode == Mode::Insert || mode == Mode::Command {
                     match (key_event.code, key_event.modifiers) {
                         (KeyCode::Enter, _) => Action::InsertNewLine,
                         (KeyCode::Tab, _) => Action::InsertTab,
                         (KeyCode::Delete, _) => Action::Delete,
                         (KeyCode::Backspace, _) => Action::Backspace,
                         (KeyCode::Char(c), _) => Action::InsertText(c.to_string()),
+                        _ => Action::NoOp,
+                    }
+                } else {
+                    Action::NoOp
+                };
+
+                let command_action = if mode != Mode::Insert {
+                    match (key_event.code, key_event.modifiers) {
                         _ => Action::NoOp,
                     }
                 } else {
@@ -504,6 +533,13 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                             doc.apply_action(&insert_action);
                         } else {
                             doc.apply_action(&move_action);
+                        }
+                    }
+                    Mode::Command => {
+                        if insert_action != Action::NoOp {
+                            cmd.apply_action(&insert_action);
+                        } else {
+                            //cmd.apply_action(&move_action);
                         }
                     }
                     _ => {}

@@ -10,4 +10,5 @@ pub enum Mode {
     Insert,
     Visual,
     Visual_Line,
+    Command,
 }
