@@ -339,7 +339,13 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
                 let row_len = doc.buffer().line_len(cursor_row as u32);
                 print!(
-                    "{},{} v:{} rl:{} {}",
+                    "{} {},{} v:{} rl:{} {}",
+                    match mode {
+                        Mode::Normal => "NORMAL",
+                        Mode::Insert => "INSERT",
+                        Mode::Visual => "VISUAL",
+                        _ => "",
+                    },
                     // scroll_x,
                     // scroll_y,
                     doc.selection().head().offset,
@@ -359,29 +365,46 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         if event::poll(Duration::from_millis(50))? {
             // match event {
             if let Event::Key(key_event) = event::read()? {
-                should_redraw = true;
+                should_redraw = false;
 
                 let current_mode = mode.clone();
 
                 // global actions
                 match (key_event.code, key_event.modifiers) {
+                    (KeyCode::Esc, _) => {
+                        mode = Mode::Normal;
+                        if doc.has_selection() {
+                            doc.apply_action(&Action::ClearCursors);
+                        }
+                    }
                     (KeyCode::Char('q'), KeyModifiers::CONTROL) => break,
                     _ => {}
                 }
 
                 let mut action = Action::NoOp;
+                let mut select = mode == Mode::Visual;
                 let move_action = match (key_event.code, key_event.modifiers) {
-                    (KeyCode::Left, _) => Action::MoveLeft { select: false },
-
-                    (KeyCode::Right, _) => Action::MoveRight { select: false },
-                    (KeyCode::Up, _) => Action::MoveUp { select: false },
-                    (KeyCode::Down, _) => Action::MoveDown { select: false },
+                    (KeyCode::Left, _) => Action::MoveLeft { select },
+                    (KeyCode::Right, _) => Action::MoveRight { select },
+                    (KeyCode::Up, _) => Action::MoveUp { select },
+                    (KeyCode::Down, _) => Action::MoveDown { select },
+                    (KeyCode::PageUp, _) => Action::MoveUpCount {
+                        select,
+                        count: (visible_rows >> 1) as u32,
+                    },
+                    (KeyCode::PageDown, _) => Action::MoveDownCount {
+                        select,
+                        count: (visible_rows >> 1) as u32,
+                    },
+                    (KeyCode::Home, _) => Action::MoveToStartOfLine { select },
+                    (KeyCode::End, _) => Action::MoveToEndOfLine { select },
+                    (KeyCode::Char('{'), _) => Action::MoveToPreviousParagraph { select },
+                    (KeyCode::Char('}'), _) => Action::MoveToNextParagraph { select },
                     _ => Action::NoOp,
                 };
 
                 let normal_action = match (key_event.code, key_event.modifiers) {
                     (KeyCode::Esc, _) => {
-                        mode = Mode::Normal;
                         pending_cmd.clear();
                         Action::NoOp
                     }
@@ -389,26 +412,54 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                         mode = Mode::Insert;
                         Action::NoOp
                     }
+                    (KeyCode::Char('v'), _) => {
+                        mode = Mode::Visual;
+                        Action::NoOp
+                    }
                     (KeyCode::Char('r'), KeyModifiers::CONTROL) => Action::Redo,
                     (KeyCode::Char('u'), _) => Action::Undo,
+                    (KeyCode::Char('h'), _) => Action::MoveLeft { select },
+                    (KeyCode::Char('l'), _) => Action::MoveRight { select },
+                    (KeyCode::Char('k'), _) => Action::MoveUp { select },
+                    (KeyCode::Char('j'), _) => Action::MoveDown { select },
+                    (KeyCode::Delete, _) => Action::DeleteText { count: 1 },
+                    (KeyCode::Backspace, _) => Action::MoveLeft { select },
                     (KeyCode::Left, KeyModifiers::SHIFT) => {
                         Action::MoveToPreviousWord { select: false }
                     }
                     (KeyCode::Right, KeyModifiers::SHIFT) => {
                         Action::MoveToNextWord { select: false }
                     }
-                    (KeyCode::Char('b'), _) => Action::MoveToPreviousWord { select: false },
-                    (KeyCode::Char('w'), _) => Action::MoveToNextWord { select: false },
                     (KeyCode::Char(c), _) => {
                         pending_cmd.push(c);
                         match pending_cmd {
+                            ref s if s.ends_with("gg") => {
+                                pending_cmd.clear();
+                                Action::MoveToStartOfDocument { select }
+                            }
+                            ref s if s.ends_with("G") => {
+                                pending_cmd.clear();
+                                Action::MoveToEndOfDocument { select }
+                            }
                             ref s if s.ends_with("dd") => {
                                 pending_cmd.clear();
                                 Action::DeleteCurrentLine
                             }
+                            ref s if s.ends_with("dw") => {
+                                pending_cmd.clear();
+                                Action::DeleteCurrentWord
+                            }
                             ref s if s.ends_with("x") => {
                                 pending_cmd.clear();
                                 Action::Delete
+                            }
+                            ref s if s.ends_with("b") => {
+                                pending_cmd.clear();
+                                Action::MoveToPreviousWord { select }
+                            }
+                            ref s if s.ends_with("w") => {
+                                pending_cmd.clear();
+                                Action::MoveToNextWord { select }
                             }
                             _ => Action::NoOp,
                         }
@@ -416,16 +467,35 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                     _ => Action::NoOp,
                 };
 
+                let visual_action = Action::NoOp;
+
                 // document actions
-                let insert_action = match (key_event.code, key_event.modifiers) {
-                    (KeyCode::Char(c), _) => Action::InsertText(c.to_string()),
-                    _ => Action::NoOp,
+                let insert_action = if mode == Mode::Insert {
+                    match (key_event.code, key_event.modifiers) {
+                        (KeyCode::Enter, _) => Action::InsertNewLine,
+                        (KeyCode::Tab, _) => Action::InsertTab,
+                        (KeyCode::Delete, _) => Action::Delete,
+                        (KeyCode::Backspace, _) => Action::Backspace,
+                        (KeyCode::Char(c), _) => Action::InsertText(c.to_string()),
+                        _ => Action::NoOp,
+                    }
+                } else {
+                    Action::NoOp
                 };
 
+                // loop!
                 match current_mode {
                     Mode::Normal => {
                         if normal_action != Action::NoOp {
                             doc.apply_action(&normal_action);
+                        } else {
+                            doc.apply_action(&move_action);
+                        }
+                    }
+                    Mode::Visual => {
+                        if normal_action != Action::NoOp {
+                            doc.apply_action(&normal_action);
+                            mode = Mode::Normal;
                         } else {
                             doc.apply_action(&move_action);
                         }
@@ -438,6 +508,15 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                         }
                     }
                     _ => {}
+                }
+
+                if !should_redraw {
+                    if normal_action != Action::NoOp
+                        || move_action != Action::NoOp
+                        || insert_action != Action::NoOp
+                    {
+                        should_redraw = true;
+                    }
                 }
             } else {
                 // do some background task here?

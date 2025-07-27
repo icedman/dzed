@@ -120,4 +120,25 @@ impl SelectionCollection {
         }
         (within, at_head)
     }
+
+    pub fn has_selection(&self, buffer: &Buffer) -> bool {
+        for cursor in self.selections.iter() {
+            if cursor.head().cmp(&cursor.tail(), &buffer) != Ordering::Equal {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    pub fn clear_selections(&mut self) {
+        for cursor in self.selections.clone().iter() {
+            self.update(&Selection {
+                id: cursor.id,
+                start: cursor.head(),
+                end: cursor.tail(),
+                reversed: false,
+                goal: SelectionGoal::None,
+            });
+        }
+    }
 }

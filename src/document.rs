@@ -1,5 +1,4 @@
 use crate::actions::Action;
-use crate::movement::Movement;
 use crate::selections::SelectionCollection;
 
 use rope::Point;
@@ -168,10 +167,14 @@ impl Document {
         match action {
             Action::MoveUp { select } => self.move_up(*select),
             Action::MoveDown { select } => self.move_down(*select),
+            Action::MoveUpCount { select, count } => self.move_up_count(*select, *count),
+            Action::MoveDownCount { select, count } => self.move_down_count(*select, *count),
             Action::MoveLeft { select } => self.move_left(*select),
             Action::MoveRight { select } => self.move_right(*select),
             Action::MoveToPreviousWord { select } => self.move_to_previous_word(*select),
             Action::MoveToNextWord { select } => self.move_to_next_word(*select),
+            Action::MoveToPreviousParagraph { select } => self.move_to_previous_paragraph(*select),
+            Action::MoveToNextParagraph { select } => self.move_to_next_paragraph(*select),
             Action::MoveToStartOfDocument { select } => self.move_to_start_of_document(*select),
             Action::MoveToEndOfDocument { select } => self.move_to_end_of_document(*select),
             Action::MoveToStartOfLine { select } => self.move_to_start_of_line(*select),
@@ -200,6 +203,9 @@ impl Document {
             Action::DeleteCurrentLine => {
                 self.delete_current_line();
             }
+            Action::DeleteCurrentWord => {
+                self.delete_current_word();
+            }
             Action::InsertNewLine => {
                 self.delete_text(0);
                 self.insert_text(&self.new_line().to_string());
@@ -216,7 +222,7 @@ impl Document {
             Action::SelectWord => self.select_word(),
             Action::SelectNext(sel) => self.select_next_same_word(&sel),
             Action::SelectPrevious(sel) => self.select_next_same_word(&sel),
-            Action::ClearCursors => {}
+            Action::ClearCursors => self.selections.clear_selections(),
             &Action::Indent | &Action::Unindent => {}
 
             Action::NoOp => {}
@@ -286,6 +292,11 @@ impl Document {
         }
     }
 
+    pub fn delete_current_word(&mut self) {
+        self.select_word();
+        self.delete_text(0);
+    }
+
     pub fn selection(&self) -> Selection<Anchor> {
         self.selections.first().unwrap().clone()
     }
@@ -295,12 +306,14 @@ impl Document {
     }
 
     pub fn selections(&self) -> &SelectionCollection {
-        return &self.selections;
+        &self.selections
     }
-}
 
-impl Movement for Document {
-    fn move_left(&mut self, anchor: bool) {
+    pub fn has_selection(&self) -> bool {
+        self.selections.has_selection(&self.buffer)
+    }
+
+    pub fn move_left(&mut self, anchor: bool) {
         let cursors = self.selections.selections.clone();
         for cursor in cursors.iter() {
             let mut point = cursor.head().to_point(&self.buffer);
@@ -329,7 +342,7 @@ impl Movement for Document {
         }
     }
 
-    fn move_right(&mut self, anchor: bool) {
+    pub fn move_right(&mut self, anchor: bool) {
         let cursors = self.selections.selections.clone();
         for cursor in cursors.iter() {
             let mut point = cursor.head().to_point(&self.buffer);
@@ -360,7 +373,7 @@ impl Movement for Document {
         }
     }
 
-    fn move_up(&mut self, anchor: bool) {
+    pub fn move_up(&mut self, anchor: bool) {
         let cursors = self.selections.selections.clone();
         for cursor in cursors.iter() {
             let mut point = cursor.head().to_point(&self.buffer);
@@ -380,7 +393,7 @@ impl Movement for Document {
         }
     }
 
-    fn move_down(&mut self, anchor: bool) {
+    pub fn move_down(&mut self, anchor: bool) {
         let cursors = self.selections.selections.clone();
         for cursor in cursors.iter() {
             let mut point = cursor.head().to_point(&self.buffer);
@@ -400,7 +413,19 @@ impl Movement for Document {
         }
     }
 
-    fn move_to_previous_word(&mut self, anchor: bool) {
+    pub fn move_up_count(&mut self, anchor: bool, count: u32) {
+        for _ in 0..count {
+            self.move_up(anchor);
+        }
+    }
+
+    pub fn move_down_count(&mut self, anchor: bool, count: u32) {
+        for _ in 0..count {
+            self.move_down(anchor);
+        }
+    }
+
+    pub fn move_to_previous_word(&mut self, anchor: bool) {
         let cursor = self.selection();
         let mut point = cursor.head().to_point(&self.buffer);
         let text = self.buffer.row_text(point.row);
@@ -424,7 +449,7 @@ impl Movement for Document {
         });
     }
 
-    fn move_to_next_word(&mut self, anchor: bool) {
+    pub fn move_to_next_word(&mut self, anchor: bool) {
         let cursors = self.selections.selections.clone();
         for cursor in cursors.iter() {
             let mut point = cursor.head().to_point(&self.buffer);
@@ -450,7 +475,71 @@ impl Movement for Document {
         }
     }
 
-    fn move_to_start_of_line(&mut self, anchor: bool) {
+    pub fn move_to_previous_paragraph(&mut self, anchor: bool) {
+        let cursors = self.selections.selections.clone();
+        for cursor in cursors.iter() {
+            let mut point = cursor.head().to_point(&self.buffer);
+            point.column = 0;
+            let mut target_point = point.clone();
+            let mut has_target = false;
+            while point.row > 0 {
+                point.row -= 1;
+                if self.buffer.line_len(point.row) == 0 {
+                    target_point = point.clone();
+                    has_target = true;
+                } else if (has_target) {
+                    break;
+                }
+            }
+            if has_target {
+                let offset = target_point.to_offset(&self.buffer);
+                let new_head = self.buffer.anchor_at(offset, Bias::Left);
+                self.selections.update(&{
+                    Selection {
+                        id: cursor.id,
+                        start: new_head,
+                        end: if anchor { cursor.tail() } else { new_head },
+                        reversed: true,
+                        goal: SelectionGoal::None,
+                    }
+                });
+            }
+        }
+    }
+
+    pub fn move_to_next_paragraph(&mut self, anchor: bool) {
+        let cursors = self.selections.selections.clone();
+        for cursor in cursors.iter() {
+            let mut point = cursor.head().to_point(&self.buffer);
+            point.column = 0;
+            let mut target_point = point.clone();
+            let mut has_target = false;
+            while point.row < self.buffer.row_count() {
+                point.row += 1;
+                if self.buffer.line_len(point.row) == 0 {
+                    target_point = point.clone();
+                    has_target = true;
+                } else if (has_target) {
+                    break;
+                }
+            }
+            if has_target {
+                let offset = target_point.to_offset(&self.buffer);
+                let new_head = self.buffer.anchor_at(offset, Bias::Left);
+                self.selections.update(&{
+                    Selection {
+                        id: cursor.id,
+                        start: new_head,
+                        end: if anchor { cursor.tail() } else { new_head },
+                        reversed: true,
+                        goal: SelectionGoal::None,
+                    }
+                });
+            }
+        }
+    }
+
+    pub fn move_to_start_of_line(&mut self, anchor: bool) {
         let cursors = self.selections.selections.clone();
         for cursor in cursors.iter() {
             let mut point = cursor.head().to_point(&self.buffer);
@@ -470,7 +559,7 @@ impl Movement for Document {
         }
     }
 
-    fn move_to_end_of_line(&mut self, anchor: bool) {
+    pub fn move_to_end_of_line(&mut self, anchor: bool) {
         let cursors = self.selections.selections.clone();
         for cursor in cursors.iter() {
             let mut point = cursor.head().to_point(&self.buffer);
@@ -490,7 +579,7 @@ impl Movement for Document {
         }
     }
 
-    fn move_to_start_of_document(&mut self, anchor: bool) {
+    pub fn move_to_start_of_document(&mut self, anchor: bool) {
         let cursors = self.selections.selections.clone();
         for cursor in cursors.iter() {
             let point = Point { row: 0, column: 0 };
@@ -508,7 +597,7 @@ impl Movement for Document {
         }
     }
 
-    fn move_to_end_of_document(&mut self, anchor: bool) {
+    pub fn move_to_end_of_document(&mut self, anchor: bool) {
         let cursors = self.selections.selections.clone();
         for cursor in cursors.iter() {
             let point = Point {

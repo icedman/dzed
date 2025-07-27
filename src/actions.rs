@@ -2,6 +2,8 @@
 pub enum Action {
     MoveUp { select: bool },
     MoveDown { select: bool },
+    MoveUpCount { select: bool, count: u32 },
+    MoveDownCount { select: bool, count: u32 },
     MoveLeft { select: bool },
     MoveRight { select: bool },
     MoveToPreviousWord { select: bool },
@@ -10,6 +12,8 @@ pub enum Action {
     MoveToEndOfDocument { select: bool },
     MoveToStartOfLine { select: bool },
     MoveToEndOfLine { select: bool },
+    MoveToPreviousParagraph { select: bool },
+    MoveToNextParagraph { select: bool },
 
     InsertText(String),
     InsertNewLine,
@@ -18,6 +22,7 @@ pub enum Action {
     DeleteText { count: usize },
     Backspace,
     Delete,
+    DeleteCurrentWord,
     DeleteCurrentLine,
 
     Indent,
