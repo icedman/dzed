@@ -291,8 +291,8 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                                         .unwrap();
                                     }
                                     cols_remaining = cols_remaining.saturating_sub(1);
-                                    rc += ch.len_utf8() as u32;
                                 }
+                                rc += ch.len_utf8() as u32;
                             }
                             _ => {
                                 let fc = if ch == ' ' && at_cursor { '_' } else { ch };
@@ -495,7 +495,6 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                     Mode::Visual => {
                         if normal_action != Action::NoOp {
                             doc.apply_action(&normal_action);
-                            mode = Mode::Normal;
                         } else {
                             doc.apply_action(&move_action);
                         }

@@ -30,22 +30,38 @@ impl WordOffsets for str {
     fn words_with_offsets(&self) -> Vec<(usize, usize, &str)> {
         let mut words = Vec::new();
         let mut in_word = false;
+        let mut in_punc = false;
         let mut word_start = 0;
+        let mut punc_start = 0;
 
         for (idx, ch) in self.char_indices() {
             if ch.is_alphanumeric() {
+                if in_punc {
+                    words.push((punc_start, idx, &self[punc_start..idx]));
+                    in_punc = false;
+                }
                 if !in_word {
                     in_word = true;
                     word_start = idx;
                 }
-            } else if in_word {
-                words.push((word_start, idx, &self[word_start..idx]));
-                in_word = false;
+            } else {
+                if in_word {
+                    words.push((word_start, idx, &self[word_start..idx]));
+                    in_word = false;
+                }
+                if !in_punc {
+                    in_punc = true;
+                    punc_start = idx;
+                }
             }
         }
 
+        // Handle trailing word or punctuation
         if in_word {
             words.push((word_start, self.len(), &self[word_start..]));
+        }
+        if in_punc {
+            words.push((punc_start, self.len(), &self[punc_start..]));
         }
 
         words
@@ -125,7 +141,6 @@ impl Document {
         let point = cursor.head().to_point(&self.buffer);
         let text = self.buffer.row_text(point.row);
         if let Some(word) = text.find_current_word(point.column as usize) {
-            // Found next word
             let mut head = Anchor::MIN;
             let mut tail = Anchor::MIN;
             let (start, end, _w) = word;
@@ -461,7 +476,8 @@ impl Document {
             } else {
                 point.column = self.buffer.line_len(point.row);
             }
-            let offset = point.to_offset(&self.buffer);
+            let mut offset = point.to_offset(&self.buffer);
+            offset = self.buffer.clip_offset(offset, Bias::Left);
             let new_head = self.buffer.anchor_at(offset, Bias::Left);
             self.selections.update(&{
                 Selection {
@@ -487,12 +503,13 @@ impl Document {
                 if self.buffer.line_len(point.row) == 0 {
                     target_point = point.clone();
                     has_target = true;
-                } else if (has_target) {
+                } else if has_target {
                     break;
                 }
             }
             if has_target {
-                let offset = target_point.to_offset(&self.buffer);
+                let mut offset = target_point.to_offset(&self.buffer);
+                offset = self.buffer.clip_offset(offset, Bias::Right);
                 let new_head = self.buffer.anchor_at(offset, Bias::Left);
                 self.selections.update(&{
                     Selection {
@@ -519,7 +536,7 @@ impl Document {
                 if self.buffer.line_len(point.row) == 0 {
                     target_point = point.clone();
                     has_target = true;
-                } else if (has_target) {
+                } else if has_target {
                     break;
                 }
             }
