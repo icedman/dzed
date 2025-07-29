@@ -1,3 +1,3 @@
 #!/bin/sh
 
-cargo build -p dzd --release --target x86_64-unknown-linux-musl
+cargo build --release --target x86_64-unknown-linux-musl

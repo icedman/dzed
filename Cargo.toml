@@ -1,18 +1,13 @@
 [package]
-name = "dzd"
+name = "test_zed"
 version = "0.1.0"
-publish.workspace = true
-edition.workspace = true
+edition = "2024"
 
 [dependencies]
 color-eyre = "0.6.5"
 crossterm = "0.29.0"
-rope = { path = "../rope" }
-sum_tree = { path = "../sum_tree" }
-# syntect = { git = "https://github.com/trishume/syntect", default-features = false, features = ["default-fancy"] }
+rope = { path = "./crates/zed/crates/rope" }
+sum_tree = { path = "./crates/zed/crates/sum_tree" }
+text = { path = "./crates/zed/crates/text" }
+clock = { path = "./crates/zed/crates/clock" }
 syntect = { git = "https://github.com/trishume/syntect" }
-text = { path = "../text" }
-clock = { path = "../clock" }
-
-[lints]
-workspace = true

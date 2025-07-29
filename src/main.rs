@@ -1,7 +1,6 @@
 mod actions;
 mod document;
 mod highlight;
-mod movement;
 mod selections;
 
 use std::{
@@ -34,16 +33,18 @@ use text::{
     ToPoint,
 };
 
-use actions::Action;
+use actions::{Action, Mode};
 use document::{BufferText, Document};
 use highlight::Highlights;
-use movement::Mode;
 use selections::SelectionCollection;
 
 use clock;
 
 pub trait ToCrossTerm {
     fn rgb(&self) -> crossterm::style::Color;
+}
+
+pub trait ColorAdjust {
     fn lighten(&self, amount: u8) -> syntect::highlighting::Color;
     fn darken(&self, amount: u8) -> syntect::highlighting::Color;
 }
@@ -56,7 +57,9 @@ impl ToCrossTerm for syntect::highlighting::Color {
             b: self.b,
         };
     }
+}
 
+impl ColorAdjust for syntect::highlighting::Color {
     fn lighten(&self, amount: u8) -> syntect::highlighting::Color {
         syntect::highlighting::Color {
             r: self.r.saturating_add(amount),
@@ -83,7 +86,6 @@ fn fill_to_eol(count: usize) {
 }
 
 fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
-    //fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
     if args.len() != 2 {
         eprintln!("Usage: {} <file_path>", args[0]);
@@ -125,11 +127,11 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let bg = settings.background.unwrap();
         (
             fg.rgb(),
-            bg.rgb(),
+            bg.darken(10).rgb(),
             settings.caret.unwrap_or(fg).rgb(),
             settings.line_highlight.unwrap_or(bg.darken(10)).rgb(),
-            settings.selection.unwrap_or(bg.lighten(10)).rgb(),
-            settings.gutter.unwrap_or(bg.darken(10)).rgb(),
+            settings.selection.unwrap_or(bg.darken(10)).rgb(),
+            settings.gutter.unwrap_or(bg).rgb(),
         )
     };
 
@@ -263,19 +265,25 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
                     if let Some(style) = current_style {
                         fg = style.foreground.rgb();
-                        bg = style.background.rgb();
+                        bg = style.background.darken(10).rgb();
                     }
 
                     if at_cursor_row {
                         // bg = clr_current_line.clone();
                     }
 
-                    let (selected, at_cursor) = doc.selections().is_selected(row, rc, &buffer);
+                    let (selected, mut selected_line, at_cursor) =
+                        doc.selections().is_selected(row, rc, &buffer);
                     if selected {
                         bg = clr_select;
                     }
+                    selected_line = selected_line && mode == Mode::Visual_Line;
+                    if selected_line {
+                        bg = clr_select;
+                    }
                     if at_cursor {
-                        fg = clr_caret;
+                        fg = clr_bg;
+                        bg = clr_caret;
                     }
 
                     execute!(stdout, crossterm::style::SetForegroundColor(fg)).unwrap();
@@ -300,8 +308,8 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                                 rc += ch.len_utf8() as u32;
                             }
                             _ => {
-                                let fc = if ch == ' ' && at_cursor { '_' } else { ch };
-                                print!("{}", fc);
+                                // let fc = if ch == ' ' && at_cursor { '_' } else { ch };
+                                print!("{}", ch);
                                 cols_remaining = cols_remaining.saturating_sub(1);
                                 rc += ch.len_utf8() as u32;
                             }
@@ -337,6 +345,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
             // statusbar
             {
+                execute!(stdout, crossterm::style::SetForegroundColor(clr_fg));
                 execute!(stdout, crossterm::style::SetBackgroundColor(clr_gutter));
                 execute!(stdout, MoveTo(0, screen_rows as u16)).unwrap();
                 fill_to_eol(screen_cols as usize);
@@ -393,7 +402,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 }
 
                 let mut action = Action::NoOp;
-                let mut select = mode == Mode::Visual;
+                let mut select = mode == Mode::Visual || mode == Mode::Visual_Line;
                 let move_action = match (key_event.code, key_event.modifiers) {
                     (KeyCode::Left, _) => Action::MoveLeft { select },
                     (KeyCode::Right, _) => Action::MoveRight { select },
@@ -417,23 +426,34 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 let normal_action = match (key_event.code, key_event.modifiers) {
                     (KeyCode::Esc, _) => {
                         pending_cmd.clear();
+                        should_redraw = true;
                         Action::NoOp
                     }
                     (KeyCode::Char('i'), _) => {
                         if mode != Mode::Command {
                             mode = Mode::Insert;
+                            should_redraw = true;
                         }
                         Action::NoOp
                     }
                     (KeyCode::Char('v'), _) => {
                         if mode != Mode::Command {
                             mode = Mode::Visual;
+                            should_redraw = true;
+                        }
+                        Action::NoOp
+                    }
+                    (KeyCode::Char('V'), _) => {
+                        if mode != Mode::Command {
+                            mode = Mode::Visual_Line;
+                            should_redraw = true;
                         }
                         Action::NoOp
                     }
                     (KeyCode::Char(':'), _) => {
                         if mode != Mode::Command {
                             mode = Mode::Command;
+                            should_redraw = true;
                         }
                         Action::NoOp
                     }
@@ -517,28 +537,39 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                     Mode::Normal => {
                         if normal_action != Action::NoOp {
                             doc.apply_action(&normal_action);
-                        } else {
+                        } else if move_action != Action::NoOp {
                             doc.apply_action(&move_action);
+                            pending_cmd.clear();
                         }
                     }
                     Mode::Visual => {
                         if normal_action != Action::NoOp {
                             doc.apply_action(&normal_action);
-                        } else {
+                        } else if move_action != Action::NoOp {
                             doc.apply_action(&move_action);
+                            pending_cmd.clear();
+                        }
+                    }
+                    Mode::Visual_Line => {
+                        if normal_action != Action::NoOp {
+                            doc.apply_action(&normal_action);
+                        } else if move_action != Action::NoOp {
+                            doc.apply_action(&move_action);
+                            pending_cmd.clear();
                         }
                     }
                     Mode::Insert => {
                         if insert_action != Action::NoOp {
                             doc.apply_action(&insert_action);
-                        } else {
+                        } else if move_action != Action::NoOp {
                             doc.apply_action(&move_action);
+                            pending_cmd.clear();
                         }
                     }
                     Mode::Command => {
                         if insert_action != Action::NoOp {
                             cmd.apply_action(&insert_action);
-                        } else {
+                        } else if move_action != Action::NoOp {
                             //cmd.apply_action(&move_action);
                         }
                     }
