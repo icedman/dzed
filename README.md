@@ -6,3 +6,5 @@ Input and rendering handled by crossterm. Syntax highlighting by syntect.
 cargo build
 ./target/debug/test_zed <your code file>
 ```
+
+![Screen Shot](https://raw.githubusercontent.com/icedman/dzed/refs/heads/main/screenshots/Screenshot%20from%202026-02-02%2021-56-19.png)
