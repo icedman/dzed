@@ -5,10 +5,8 @@ mod highlight;
 mod selections;
 
 use std::{
-    cmp::Ordering,
     io::{Write, stdout},
-    ops::Range,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use crossterm::{
@@ -24,6 +22,99 @@ use actions::{Action, Mode};
 use display::display_map::DisplayMap;
 use document::{BufferText, Document};
 use highlight::Highlights;
+
+pub struct EditorBuffer {
+    pub file_path: String,
+    pub doc: Document,
+    pub display_map: DisplayMap,
+    pub hl: Highlights,
+    pub scroll_x: u32,
+    pub scroll_y: u32,
+    pub dirty_hl: bool,
+}
+
+pub struct EditorTheme {
+    pub clr_fg: crossterm::style::Color,
+    pub clr_bg: crossterm::style::Color,
+    pub clr_caret: crossterm::style::Color,
+    pub clr_select: crossterm::style::Color,
+    pub clr_gutter: crossterm::style::Color,
+}
+
+impl EditorTheme {
+    pub fn from_highlights(hl: &Highlights) -> Self {
+        let settings = hl.theme_settings();
+        let fg = settings.foreground.unwrap();
+        let bg = settings.background.unwrap();
+        Self {
+            clr_fg: fg.rgb(),
+            clr_bg: bg.darken(10).rgb(),
+            clr_caret: settings.caret.unwrap_or(fg).rgb(),
+            clr_select: settings.selection.unwrap_or(bg.darken(10)).rgb(),
+            clr_gutter: settings.gutter.unwrap_or(bg).rgb(),
+        }
+    }
+}
+
+impl EditorBuffer {
+    pub fn new(file_path: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        let doc = Document::new(file_path)?;
+        let display_map = DisplayMap::new(doc.buffer().snapshot().clone(), None);
+        let hl = Highlights::new(file_path);
+        Ok(Self {
+            file_path: file_path.to_string(),
+            doc,
+            display_map,
+            hl,
+            scroll_x: 0,
+            scroll_y: 0,
+            dirty_hl: true,
+        })
+    }
+}
+
+pub struct BufferManager {
+    pub buffers: Vec<EditorBuffer>,
+    pub active_idx: usize,
+}
+
+impl BufferManager {
+    pub fn new() -> Self {
+        Self {
+            buffers: Vec::new(),
+            active_idx: 0,
+        }
+    }
+
+    pub fn add_buffer(&mut self, buffer: EditorBuffer) {
+        self.buffers.push(buffer);
+        self.active_idx = self.buffers.len() - 1;
+    }
+
+    pub fn active(&self) -> &EditorBuffer {
+        &self.buffers[self.active_idx]
+    }
+
+    pub fn active_mut(&mut self) -> &mut EditorBuffer {
+        &mut self.buffers[self.active_idx]
+    }
+
+    pub fn switch_next(&mut self) {
+        if !self.buffers.is_empty() {
+            self.active_idx = (self.active_idx + 1) % self.buffers.len();
+        }
+    }
+
+    pub fn switch_prev(&mut self) {
+        if !self.buffers.is_empty() {
+            if self.active_idx == 0 {
+                self.active_idx = self.buffers.len() - 1;
+            } else {
+                self.active_idx -= 1;
+            }
+        }
+    }
+}
 
 pub trait ToCrossTerm {
     fn rgb(&self) -> crossterm::style::Color;
@@ -70,31 +161,47 @@ fn fill_to_eol(count: usize) {
     }
 }
 
+pub struct Editor {
+    pub buffer_manager: BufferManager,
+    pub cmd: Document,
+    pub pending_cmd: String,
+    pub mode: Mode,
+    pub theme: EditorTheme,
+}
+
+impl Editor {
+    pub fn new(file_paths: Vec<String>) -> Result<Self, Box<dyn std::error::Error>> {
+        let mut buffer_manager = BufferManager::new();
+        for path in file_paths {
+            buffer_manager.add_buffer(EditorBuffer::new(&path)?);
+        }
+
+        if buffer_manager.buffers.is_empty() {
+            buffer_manager.add_buffer(EditorBuffer::new("")?);
+        }
+
+        let cmd = Document::new("")?;
+        let theme = EditorTheme::from_highlights(&buffer_manager.active().hl);
+
+        Ok(Self {
+            buffer_manager,
+            cmd,
+            pending_cmd: String::new(),
+            mode: Mode::Normal,
+            theme,
+        })
+    }
+}
+
 fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
-    if args.len() != 2 {
-        eprintln!("Usage: {} <file_path>", args[0]);
-        return Ok(());
-    }
-
-    let file_path = &args[1];
-    let mut doc = match Document::new(file_path) {
-        Ok(doc) => doc,
-        Err(err) => {
-            eprintln!("Failed to open document: {}", err);
-            return Ok(());
-        }
+    let file_paths = if args.len() > 1 {
+        args[1..].to_vec()
+    } else {
+        Vec::new()
     };
 
-    let mut cmd = match Document::new("") {
-        Ok(doc) => doc,
-        Err(_err) => {
-            return Ok(());
-        }
-    };
-    let mut pending_cmd = "".to_string();
-    let mut mode = Mode::Normal;
-
+    let mut editor = Editor::new(file_paths)?;
     let mut stdout = stdout();
     crossterm::terminal::enable_raw_mode().unwrap();
     execute!(
@@ -105,36 +212,10 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     )
     .unwrap();
 
-    let mut hl = Highlights::new(file_path);
-    let mut display_map = DisplayMap::new(doc.buffer().snapshot().clone(), None);
-    let mut scroll_x: u32 = 0;
-    let mut scroll_y: u32 = 0;
-
     let tab_size = 4;
-
-    // Prepare default background pair
-    let (clr_fg, clr_bg, clr_caret, _clr_current_line, clr_select, clr_gutter) = {
-        let settings = hl.theme_settings();
-        let fg = settings.foreground.unwrap();
-        let bg = settings.background.unwrap();
-        (
-            fg.rgb(),
-            bg.darken(10).rgb(),
-            settings.caret.unwrap_or(fg).rgb(),
-            settings.line_highlight.unwrap_or(bg.darken(10)).rgb(),
-            settings.selection.unwrap_or(bg.darken(10)).rgb(),
-            settings.gutter.unwrap_or(bg).rgb(),
-        )
-    };
-
     execute!(stdout, crossterm::cursor::Hide).unwrap();
 
-    let _paste_buffer = String::new();
-    let _last_char_time = Instant::now();
-    let _paste_timeout = Duration::from_millis(5); // threshold to separate pastes from normal typing
-
-    let mut dirty_hl = true;
-    let mut should_redraw = false;
+    let mut should_redraw = true;
     let mut prev_screen_rows = 0;
     let mut prev_screen_cols = 0;
 
@@ -145,33 +226,27 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             (cols as i32, rows as i32)
         };
         // dimensions has changed
-        if prev_screen_cols != screen_cols && prev_screen_rows != screen_rows {
+        if prev_screen_cols != screen_cols || prev_screen_rows != screen_rows {
             should_redraw = true;
         }
         prev_screen_rows = screen_rows;
         prev_screen_cols = screen_cols;
 
+        let active_buffer = editor.buffer_manager.active_mut();
+
         // update display map
-        display_map.set_wrap_width(Some(screen_cols as u32));
-        display_map.sync(doc.buffer().snapshot().clone());
-        let display_snapshot = display_map.snapshot();
+        active_buffer
+            .display_map
+            .set_wrap_width(Some(screen_cols as u32));
+        active_buffer
+            .display_map
+            .sync(active_buffer.doc.buffer().snapshot().clone());
+        let display_snapshot = active_buffer.display_map.snapshot();
 
         // get cursor information
-        let cursor = doc.selection();
+        let cursor = active_buffer.doc.selection();
         let cursor_head = cursor.head();
-        let cursor_tail = cursor.tail();
-        let _cursor_range = if cursor_head.cmp(&cursor_tail, &doc.buffer()) == Ordering::Less {
-            Range {
-                start: cursor_head,
-                end: cursor_tail,
-            }
-        } else {
-            Range {
-                end: cursor_head,
-                start: cursor_tail,
-            }
-        };
-        let cursor_point = cursor_head.to_point(&doc.buffer());
+        let cursor_point = cursor_head.to_point(&active_buffer.doc.buffer());
         let display_cursor = display_snapshot.point_to_display_point(cursor_point);
         let cursor_row = display_cursor.row() as i32;
         let cursor_col = display_cursor.column() as i32;
@@ -179,27 +254,24 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let visible_cols = screen_cols;
 
         // scroll based on cursor position
-        let mut cursor_screen_row = cursor_row - scroll_y as i32;
+        let mut cursor_screen_row = cursor_row - active_buffer.scroll_y as i32;
         while cursor_screen_row >= visible_rows {
-            scroll_y += 1;
-            cursor_screen_row = cursor_row - scroll_y as i32;
+            active_buffer.scroll_y += 1;
+            cursor_screen_row = cursor_row - active_buffer.scroll_y as i32;
         }
-        while cursor_screen_row < 0 && scroll_y > 0 {
-            scroll_y -= 1;
-            cursor_screen_row = cursor_row - scroll_y as i32;
+        while cursor_screen_row < 0 && active_buffer.scroll_y > 0 {
+            active_buffer.scroll_y -= 1;
+            cursor_screen_row = cursor_row - active_buffer.scroll_y as i32;
         }
-        let mut cursor_screen_col = cursor_col - scroll_x as i32;
+        let mut cursor_screen_col = cursor_col - active_buffer.scroll_x as i32;
         while cursor_screen_col >= visible_cols {
-            scroll_x += 1;
-            cursor_screen_col = cursor_col - scroll_x as i32;
+            active_buffer.scroll_x += 1;
+            cursor_screen_col = cursor_col - active_buffer.scroll_x as i32;
         }
-        while cursor_screen_col < 0 && scroll_x > 0 {
-            scroll_x -= 1;
-            cursor_screen_col = cursor_col - scroll_x as i32;
+        while cursor_screen_col < 0 && active_buffer.scroll_x > 0 {
+            active_buffer.scroll_x -= 1;
+            cursor_screen_col = cursor_col - active_buffer.scroll_x as i32;
         }
-
-        // bar
-        // print!("\x1b[5 q");
 
         //------------------
         // render
@@ -208,25 +280,26 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             should_redraw = false;
             execute!(stdout, crossterm::cursor::Hide).unwrap();
 
-            let buffer = doc.buffer();
+            let buffer = active_buffer.doc.buffer();
             let total_rows = display_snapshot.row_count();
-            let end_line = (scroll_y + visible_rows as u32).min(total_rows);
+            let end_line = (active_buffer.scroll_y + visible_rows as u32).min(total_rows);
 
-            if dirty_hl {
-                let start_buffer_row = display_snapshot.buffer_row_for_display_row(scroll_y);
+            if active_buffer.dirty_hl {
+                let start_buffer_row =
+                    display_snapshot.buffer_row_for_display_row(active_buffer.scroll_y);
                 let end_buffer_row =
                     display_snapshot.buffer_row_for_display_row(end_line.saturating_sub(1));
 
-                hl.highlight_lines(
-                    doc.buffer(),
+                active_buffer.hl.highlight_lines(
+                    active_buffer.doc.buffer(),
                     start_buffer_row as usize,
                     (end_buffer_row - start_buffer_row + 1) as usize,
                 );
             }
-            dirty_hl = true;
+            active_buffer.dirty_hl = true;
 
             let mut screen_row = 0;
-            for row in scroll_y..end_line {
+            for row in active_buffer.scroll_y..end_line {
                 execute!(stdout, MoveTo(0, screen_row)).unwrap();
                 let text = display_snapshot.line_text(row) + " ";
                 let buffer_row = display_snapshot.buffer_row_for_display_row(row);
@@ -234,10 +307,14 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 let start_col = buffer_range.start.column;
 
                 let ranges;
-                if let Some(style_cache) = hl.render_line(buffer_row as usize) {
+                if let Some(style_cache) = active_buffer.hl.render_line(buffer_row as usize) {
                     ranges = &style_cache.styles;
                 } else {
-                    execute!(stdout, crossterm::style::SetBackgroundColor(clr_bg)).unwrap();
+                    execute!(
+                        stdout,
+                        crossterm::style::SetBackgroundColor(editor.theme.clr_bg)
+                    )
+                    .unwrap();
                     fill_to_eol(screen_cols as usize);
                     screen_row += 1;
                     continue;
@@ -265,7 +342,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                     );
                 let mut current_style = current_range.map(|(style, _, _)| style);
 
-                let mut x_scroll = scroll_x;
+                let mut x_scroll = active_buffer.scroll_x;
                 let mut cols_remaining = screen_cols;
 
                 for (column, ch) in text.chars().enumerate() {
@@ -277,26 +354,29 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                         current_style = current_range.map(|(style, _, _)| style);
                     }
 
-                    let mut fg = clr_fg.clone();
-                    let mut bg = clr_bg.clone();
+                    let mut fg = editor.theme.clr_fg.clone();
+                    let mut bg = editor.theme.clr_bg.clone();
 
                     if let Some(style) = current_style {
                         fg = style.foreground.rgb();
                         bg = style.background.darken(10).rgb();
                     }
 
-                    let (selected, mut selected_line, at_cursor) =
-                        doc.selections().is_selected(buffer_row, rc, &buffer);
-                    if selected && (mode == Mode::Visual || mode == Mode::Visual_Line) {
-                        bg = clr_select;
+                    let (selected, mut selected_line, at_cursor) = active_buffer
+                        .doc
+                        .selections()
+                        .is_selected(buffer_row, rc, &buffer);
+                    if selected && (editor.mode == Mode::Visual || editor.mode == Mode::Visual_Line)
+                    {
+                        bg = editor.theme.clr_select;
                     }
-                    selected_line = selected_line && mode == Mode::Visual_Line;
+                    selected_line = selected_line && editor.mode == Mode::Visual_Line;
                     if selected_line {
-                        bg = clr_select;
+                        bg = editor.theme.clr_select;
                     }
-                    if at_cursor && mode != Mode::Insert && mode != Mode::Command {
-                        fg = clr_bg;
-                        bg = clr_caret;
+                    if at_cursor && editor.mode != Mode::Insert && editor.mode != Mode::Command {
+                        fg = editor.theme.clr_bg;
+                        bg = editor.theme.clr_caret;
                     }
 
                     execute!(stdout, crossterm::style::SetForegroundColor(fg)).unwrap();
@@ -309,10 +389,15 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                             '\t' => {
                                 for _i in 0..tab_size {
                                     print!(" ");
-                                    if at_cursor && mode != Mode::Insert && mode != Mode::Command {
+                                    if at_cursor
+                                        && editor.mode != Mode::Insert
+                                        && editor.mode != Mode::Command
+                                    {
                                         execute!(
                                             stdout,
-                                            crossterm::style::SetBackgroundColor(clr_bg)
+                                            crossterm::style::SetBackgroundColor(
+                                                editor.theme.clr_bg
+                                            )
                                         )
                                         .unwrap();
                                     }
@@ -333,9 +418,11 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                     }
                 }
 
-                execute!(stdout, crossterm::style::SetBackgroundColor(clr_bg)).unwrap();
-
-                // fill_to_eol((screen_cols - text.chars().count() as i32).max(0) as usize);
+                execute!(
+                    stdout,
+                    crossterm::style::SetBackgroundColor(editor.theme.clr_bg)
+                )
+                .unwrap();
                 fill_to_eol(cols_remaining.max(0) as usize);
 
                 screen_row += 1;
@@ -346,39 +433,59 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
             // statusbar
             {
-                execute!(stdout, crossterm::style::SetForegroundColor(clr_fg)).unwrap();
-                execute!(stdout, crossterm::style::SetBackgroundColor(clr_gutter)).unwrap();
+                execute!(
+                    stdout,
+                    crossterm::style::SetForegroundColor(editor.theme.clr_fg)
+                )
+                .unwrap();
+                execute!(
+                    stdout,
+                    crossterm::style::SetBackgroundColor(editor.theme.clr_gutter)
+                )
+                .unwrap();
                 execute!(stdout, MoveTo(0, screen_rows as u16)).unwrap();
                 fill_to_eol(screen_cols as usize);
                 execute!(stdout, MoveTo(0, screen_rows as u16)).unwrap();
 
-                let row_len = doc.buffer().line_len(cursor_row as u32);
-
-                if mode == Mode::Command {
-                    print!(":{}", cmd.buffer().row_text(cmd.buffer().row_count() - 1));
-                } else {
+                if editor.mode == Mode::Command {
                     print!(
-                        "{} {},{} rl:{} {}",
-                        match mode {
+                        ":{}",
+                        editor
+                            .cmd
+                            .buffer()
+                            .row_text(editor.cmd.buffer().row_count() - 1)
+                    );
+                } else {
+                    let active_idx = editor.buffer_manager.active_idx;
+                    let buffer_count = editor.buffer_manager.buffers.len();
+                    let active_buffer = editor.buffer_manager.active();
+                    let row_len = active_buffer.doc.buffer().line_len(cursor_point.row as u32);
+
+                    print!(
+                        "[{}/{}] {} {} {},{} rl:{} {}",
+                        active_idx + 1,
+                        buffer_count,
+                        active_buffer.file_path,
+                        match editor.mode {
                             Mode::Normal => "NORMAL",
                             Mode::Insert => "INSERT",
                             Mode::Visual => "VISUAL",
-                            _ => "",
+                            Mode::Visual_Line => "V-LINE",
+                            Mode::Command => "COMMAND",
                         },
-                        // scroll_x,
-                        // scroll_y,
-                        doc.selection().head().offset,
-                        doc.selection().tail().offset,
-                        // &doc.buffer().version().get(0), //
-                        // &doc.buffer().replica_id(),
+                        active_buffer.doc.selection().head().offset,
+                        active_buffer.doc.selection().tail().offset,
                         row_len,
-                        pending_cmd
+                        editor.pending_cmd
                     );
                 }
             }
 
-            if mode == Mode::Command {
-                let cmd_text = cmd.buffer().row_text(cmd.buffer().row_count() - 1);
+            if editor.mode == Mode::Command {
+                let cmd_text = editor
+                    .cmd
+                    .buffer()
+                    .row_text(editor.cmd.buffer().row_count() - 1);
                 let cmd_col = (cmd_text.chars().count() + 1) as u16;
                 execute!(
                     stdout,
@@ -391,7 +498,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 execute!(
                     stdout,
                     MoveTo(cursor_screen_col as u16, cursor_screen_row as u16),
-                    match mode {
+                    match editor.mode {
                         Mode::Insert => crossterm::cursor::SetCursorStyle::BlinkingBar,
                         _ => crossterm::cursor::SetCursorStyle::BlinkingBlock,
                     },
@@ -409,8 +516,11 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         if event::poll(Duration::from_millis(50))? {
             let event = event::read()?;
             if let Event::Paste(content) = &event {
-                if mode == Mode::Insert {
-                    doc.apply_action(&Action::InsertText(content.clone()));
+                if editor.mode == Mode::Insert {
+                    let active_buffer = editor.buffer_manager.active_mut();
+                    active_buffer
+                        .doc
+                        .apply_action(&Action::InsertText(content.clone()));
                     should_redraw = true;
                 }
             }
@@ -418,15 +528,16 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             if let Event::Key(key_event) = event {
                 should_redraw = false;
 
-                let current_mode = mode.clone();
+                let current_mode = editor.mode.clone();
 
                 // global actions
                 match (key_event.code, key_event.modifiers) {
                     (KeyCode::Esc, _) => {
-                        mode = Mode::Normal;
+                        editor.mode = Mode::Normal;
                         should_redraw = true;
-                        if doc.has_selection() {
-                            doc.apply_action(&Action::ClearCursors);
+                        let active_buffer = editor.buffer_manager.active_mut();
+                        if active_buffer.doc.has_selection() {
+                            active_buffer.doc.apply_action(&Action::ClearCursors);
                         }
                     }
                     (KeyCode::Char('q'), KeyModifiers::CONTROL) => break,
@@ -436,7 +547,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 let (count, _) = {
                     let mut count_str = String::new();
                     let mut parsing_count = true;
-                    for ch in pending_cmd.chars() {
+                    for ch in editor.pending_cmd.chars() {
                         if parsing_count && ch.is_ascii_digit() {
                             count_str.push(ch);
                         } else {
@@ -447,7 +558,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                     (count, ())
                 };
 
-                let select = mode == Mode::Visual || mode == Mode::Visual_Line;
+                let select = editor.mode == Mode::Visual || editor.mode == Mode::Visual_Line;
                 let move_action = match (key_event.code, key_event.modifiers) {
                     (KeyCode::Left, _) => Action::MoveLeft { select, count },
                     (KeyCode::Right, _) => Action::MoveRight { select, count },
@@ -473,34 +584,34 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
                 let normal_action = match (key_event.code, key_event.modifiers) {
                     (KeyCode::Esc, _) => {
-                        pending_cmd.clear();
+                        editor.pending_cmd.clear();
                         should_redraw = true;
                         Action::NoOp
                     }
                     (KeyCode::Char('i'), _) => {
-                        if mode != Mode::Command {
-                            mode = Mode::Insert;
+                        if editor.mode != Mode::Command {
+                            editor.mode = Mode::Insert;
                             should_redraw = true;
                         }
                         Action::NoOp
                     }
                     (KeyCode::Char('v'), _) => {
-                        if mode != Mode::Command {
-                            mode = Mode::Visual;
+                        if editor.mode != Mode::Command {
+                            editor.mode = Mode::Visual;
                             should_redraw = true;
                         }
                         Action::NoOp
                     }
                     (KeyCode::Char('V'), _) => {
-                        if mode != Mode::Command {
-                            mode = Mode::Visual_Line;
+                        if editor.mode != Mode::Command {
+                            editor.mode = Mode::Visual_Line;
                             should_redraw = true;
                         }
                         Action::NoOp
                     }
                     (KeyCode::Char(':'), _) => {
-                        if mode != Mode::Command {
-                            mode = Mode::Command;
+                        if editor.mode != Mode::Command {
+                            editor.mode = Mode::Command;
                             should_redraw = true;
                         }
                         Action::NoOp
@@ -524,12 +635,12 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                         count,
                     },
                     (KeyCode::Char(c), _) => {
-                        pending_cmd.push(c);
+                        editor.pending_cmd.push(c);
                         let (count, cmd_without_count) = {
                             let mut count_str = String::new();
                             let mut cmd_str = String::new();
                             let mut parsing_count = true;
-                            for ch in pending_cmd.chars() {
+                            for ch in editor.pending_cmd.chars() {
                                 if parsing_count
                                     && ch.is_ascii_digit()
                                     && (ch != '0' || !count_str.is_empty())
@@ -663,7 +774,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                         };
 
                         if let Some(a) = action {
-                            pending_cmd.clear();
+                            editor.pending_cmd.clear();
                             a
                         } else {
                             Action::NoOp
@@ -676,23 +787,31 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
                 // document actions
                 let insert_action = match (key_event.code, key_event.modifiers) {
-                    (KeyCode::Enter, _) if mode == Mode::Insert => Action::InsertNewLine,
-                    (KeyCode::Tab, _) if mode == Mode::Insert || mode == Mode::Command => {
+                    (KeyCode::Enter, _) if editor.mode == Mode::Insert => Action::InsertNewLine,
+                    (KeyCode::Tab, _)
+                        if editor.mode == Mode::Insert || editor.mode == Mode::Command =>
+                    {
                         Action::InsertTab
                     }
-                    (KeyCode::Delete, _) if mode == Mode::Insert || mode == Mode::Command => {
+                    (KeyCode::Delete, _)
+                        if editor.mode == Mode::Insert || editor.mode == Mode::Command =>
+                    {
                         Action::Delete { count: 1 }
                     }
-                    (KeyCode::Backspace, _) if mode == Mode::Insert || mode == Mode::Command => {
+                    (KeyCode::Backspace, _)
+                        if editor.mode == Mode::Insert || editor.mode == Mode::Command =>
+                    {
                         Action::Backspace
                     }
-                    (KeyCode::Char(c), _) if mode == Mode::Insert || mode == Mode::Command => {
+                    (KeyCode::Char(c), _)
+                        if editor.mode == Mode::Insert || editor.mode == Mode::Command =>
+                    {
                         Action::InsertText(c.to_string())
                     }
                     _ => Action::NoOp,
                 };
 
-                let _command_action = if mode != Mode::Insert {
+                let _command_action = if editor.mode != Mode::Insert {
                     match (key_event.code, key_event.modifiers) {
                         _ => Action::NoOp,
                     }
@@ -704,60 +823,99 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 match current_mode {
                     Mode::Normal => {
                         if normal_action != Action::NoOp {
-                            doc.apply_action(&normal_action);
-                            pending_cmd.clear();
+                            let active_buffer = editor.buffer_manager.active_mut();
+                            active_buffer.doc.apply_action(&normal_action);
+                            editor.pending_cmd.clear();
                         } else if move_action != Action::NoOp {
-                            doc.apply_action(&move_action);
-                            pending_cmd.clear();
+                            let active_buffer = editor.buffer_manager.active_mut();
+                            active_buffer.doc.apply_action(&move_action);
+                            editor.pending_cmd.clear();
                         }
                     }
                     Mode::Visual => {
                         if normal_action != Action::NoOp {
-                            doc.apply_action(&normal_action);
-                            pending_cmd.clear();
+                            let active_buffer = editor.buffer_manager.active_mut();
+                            active_buffer.doc.apply_action(&normal_action);
+                            editor.pending_cmd.clear();
                         } else if move_action != Action::NoOp {
-                            doc.apply_action(&move_action);
-                            pending_cmd.clear();
+                            let active_buffer = editor.buffer_manager.active_mut();
+                            active_buffer.doc.apply_action(&move_action);
+                            editor.pending_cmd.clear();
                         }
                     }
                     Mode::Visual_Line => {
                         if normal_action != Action::NoOp {
-                            doc.apply_action(&normal_action);
-                            pending_cmd.clear();
+                            let active_buffer = editor.buffer_manager.active_mut();
+                            active_buffer.doc.apply_action(&normal_action);
+                            editor.pending_cmd.clear();
                         } else if move_action != Action::NoOp {
-                            doc.apply_action(&move_action);
-                            pending_cmd.clear();
+                            let active_buffer = editor.buffer_manager.active_mut();
+                            active_buffer.doc.apply_action(&move_action);
+                            editor.pending_cmd.clear();
                         }
                     }
                     Mode::Insert => {
                         if insert_action != Action::NoOp {
-                            doc.apply_action(&insert_action);
+                            let active_buffer = editor.buffer_manager.active_mut();
+                            active_buffer.doc.apply_action(&insert_action);
                         } else if move_action != Action::NoOp {
-                            doc.apply_action(&move_action);
-                            pending_cmd.clear();
+                            let active_buffer = editor.buffer_manager.active_mut();
+                            active_buffer.doc.apply_action(&move_action);
+                            editor.pending_cmd.clear();
                         }
                     }
                     Mode::Command => {
                         if let (KeyCode::Enter, _) = (key_event.code, key_event.modifiers) {
-                            let command_text = cmd.buffer().row_text(0);
-                            if let Ok(line_number) = command_text.trim().parse::<u32>() {
-                                doc.apply_action(&Action::MoveToLine {
-                                    select: false,
-                                    line: line_number,
-                                });
-                            } else if command_text.trim() == "q" {
-                                break;
+                            let command_text = editor.cmd.buffer().row_text(0);
+                            let command_parts: Vec<&str> =
+                                command_text.trim().split_whitespace().collect();
+
+                            if !command_parts.is_empty() {
+                                match command_parts[0] {
+                                    "q" => break,
+                                    "bn" => {
+                                        editor.buffer_manager.switch_next();
+                                        editor.theme = EditorTheme::from_highlights(
+                                            &editor.buffer_manager.active().hl,
+                                        );
+                                    }
+                                    "bp" => {
+                                        editor.buffer_manager.switch_prev();
+                                        editor.theme = EditorTheme::from_highlights(
+                                            &editor.buffer_manager.active().hl,
+                                        );
+                                    }
+                                    "e" if command_parts.len() > 1 => {
+                                        if let Ok(new_buffer) = EditorBuffer::new(command_parts[1])
+                                        {
+                                            editor.buffer_manager.add_buffer(new_buffer);
+                                            editor.theme = EditorTheme::from_highlights(
+                                                &editor.buffer_manager.active().hl,
+                                            );
+                                        }
+                                    }
+                                    cmd if cmd.parse::<u32>().is_ok() => {
+                                        let line_number = cmd.parse::<u32>().unwrap();
+                                        let active_buffer = editor.buffer_manager.active_mut();
+                                        active_buffer.doc.apply_action(&Action::MoveToLine {
+                                            select: false,
+                                            line: line_number,
+                                        });
+                                    }
+                                    _ => {}
+                                }
                             }
+
                             // Clear command buffer and return to Normal mode
-                            cmd = Document::new("").unwrap();
-                            mode = Mode::Normal;
+                            editor.cmd = Document::new("").unwrap();
+                            editor.mode = Mode::Normal;
                             should_redraw = true;
                         } else if insert_action != Action::NoOp {
-                            cmd.apply_action(&insert_action);
+                            editor.cmd.apply_action(&insert_action);
                         } else if let (KeyCode::Backspace, _) =
                             (key_event.code, key_event.modifiers)
                         {
-                            cmd.apply_action(&Action::Backspace);
+                            editor.cmd.apply_action(&Action::Backspace);
                         }
                     }
                 }
@@ -770,8 +928,6 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                         should_redraw = true;
                     }
                 }
-            } else {
-                // do some background task here?
             }
         }
     }
