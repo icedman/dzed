@@ -21,22 +21,30 @@ impl DisplayPoint {
 
 pub struct DisplayMap {
     wrap_map: WrapMap,
+    pub scroll_x: u32,
+    pub scroll_y: u32,
 }
 
 pub struct DisplaySnapshot {
     pub(crate) wrap_snapshot: WrapSnapshot,
+    pub scroll_x: u32,
+    pub scroll_y: u32,
 }
 
 impl DisplayMap {
     pub fn new(buffer: BufferSnapshot, wrap_width: Option<u32>) -> Self {
         Self {
             wrap_map: WrapMap::new(buffer, wrap_width),
+            scroll_x: 0,
+            scroll_y: 0,
         }
     }
 
     pub fn snapshot(&self) -> DisplaySnapshot {
         DisplaySnapshot {
             wrap_snapshot: self.wrap_map.snapshot(),
+            scroll_x: self.scroll_x,
+            scroll_y: self.scroll_y,
         }
     }
 
@@ -46,6 +54,36 @@ impl DisplayMap {
 
     pub fn sync(&mut self, buffer: BufferSnapshot) {
         self.wrap_map.sync(buffer);
+    }
+
+    pub fn scroll_to_cursor(
+        &mut self,
+        display_cursor: DisplayPoint,
+        visible_rows: i32,
+        visible_cols: i32,
+    ) {
+        let cursor_row = display_cursor.row() as i32;
+        let cursor_col = display_cursor.column() as i32;
+
+        // scroll based on cursor position
+        let mut cursor_screen_row = cursor_row - self.scroll_y as i32;
+        while cursor_screen_row >= visible_rows {
+            self.scroll_y += 1;
+            cursor_screen_row = cursor_row - self.scroll_y as i32;
+        }
+        while cursor_screen_row < 0 && self.scroll_y > 0 {
+            self.scroll_y -= 1;
+            cursor_screen_row = cursor_row - self.scroll_y as i32;
+        }
+        let mut cursor_screen_col = cursor_col - self.scroll_x as i32;
+        while cursor_screen_col >= visible_cols {
+            self.scroll_x += 1;
+            cursor_screen_col = cursor_col - self.scroll_x as i32;
+        }
+        while cursor_screen_col < 0 && self.scroll_x > 0 {
+            self.scroll_x -= 1;
+            cursor_screen_col = cursor_col - self.scroll_x as i32;
+        }
     }
 }
 

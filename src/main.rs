@@ -6,12 +6,13 @@ mod selections;
 
 use std::{
     io::{Write, stdout},
+    ops::Index,
     time::Duration,
 };
 
 use crossterm::{
     cursor::MoveTo,
-    event::{self, Event, KeyCode, KeyModifiers},
+    event::{self, Event, KeyCode, KeyModifiers, MouseEventKind},
     execute,
     terminal::{Clear, ClearType},
 };
@@ -28,8 +29,6 @@ pub struct EditorBuffer {
     pub doc: Document,
     pub display_map: DisplayMap,
     pub hl: Highlights,
-    pub scroll_x: u32,
-    pub scroll_y: u32,
     pub dirty_hl: bool,
 }
 
@@ -59,15 +58,13 @@ impl EditorTheme {
 impl EditorBuffer {
     pub fn new(file_path: &str) -> Result<Self, Box<dyn std::error::Error>> {
         let doc = Document::new(file_path)?;
-        let display_map = DisplayMap::new(doc.buffer().snapshot().clone(), None);
         let hl = Highlights::new(file_path);
+        let display_map = DisplayMap::new(doc.buffer().snapshot().clone(), None);
         Ok(Self {
             file_path: file_path.to_string(),
             doc,
             display_map,
             hl,
-            scroll_x: 0,
-            scroll_y: 0,
             dirty_hl: true,
         })
     }
@@ -164,9 +161,17 @@ fn fill_to_eol(count: usize) {
 pub struct Editor {
     pub buffer_manager: BufferManager,
     pub cmd: Document,
+    pub command_history: Vec<String>,
+    pub search_history: Vec<String>,
+    pub history_idx: usize,
     pub pending_cmd: String,
+    pub search: bool,
+    pub regex: bool,
+    pub search_text: String,
     pub mode: Mode,
     pub theme: EditorTheme,
+    pub wrap: bool,
+    pub syntax: bool,
 }
 
 impl Editor {
@@ -186,9 +191,17 @@ impl Editor {
         Ok(Self {
             buffer_manager,
             cmd,
+            command_history: Vec::new(),
+            search_history: Vec::new(),
+            history_idx: 0,
             pending_cmd: String::new(),
             mode: Mode::Normal,
+            search: false,
+            regex: false,
+            search_text: "".to_string(),
             theme,
+            wrap: false,
+            syntax: true,
         })
     }
 }
@@ -211,6 +224,13 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         MoveTo(0, 0)
     )
     .unwrap();
+
+    execute!(
+        stdout,
+        crossterm::event::EnableMouseCapture,
+        Clear(ClearType::All),
+        MoveTo(0, 0)
+    )?;
 
     let tab_size = 4;
     execute!(stdout, crossterm::cursor::Hide).unwrap();
@@ -235,43 +255,37 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let active_buffer = editor.buffer_manager.active_mut();
 
         // update display map
-        active_buffer
-            .display_map
-            .set_wrap_width(Some(screen_cols as u32));
+        active_buffer.display_map.set_wrap_width(if editor.wrap {
+            Some(screen_cols as u32)
+        } else {
+            None
+        });
         active_buffer
             .display_map
             .sync(active_buffer.doc.buffer().snapshot().clone());
-        let display_snapshot = active_buffer.display_map.snapshot();
 
         // get cursor information
         let cursor = active_buffer.doc.selection();
         let cursor_head = cursor.head();
         let cursor_point = cursor_head.to_point(&active_buffer.doc.buffer());
-        let display_cursor = display_snapshot.point_to_display_point(cursor_point);
+        let display_cursor = active_buffer
+            .display_map
+            .snapshot()
+            .point_to_display_point(cursor_point);
+        let visible_rows = screen_rows - 1;
+        let visible_cols = if editor.wrap { 1_000_000 } else { screen_cols };
+
+        active_buffer
+            .display_map
+            .scroll_to_cursor(display_cursor, visible_rows, visible_cols);
+
+        let display_snapshot = active_buffer.display_map.snapshot();
         let cursor_row = display_cursor.row() as i32;
         let cursor_col = display_cursor.column() as i32;
-        let visible_rows = screen_rows - 1;
-        let visible_cols = screen_cols;
 
         // scroll based on cursor position
-        let mut cursor_screen_row = cursor_row - active_buffer.scroll_y as i32;
-        while cursor_screen_row >= visible_rows {
-            active_buffer.scroll_y += 1;
-            cursor_screen_row = cursor_row - active_buffer.scroll_y as i32;
-        }
-        while cursor_screen_row < 0 && active_buffer.scroll_y > 0 {
-            active_buffer.scroll_y -= 1;
-            cursor_screen_row = cursor_row - active_buffer.scroll_y as i32;
-        }
-        let mut cursor_screen_col = cursor_col - active_buffer.scroll_x as i32;
-        while cursor_screen_col >= visible_cols {
-            active_buffer.scroll_x += 1;
-            cursor_screen_col = cursor_col - active_buffer.scroll_x as i32;
-        }
-        while cursor_screen_col < 0 && active_buffer.scroll_x > 0 {
-            active_buffer.scroll_x -= 1;
-            cursor_screen_col = cursor_col - active_buffer.scroll_x as i32;
-        }
+        let cursor_screen_row = cursor_row - display_snapshot.scroll_y as i32;
+        let cursor_screen_col = cursor_col - display_snapshot.scroll_x as i32;
 
         //------------------
         // render
@@ -282,11 +296,11 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
             let buffer = active_buffer.doc.buffer();
             let total_rows = display_snapshot.row_count();
-            let end_line = (active_buffer.scroll_y + visible_rows as u32).min(total_rows);
+            let end_line = (display_snapshot.scroll_y + visible_rows as u32).min(total_rows);
 
             if active_buffer.dirty_hl {
                 let start_buffer_row =
-                    display_snapshot.buffer_row_for_display_row(active_buffer.scroll_y);
+                    display_snapshot.buffer_row_for_display_row(display_snapshot.scroll_y);
                 let end_buffer_row =
                     display_snapshot.buffer_row_for_display_row(end_line.saturating_sub(1));
 
@@ -299,7 +313,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             active_buffer.dirty_hl = true;
 
             let mut screen_row = 0;
-            for row in active_buffer.scroll_y..end_line {
+            for row in display_snapshot.scroll_y..end_line {
                 execute!(stdout, MoveTo(0, screen_row)).unwrap();
                 let text = display_snapshot.line_text(row) + " ";
                 let buffer_row = display_snapshot.buffer_row_for_display_row(row);
@@ -340,15 +354,20 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                             if *s < start_col { e - start_col } else { e - s }
                         },
                     );
-                let mut current_style = current_range.map(|(style, _, _)| style);
 
-                let mut x_scroll = active_buffer.scroll_x;
+                let mut current_style = current_range.map(|(style, _, _)| style);
+                let default_style = active_buffer.hl.get_default_style();
+                if !editor.syntax {
+                    current_style = Some(&default_style);
+                }
+
+                let mut x_scroll = display_snapshot.scroll_x;
                 let mut cols_remaining = screen_cols;
 
                 for (column, ch) in text.chars().enumerate() {
                     let rc = start_col + column as u32;
 
-                    if range_remaining == 0 {
+                    if editor.syntax && range_remaining == 0 {
                         current_range = range_iter.next();
                         range_remaining = current_range.map_or(0, |(_, s, e)| e - s);
                         current_style = current_range.map(|(style, _, _)| style);
@@ -366,17 +385,18 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                         .doc
                         .selections()
                         .is_selected(buffer_row, rc, &buffer);
-                    if selected && (editor.mode == Mode::Visual || editor.mode == Mode::Visual_Line)
+                    if selected && (editor.mode == Mode::Visual || editor.mode == Mode::VisualLine)
                     {
                         bg = editor.theme.clr_select;
                     }
-                    selected_line = selected_line && editor.mode == Mode::Visual_Line;
+                    selected_line = selected_line && editor.mode == Mode::VisualLine;
                     if selected_line {
                         bg = editor.theme.clr_select;
                     }
                     if at_cursor && editor.mode != Mode::Insert && editor.mode != Mode::Command {
-                        fg = editor.theme.clr_bg;
-                        bg = editor.theme.clr_caret;
+                        // let cursor blink for us
+                        // fg = editor.theme.clr_bg;
+                        // bg = editor.theme.clr_caret;
                     }
 
                     execute!(stdout, crossterm::style::SetForegroundColor(fg)).unwrap();
@@ -448,8 +468,16 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 execute!(stdout, MoveTo(0, screen_rows as u16)).unwrap();
 
                 if editor.mode == Mode::Command {
+                    let mut cmd_char = ':';
+                    if editor.search {
+                        cmd_char = '/';
+                        if editor.regex {
+                            cmd_char = '?';
+                        }
+                    }
                     print!(
-                        ":{}",
+                        "{}{}",
+                        cmd_char,
                         editor
                             .cmd
                             .buffer()
@@ -470,7 +498,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                             Mode::Normal => "NORMAL",
                             Mode::Insert => "INSERT",
                             Mode::Visual => "VISUAL",
-                            Mode::Visual_Line => "V-LINE",
+                            Mode::VisualLine => "V-LINE",
                             Mode::Command => "COMMAND",
                         },
                         active_buffer.doc.selection().head().offset,
@@ -486,11 +514,11 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                     .cmd
                     .buffer()
                     .row_text(editor.cmd.buffer().row_count() - 1);
-                let cmd_col = (cmd_text.chars().count() + 1) as u16;
+                let cmd_col = (cmd_text.chars().count()) as u16;
                 execute!(
                     stdout,
-                    MoveTo(cmd_col, screen_rows as u16),
-                    crossterm::cursor::SetCursorStyle::BlinkingBar,
+                    MoveTo(cmd_col + 1, screen_rows as u16),
+                    crossterm::cursor::SetCursorStyle::BlinkingBlock,
                     crossterm::cursor::Show
                 )
                 .unwrap();
@@ -515,6 +543,20 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         //------------------
         if event::poll(Duration::from_millis(50))? {
             let event = event::read()?;
+
+            if let Event::Mouse(mouse_event) = &event {
+                match mouse_event.kind {
+                    MouseEventKind::ScrollUp => {
+                        // Handle scrolling up inside your app logic here
+                        // The actual terminal screen will NOT move.
+                    }
+                    MouseEventKind::ScrollDown => {
+                        // Handle scrolling down inside your app logic here
+                    }
+                    _ => {}
+                }
+            }
+
             if let Event::Paste(content) = &event {
                 if editor.mode == Mode::Insert {
                     let active_buffer = editor.buffer_manager.active_mut();
@@ -558,7 +600,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                     (count, ())
                 };
 
-                let select = editor.mode == Mode::Visual || editor.mode == Mode::Visual_Line;
+                let select = editor.mode == Mode::Visual || editor.mode == Mode::VisualLine;
                 let move_action = match (key_event.code, key_event.modifiers) {
                     (KeyCode::Left, _) => Action::MoveLeft { select, count },
                     (KeyCode::Right, _) => Action::MoveRight { select, count },
@@ -604,7 +646,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                     }
                     (KeyCode::Char('V'), _) => {
                         if editor.mode != Mode::Command {
-                            editor.mode = Mode::Visual_Line;
+                            editor.mode = Mode::VisualLine;
                             should_redraw = true;
                         }
                         Action::NoOp
@@ -612,6 +654,25 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                     (KeyCode::Char(':'), _) => {
                         if editor.mode != Mode::Command {
                             editor.mode = Mode::Command;
+                            editor.search = false;
+                            should_redraw = true;
+                        }
+                        Action::NoOp
+                    }
+                    (KeyCode::Char('/'), _) => {
+                        if editor.mode != Mode::Command {
+                            editor.mode = Mode::Command;
+                            editor.search = true;
+                            editor.regex = false;
+                            should_redraw = true;
+                        }
+                        Action::NoOp
+                    }
+                    (KeyCode::Char('?'), _) => {
+                        if editor.mode != Mode::Command {
+                            editor.mode = Mode::Command;
+                            editor.search = true;
+                            editor.regex = true;
                             should_redraw = true;
                         }
                         Action::NoOp
@@ -819,7 +880,6 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                     Action::NoOp
                 };
 
-                // loop!
                 match current_mode {
                     Mode::Normal => {
                         if normal_action != Action::NoOp {
@@ -843,7 +903,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                             editor.pending_cmd.clear();
                         }
                     }
-                    Mode::Visual_Line => {
+                    Mode::VisualLine => {
                         if normal_action != Action::NoOp {
                             let active_buffer = editor.buffer_manager.active_mut();
                             active_buffer.doc.apply_action(&normal_action);
@@ -865,51 +925,128 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                         }
                     }
                     Mode::Command => {
+                        if move_action != Action::NoOp {
+                            match move_action {
+                                Action::MoveUp { .. } => {
+                                    if !editor.command_history.is_empty() {
+                                        let h_idx =
+                                            editor.command_history.len() - editor.history_idx - 1;
+                                        if let Some(h_cmd) = editor.command_history.get(h_idx) {
+                                            editor.cmd = Document::new("").unwrap();
+                                            editor
+                                                .cmd
+                                                .apply_action(&Action::InsertText(h_cmd.clone()));
+                                        }
+                                        if editor.history_idx < editor.command_history.len() {
+                                            editor.history_idx += 1;
+                                        }
+                                    }
+                                }
+                                Action::MoveDown { .. } => {
+                                    if !editor.command_history.is_empty() {
+                                        editor.cmd = Document::new("").unwrap();
+                                        if editor.history_idx > 0 {
+                                            editor.history_idx -= 1;
+                                        }
+                                        let h_idx =
+                                            editor.command_history.len() - editor.history_idx;
+                                        if let Some(h_cmd) = editor.command_history.get(h_idx) {
+                                            editor
+                                                .cmd
+                                                .apply_action(&Action::InsertText(h_cmd.clone()));
+                                        }
+                                    }
+                                }
+                                _ => {}
+                            }
+                            should_redraw = true;
+                        }
                         if let (KeyCode::Enter, _) = (key_event.code, key_event.modifiers) {
                             let command_text = editor.cmd.buffer().row_text(0);
-                            let command_parts: Vec<&str> =
-                                command_text.trim().split_whitespace().collect();
 
-                            if !command_parts.is_empty() {
-                                match command_parts[0] {
-                                    "q" => break,
-                                    "bn" => {
-                                        editor.buffer_manager.switch_next();
-                                        editor.theme = EditorTheme::from_highlights(
-                                            &editor.buffer_manager.active().hl,
-                                        );
-                                    }
-                                    "bp" => {
-                                        editor.buffer_manager.switch_prev();
-                                        editor.theme = EditorTheme::from_highlights(
-                                            &editor.buffer_manager.active().hl,
-                                        );
-                                    }
-                                    "e" if command_parts.len() > 1 => {
-                                        if let Ok(new_buffer) = EditorBuffer::new(command_parts[1])
-                                        {
-                                            editor.buffer_manager.add_buffer(new_buffer);
+                            if editor.search {
+                                if command_text.len() > 0 {
+                                    editor.search_history.push(command_text);
+                                }
+                            } else {
+                                let command_parts: Vec<&str> =
+                                    command_text.trim().split_whitespace().collect();
+
+                                if !command_parts.is_empty() {
+                                    let mut save_command = true;
+                                    match command_parts[0] {
+                                        "q" => break,
+                                        "bn" => {
+                                            editor.buffer_manager.switch_next();
                                             editor.theme = EditorTheme::from_highlights(
                                                 &editor.buffer_manager.active().hl,
                                             );
                                         }
-                                    }
-                                    cmd if cmd.parse::<u32>().is_ok() => {
-                                        let line_number = cmd.parse::<u32>().unwrap();
-                                        let active_buffer = editor.buffer_manager.active_mut();
-                                        active_buffer.doc.apply_action(&Action::MoveToLine {
-                                            select: false,
-                                            line: line_number,
-                                        });
-                                    }
-                                    _ => {}
-                                }
-                            }
+                                        "bp" => {
+                                            editor.buffer_manager.switch_prev();
+                                            editor.theme = EditorTheme::from_highlights(
+                                                &editor.buffer_manager.active().hl,
+                                            );
+                                        }
+                                        "e" if command_parts.len() > 1 => {
+                                            if let Ok(new_buffer) =
+                                                EditorBuffer::new(command_parts[1])
+                                            {
+                                                editor.buffer_manager.add_buffer(new_buffer);
+                                                editor.theme = EditorTheme::from_highlights(
+                                                    &editor.buffer_manager.active().hl,
+                                                );
+                                            }
+                                        }
+                                        "set" if command_parts.len() > 1 => {
+                                            match command_parts[1] {
+                                                "wrap" => {
+                                                    editor.wrap = true;
+                                                }
+                                                "nowrap" => {
+                                                    editor.wrap = false;
+                                                }
+                                                _ => {}
+                                            }
+                                        }
+                                        x if command_parts[0].starts_with("syn")
+                                            && command_parts.len() > 1 =>
+                                        {
+                                            _ = x;
+                                            match command_parts[1] {
+                                                "on" => {
+                                                    editor.syntax = true;
+                                                }
+                                                "off" => {
+                                                    editor.syntax = false;
+                                                }
+                                                _ => {}
+                                            }
+                                        }
 
-                            // Clear command buffer and return to Normal mode
-                            editor.cmd = Document::new("").unwrap();
-                            editor.mode = Mode::Normal;
-                            should_redraw = true;
+                                        cmd if cmd.parse::<u32>().is_ok() => {
+                                            let line_number = cmd.parse::<u32>().unwrap();
+                                            let active_buffer = editor.buffer_manager.active_mut();
+                                            active_buffer.doc.apply_action(&Action::MoveToLine {
+                                                select: false,
+                                                line: line_number,
+                                            });
+                                        }
+                                        _ => {}
+                                    }
+
+                                    if save_command {
+                                        editor
+                                            .command_history
+                                            .push(command_text.trim().to_string());
+                                    }
+                                }
+
+                                // Clear command buffer and return to Normal mode
+                                editor.cmd = Document::new("").unwrap();
+                                editor.mode = Mode::Normal;
+                                should_redraw = true;
+                            }
                         } else if insert_action != Action::NoOp {
                             editor.cmd.apply_action(&insert_action);
                         } else if let (KeyCode::Backspace, _) =
@@ -936,6 +1073,13 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     execute!(
         stdout,
         crossterm::event::DisableBracketedPaste,
+        Clear(ClearType::All),
+        MoveTo(0, 0)
+    )
+    .unwrap();
+    execute!(
+        stdout,
+        crossterm::event::DisableMouseCapture,
         Clear(ClearType::All),
         MoveTo(0, 0)
     )

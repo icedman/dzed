@@ -124,7 +124,7 @@ impl Document {
                 Err(_) => "File not found".to_string(),
             }
         } else {
-            " ".to_string()
+            "".to_string()
         };
         let buffer = Buffer::new(ReplicaId::default(), BufferId::new(1).unwrap(), contents);
         let mut selections = SelectionCollection::new();

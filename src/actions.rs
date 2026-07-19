@@ -3,7 +3,7 @@ pub enum Mode {
     Normal,
     Insert,
     Visual,
-    Visual_Line,
+    VisualLine,
     Command,
 }
 
