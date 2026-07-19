@@ -1,52 +1,45 @@
-DZED is a proof of concept editor - Demaked Zed which brings Zed's crates (text editor, sum_tree, etc.. to the terminal)
+# DZED (Demaked Zed)
 
-Input and rendering handled by crossterm. Syntax highlighting by syntect. The editor emulates vim mode. See the limited features/action below
-
-```sh
-cargo build
-./target/debug/test_zed <your code file>
-```
+DZED is a proof-of-concept terminal text editor built by bringing Zed's core crates (`text`, `sum_tree`, `rope`, etc.) to the terminal. It combines the advanced text manipulation logic of Zed with a lightweight `crossterm` interface and `syntect` for syntax highlighting.
 
 ![Screen Shot](https://raw.githubusercontent.com/icedman/dzed/refs/heads/main/screenshots/Screenshot%20from%202026-02-02%2021-56-19.png)
 
-```js
-pub enum Action {
-    MoveUp { select: bool },
-    MoveDown { select: bool },
-    MoveUpCount { select: bool, count: u32 },
-    MoveDownCount { select: bool, count: u32 },
-    MoveLeft { select: bool },
-    MoveRight { select: bool },
-    MoveToPreviousWord { select: bool },
-    MoveToNextWord { select: bool },
-    MoveToStartOfDocument { select: bool },
-    MoveToEndOfDocument { select: bool },
-    MoveToStartOfLine { select: bool },
-    MoveToEndOfLine { select: bool },
-    MoveToPreviousParagraph { select: bool },
-    MoveToNextParagraph { select: bool },
+## Core Features
 
-    InsertText(String),
-    InsertNewLine,
-    InsertTab,
+- **Zed-Powered Logic**: Uses Zed's high-performance CRDT-based buffer and sum-tree indexing.
+- **Vim Emulation**: Robust Vim-style modal editing.
+- **Soft Wrapping**: Full support for logical-to-screen coordinate mapping (WrapMap/DisplayMap).
+- **Syntax Highlighting**: Fast rendering using `syntect`.
+- **Bracketed Paste**: Efficiently handle large pastes from the clipboard.
+- **Modern Terminal UI**: Mode-specific cursors (Bar in Insert, Block in Normal) and status bar.
 
-    DeleteText { count: usize },
-    Backspace,
-    Delete,
-    DeleteCurrentLine,
+## Implemented Actions
 
-    Indent,
-    Unindent,
+### Navigation
+- **Basic**: `h`, `j`, `k`, `l` (Left, Down, Up, Right)
+- **Word**: `w`, `b` (Start of word), `e`, `ge` (End of word)
+- **Line**: `0`, `$`, `^` (Start, End, first non-blank)
+- **Document**: `gg`, `G` (Start, End of file)
+- **Paragraph**: `{`, `}` (Previous, Next empty line)
+- **Jump**: `:{N}` jump to specific line number.
+- **Count Support**: Most motions support numeric prefixes (e.g., `5w`, `10j`).
 
-    Undo,
-    Redo,
+### Editing
+- **Modes**: Normal, Insert, Visual, Visual Line, Command.
+- **Operators**: `d{motion}` (e.g., `dw`, `df)`, `d$`) for flexible deletion.
+- **Shorthands**: `x` (delete char), `dd` (delete line).
+- **History**: `u` (Undo), `Ctrl-r` (Redo) with count support.
+- **Formatting**: `>` and `<` for indentation.
 
-    SelectWord,
-    SelectNext(String),
-    SelectPrevious(String),
+## Getting Started
 
-    ClearCursors,
+```sh
+# Build the project
+cargo build
 
-    NoOp, // unmapped key
-}
+# Run the editor
+./target/debug/test_zed <path_to_file>
 ```
+
+## Contributing
+This is a proof-of-concept. Contributions that further integrate Zed's crates or improve Vim parity are welcome.
