@@ -36,8 +36,8 @@ pub struct EditorTheme {
     pub bg: crossterm::style::Color,
     pub caret: crossterm::style::Color,
     pub select: crossterm::style::Color,
-    pub gutter: crossterm::style::Color,
     pub gutter_fg: crossterm::style::Color,
+    pub gutter_bg: crossterm::style::Color,
 }
 
 impl EditorTheme {
@@ -50,8 +50,11 @@ impl EditorTheme {
             bg: bg.darken(10).rgb(),
             caret: settings.caret.unwrap_or(fg).rgb(),
             select: settings.selection.unwrap_or(bg.darken(10)).rgb(),
-            gutter: settings.gutter.unwrap_or(bg).rgb(),
-            gutter_fg: settings.gutter_foreground.unwrap_or(fg).darken(20).rgb(),
+
+            // gutter_bg: settings.gutter.unwrap_or(bg).rgb(),
+            // gutter_fg: settings.gutter_foreground.unwrap_or(fg).darken(20).rgb(),
+            gutter_bg: bg.darken(10).rgb(),
+            gutter_fg: hl.comment.rgb(),
         }
     }
 }
@@ -59,7 +62,7 @@ impl EditorTheme {
 impl EditorBuffer {
     pub fn new(file_path: &str) -> Result<Self, Box<dyn std::error::Error>> {
         let doc = Document::new(file_path)?;
-        let hl = Highlights::new(file_path);
+        let hl = Highlights::new(file_path, "./test/themes/Dracula.tmTheme");
         let display_map = DisplayMap::new(doc.buffer().snapshot().clone(), None);
         Ok(Self {
             file_path: file_path.to_string(),
@@ -173,7 +176,7 @@ pub struct Editor {
     pub theme: EditorTheme,
     pub wrap: bool,
     pub syntax: bool,
-    pub show_lines: bool,
+    pub show_line_numbers: bool,
 }
 
 impl Editor {
@@ -204,7 +207,7 @@ impl Editor {
             theme,
             wrap: false,
             syntax: true,
-            show_lines: true,
+            show_line_numbers: true,
         })
     }
 }
@@ -286,7 +289,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             .scroll_to_cursor(display_cursor, screen_rows, screen_cols);
 
         let row_count = active_buffer.doc.buffer().row_count();
-        let gutter_width = if editor.show_lines {
+        let gutter_width = if editor.show_line_numbers {
             2 + if row_count == 0 {
                 0
             } else {
@@ -335,7 +338,11 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             }
             active_buffer.dirty_hl = true;
 
+            let mut prev_line_number = -1;
             let mut screen_row = display_snapshot.margin_top as u16;
+
+            let default_style = active_buffer.hl.get_default_style();
+
             for row in display_snapshot.scroll_y..end_line {
                 execute!(
                     stdout,
@@ -347,7 +354,8 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 .unwrap();
 
                 // line number
-                if editor.show_lines {
+                if editor.show_line_numbers {
+                    let line_number = display_snapshot.buffer_row_for_display_row(row);
                     execute!(
                         stdout,
                         crossterm::style::SetForegroundColor(editor.theme.gutter_fg)
@@ -356,10 +364,17 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
                     execute!(
                         stdout,
-                        crossterm::style::SetBackgroundColor(editor.theme.gutter)
+                        crossterm::style::SetBackgroundColor(editor.theme.gutter_bg) // crossterm::style::SetBackgroundColor(
+                                                                                     //     default_style.background.darken(10).rgb()
+                                                                                     // )
                     )
                     .unwrap();
-                    print!("{:>width$} ", (row + 1), width = gutter_width - 1);
+                    if prev_line_number != line_number as i32 {
+                        print!("{:>width$} ", (line_number + 1), width = gutter_width - 1);
+                    } else {
+                        print!("{}", " ".repeat(gutter_width));
+                    }
+                    prev_line_number = line_number as i32;
                 }
 
                 let text = display_snapshot.line_text(row) + " ";
@@ -403,7 +418,6 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                     );
 
                 let mut current_style = current_range.map(|(style, _, _)| style);
-                let default_style = active_buffer.hl.get_default_style();
                 if !editor.syntax {
                     current_style = Some(&default_style);
                 }
@@ -507,7 +521,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 .unwrap();
                 execute!(
                     stdout,
-                    crossterm::style::SetBackgroundColor(editor.theme.gutter)
+                    crossterm::style::SetBackgroundColor(editor.theme.gutter_bg)
                 )
                 .unwrap();
                 execute!(stdout, MoveTo(0, screen_rows as u16)).unwrap();
@@ -682,28 +696,28 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                         Action::NoOp
                     }
                     (KeyCode::Char('i'), _) => {
-                        if editor.mode != Mode::Command {
+                        if editor.mode == Mode::Normal {
                             editor.mode = Mode::Insert;
                             should_redraw = true;
                         }
                         Action::NoOp
                     }
                     (KeyCode::Char('v'), _) => {
-                        if editor.mode != Mode::Command {
+                        if editor.mode == Mode::Normal {
                             editor.mode = Mode::Visual;
                             should_redraw = true;
                         }
                         Action::NoOp
                     }
                     (KeyCode::Char('V'), _) => {
-                        if editor.mode != Mode::Command {
+                        if editor.mode != Mode::Normal {
                             editor.mode = Mode::VisualLine;
                             should_redraw = true;
                         }
                         Action::NoOp
                     }
                     (KeyCode::Char(':'), _) => {
-                        if editor.mode != Mode::Command {
+                        if editor.mode == Mode::Normal {
                             editor.mode = Mode::Command;
                             editor.search = false;
                             should_redraw = true;
@@ -711,7 +725,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                         Action::NoOp
                     }
                     (KeyCode::Char('/'), _) => {
-                        if editor.mode != Mode::Command {
+                        if editor.mode == Mode::Normal {
                             editor.mode = Mode::Command;
                             editor.search = true;
                             editor.regex = false;
@@ -720,7 +734,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                         Action::NoOp
                     }
                     (KeyCode::Char('?'), _) => {
-                        if editor.mode != Mode::Command {
+                        if editor.mode == Mode::Normal {
                             editor.mode = Mode::Command;
                             editor.search = true;
                             editor.regex = true;
@@ -952,6 +966,9 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                             let active_buffer = editor.buffer_manager.active_mut();
                             active_buffer.doc.apply_action(&move_action);
                             editor.pending_cmd.clear();
+                        } else {
+                            editor.mode = Mode::Normal;
+                            should_redraw = true;
                         }
                     }
                     Mode::VisualLine => {
@@ -963,6 +980,9 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                             let active_buffer = editor.buffer_manager.active_mut();
                             active_buffer.doc.apply_action(&move_action);
                             editor.pending_cmd.clear();
+                        } else {
+                            editor.mode = Mode::Normal;
+                            should_redraw = true;
                         }
                     }
                     Mode::Insert => {
@@ -1056,6 +1076,16 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                                                 }
                                                 "nowrap" => {
                                                     editor.wrap = false;
+                                                }
+                                                x if command_parts[1].starts_with("nu") => {
+                                                    // number
+                                                    _ = x;
+                                                    editor.show_line_numbers = true;
+                                                }
+                                                x if command_parts[1].starts_with("nonu") => {
+                                                    // nonumber
+                                                    _ = x;
+                                                    editor.show_line_numbers = false;
                                                 }
                                                 _ => {}
                                             }

@@ -4,7 +4,7 @@ use rope::Point;
 use syntect::{
     LoadingError,
     easy::HighlightLines,
-    highlighting::{HighlightState, Style, Theme, ThemeSet, ThemeSettings},
+    highlighting::{Color, HighlightState, Style, Theme, ThemeSet, ThemeSettings},
     parsing::{ParseState, SyntaxReference, SyntaxSet},
 };
 use text::{Buffer, ToOffset};
@@ -51,6 +51,8 @@ pub struct Highlights {
     state_cache: HashMap<usize, StateCache>,
     style_cache: HashMap<usize, StyleCache>,
     highlight_start: usize,
+    // theme extras
+    pub comment: Color,
 }
 
 fn row_text(buffer: &Buffer, row: u32) -> String {
@@ -60,7 +62,7 @@ fn row_text(buffer: &Buffer, row: u32) -> String {
 }
 
 impl Highlights {
-    pub fn new(file_path: &str) -> Self {
+    pub fn new(file_path: &str, theme_path: &str) -> Self {
         let extension = Path::new(file_path)
             .extension()
             .and_then(|ext| ext.to_str())
@@ -70,18 +72,39 @@ impl Highlights {
         let syntax_set = SyntaxSet::load_defaults_newlines(); // Changed to handle new lines for better syntax parsing
         let theme_set = ThemeSet::load_defaults();
 
-        // let mut theme = theme_set
-        //     .themes
-        //     .get("base16-ocean.dark")
-        //     // .unwrap_or(&theme_set.themes["InspiredGitHub"]);
-        //     .unwrap_or(&theme_set.themes["Solarized (dark)"]);
-
-        let theme = load_theme("./test/themes/Dracula.tmTheme")
-            .unwrap_or(theme_set.themes.get("base16-ocean.dark").unwrap().clone());
+        let default_theme = theme_set.themes.get("base16-ocean.dark").unwrap();
+        let theme = load_theme(theme_path).unwrap_or_else(|_| {
+            theme_set
+                .themes
+                .get(theme_path)
+                .cloned()
+                .unwrap_or_else(|| default_theme.clone())
+        });
 
         let syntax = syntax_set
             .find_syntax_by_extension(&extension)
             .unwrap_or_else(|| syntax_set.find_syntax_plain_text());
+
+        let mut hl = HighlightLines::new(&syntax, &theme);
+        let ranges = hl.highlight_line(" ", &syntax_set).unwrap();
+        let default_style = ranges.first().map(|(style, _)| style.clone()).unwrap();
+        let mut comment = default_style.background;
+
+        for item in &theme.scopes {
+            for selector in &item.scope.selectors {
+                if let Some(scope) = selector.extract_single_scope() {
+                    if scope.to_string().contains("comment") {
+                        let style = item.style;
+                        if let Some(fg) = style.foreground {
+                            comment = fg;
+                        }
+                        if let Some(fg) = style.background {
+                            comment = fg;
+                        }
+                    }
+                }
+            }
+        }
 
         Self {
             theme: theme.clone(),
@@ -89,6 +112,7 @@ impl Highlights {
             syntax: syntax.clone(),
             state_cache: HashMap::<usize, StateCache>::new(),
             style_cache: HashMap::<usize, StyleCache>::new(),
+            comment: comment,
             highlight_start: 0,
         }
     }
