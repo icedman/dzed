@@ -23,12 +23,20 @@ pub struct DisplayMap {
     wrap_map: WrapMap,
     pub scroll_x: u32,
     pub scroll_y: u32,
+    pub margin_left: u32,
+    pub margin_right: u32,
+    pub margin_top: u32,
+    pub margin_bottom: u32,
 }
 
 pub struct DisplaySnapshot {
     pub(crate) wrap_snapshot: WrapSnapshot,
     pub scroll_x: u32,
     pub scroll_y: u32,
+    pub margin_left: u32,
+    pub margin_right: u32,
+    pub margin_top: u32,
+    pub margin_bottom: u32,
 }
 
 impl DisplayMap {
@@ -37,6 +45,10 @@ impl DisplayMap {
             wrap_map: WrapMap::new(buffer, wrap_width),
             scroll_x: 0,
             scroll_y: 0,
+            margin_left: 0,
+            margin_right: 0,
+            margin_top: 0,
+            margin_bottom: 0,
         }
     }
 
@@ -45,6 +57,10 @@ impl DisplayMap {
             wrap_snapshot: self.wrap_map.snapshot(),
             scroll_x: self.scroll_x,
             scroll_y: self.scroll_y,
+            margin_left: self.margin_left,
+            margin_right: self.margin_right,
+            margin_top: self.margin_top,
+            margin_bottom: self.margin_bottom,
         }
     }
 
@@ -59,11 +75,18 @@ impl DisplayMap {
     pub fn scroll_to_cursor(
         &mut self,
         display_cursor: DisplayPoint,
-        visible_rows: i32,
-        visible_cols: i32,
+        screen_rows: i32,
+        screen_cols: i32,
     ) {
         let cursor_row = display_cursor.row() as i32;
         let cursor_col = display_cursor.column() as i32;
+
+        let visible_rows = (screen_rows - 1)
+            .saturating_sub(self.margin_top as i32)
+            .saturating_sub(self.margin_bottom as i32);
+        let visible_cols = screen_cols
+            .saturating_sub(self.margin_left as i32)
+            .saturating_sub(self.margin_right as i32);
 
         // scroll based on cursor position
         let mut cursor_screen_row = cursor_row - self.scroll_y as i32;
@@ -75,19 +98,31 @@ impl DisplayMap {
             self.scroll_y -= 1;
             cursor_screen_row = cursor_row - self.scroll_y as i32;
         }
-        let mut cursor_screen_col = cursor_col - self.scroll_x as i32;
-        while cursor_screen_col >= visible_cols {
-            self.scroll_x += 1;
-            cursor_screen_col = cursor_col - self.scroll_x as i32;
-        }
-        while cursor_screen_col < 0 && self.scroll_x > 0 {
-            self.scroll_x -= 1;
-            cursor_screen_col = cursor_col - self.scroll_x as i32;
+
+        // Horizontal scroll only if not wrapping (or visible_cols is defined)
+        if visible_cols > 0 {
+            let mut cursor_screen_col = cursor_col - self.scroll_x as i32;
+            while cursor_screen_col >= visible_cols {
+                self.scroll_x += 1;
+                cursor_screen_col = cursor_col - self.scroll_x as i32;
+            }
+            while cursor_screen_col < 0 && self.scroll_x > 0 {
+                self.scroll_x -= 1;
+                cursor_screen_col = cursor_col - self.scroll_x as i32;
+            }
         }
     }
 }
 
 impl DisplaySnapshot {
+    pub fn x(&self) -> u32 {
+        return self.margin_left;
+    }
+
+    pub fn y(&self) -> u32 {
+        return self.margin_left;
+    }
+
     pub fn buffer_snapshot(&self) -> &BufferSnapshot {
         self.wrap_snapshot.buffer_snapshot()
     }

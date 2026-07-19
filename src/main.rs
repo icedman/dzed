@@ -6,7 +6,6 @@ mod selections;
 
 use std::{
     io::{Write, stdout},
-    ops::Index,
     time::Duration,
 };
 
@@ -33,11 +32,12 @@ pub struct EditorBuffer {
 }
 
 pub struct EditorTheme {
-    pub clr_fg: crossterm::style::Color,
-    pub clr_bg: crossterm::style::Color,
-    pub clr_caret: crossterm::style::Color,
-    pub clr_select: crossterm::style::Color,
-    pub clr_gutter: crossterm::style::Color,
+    pub fg: crossterm::style::Color,
+    pub bg: crossterm::style::Color,
+    pub caret: crossterm::style::Color,
+    pub select: crossterm::style::Color,
+    pub gutter: crossterm::style::Color,
+    pub gutter_fg: crossterm::style::Color,
 }
 
 impl EditorTheme {
@@ -46,11 +46,12 @@ impl EditorTheme {
         let fg = settings.foreground.unwrap();
         let bg = settings.background.unwrap();
         Self {
-            clr_fg: fg.rgb(),
-            clr_bg: bg.darken(10).rgb(),
-            clr_caret: settings.caret.unwrap_or(fg).rgb(),
-            clr_select: settings.selection.unwrap_or(bg.darken(10)).rgb(),
-            clr_gutter: settings.gutter.unwrap_or(bg).rgb(),
+            fg: fg.rgb(),
+            bg: bg.darken(10).rgb(),
+            caret: settings.caret.unwrap_or(fg).rgb(),
+            select: settings.selection.unwrap_or(bg.darken(10)).rgb(),
+            gutter: settings.gutter.unwrap_or(bg).rgb(),
+            gutter_fg: settings.gutter_foreground.unwrap_or(fg).darken(20).rgb(),
         }
     }
 }
@@ -172,6 +173,7 @@ pub struct Editor {
     pub theme: EditorTheme,
     pub wrap: bool,
     pub syntax: bool,
+    pub show_lines: bool,
 }
 
 impl Editor {
@@ -202,6 +204,7 @@ impl Editor {
             theme,
             wrap: false,
             syntax: true,
+            show_lines: true,
         })
     }
 }
@@ -255,8 +258,13 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let active_buffer = editor.buffer_manager.active_mut();
 
         // update display map
+        let display_snapshot = active_buffer.display_map.snapshot();
+        let wrap_cols = screen_cols
+            .saturating_sub(display_snapshot.margin_left as i32)
+            .saturating_sub(display_snapshot.margin_right as i32);
+
         active_buffer.display_map.set_wrap_width(if editor.wrap {
-            Some(screen_cols as u32)
+            Some(wrap_cols as u32)
         } else {
             None
         });
@@ -272,16 +280,31 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             .display_map
             .snapshot()
             .point_to_display_point(cursor_point);
-        let visible_rows = screen_rows - 1;
-        let visible_cols = if editor.wrap { 1_000_000 } else { screen_cols };
 
         active_buffer
             .display_map
-            .scroll_to_cursor(display_cursor, visible_rows, visible_cols);
+            .scroll_to_cursor(display_cursor, screen_rows, screen_cols);
+
+        let row_count = active_buffer.doc.buffer().row_count();
+        let gutter_width = if editor.show_lines {
+            2 + if row_count == 0 {
+                0
+            } else {
+                row_count.ilog10() as usize
+            }
+        } else {
+            0
+        };
+
+        active_buffer.display_map.margin_left = gutter_width as u32;
 
         let display_snapshot = active_buffer.display_map.snapshot();
         let cursor_row = display_cursor.row() as i32;
         let cursor_col = display_cursor.column() as i32;
+
+        let visible_rows = (screen_rows - 1)
+            .saturating_sub(display_snapshot.margin_top as i32)
+            .saturating_sub(display_snapshot.margin_bottom as i32);
 
         // scroll based on cursor position
         let cursor_screen_row = cursor_row - display_snapshot.scroll_y as i32;
@@ -312,9 +335,33 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             }
             active_buffer.dirty_hl = true;
 
-            let mut screen_row = 0;
+            let mut screen_row = display_snapshot.margin_top as u16;
             for row in display_snapshot.scroll_y..end_line {
-                execute!(stdout, MoveTo(0, screen_row)).unwrap();
+                execute!(
+                    stdout,
+                    MoveTo(
+                        (display_snapshot.x() - gutter_width as u32) as u16,
+                        screen_row
+                    )
+                )
+                .unwrap();
+
+                // line number
+                if editor.show_lines {
+                    execute!(
+                        stdout,
+                        crossterm::style::SetForegroundColor(editor.theme.gutter_fg)
+                    )
+                    .unwrap();
+
+                    execute!(
+                        stdout,
+                        crossterm::style::SetBackgroundColor(editor.theme.gutter)
+                    )
+                    .unwrap();
+                    print!("{:>width$} ", (row + 1), width = gutter_width - 1);
+                }
+
                 let text = display_snapshot.line_text(row) + " ";
                 let buffer_row = display_snapshot.buffer_row_for_display_row(row);
                 let buffer_range = display_snapshot.buffer_range_for_display_row(row);
@@ -326,7 +373,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 } else {
                     execute!(
                         stdout,
-                        crossterm::style::SetBackgroundColor(editor.theme.clr_bg)
+                        crossterm::style::SetBackgroundColor(editor.theme.bg)
                     )
                     .unwrap();
                     fill_to_eol(screen_cols as usize);
@@ -362,7 +409,9 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 }
 
                 let mut x_scroll = display_snapshot.scroll_x;
-                let mut cols_remaining = screen_cols;
+                let mut cols_remaining = screen_cols
+                    .saturating_sub(display_snapshot.margin_left as i32)
+                    .saturating_sub(display_snapshot.margin_right as i32);
 
                 for (column, ch) in text.chars().enumerate() {
                     let rc = start_col + column as u32;
@@ -373,8 +422,8 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                         current_style = current_range.map(|(style, _, _)| style);
                     }
 
-                    let mut fg = editor.theme.clr_fg.clone();
-                    let mut bg = editor.theme.clr_bg.clone();
+                    let mut fg = editor.theme.fg.clone();
+                    let mut bg = editor.theme.bg.clone();
 
                     if let Some(style) = current_style {
                         fg = style.foreground.rgb();
@@ -387,16 +436,16 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                         .is_selected(buffer_row, rc, &buffer);
                     if selected && (editor.mode == Mode::Visual || editor.mode == Mode::VisualLine)
                     {
-                        bg = editor.theme.clr_select;
+                        bg = editor.theme.select;
                     }
                     selected_line = selected_line && editor.mode == Mode::VisualLine;
                     if selected_line {
-                        bg = editor.theme.clr_select;
+                        bg = editor.theme.select;
                     }
                     if at_cursor && editor.mode != Mode::Insert && editor.mode != Mode::Command {
                         // let cursor blink for us
-                        // fg = editor.theme.clr_bg;
-                        // bg = editor.theme.clr_caret;
+                        // fg = editor.theme.bg;
+                        // bg = editor.theme.caret;
                     }
 
                     execute!(stdout, crossterm::style::SetForegroundColor(fg)).unwrap();
@@ -415,9 +464,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                                     {
                                         execute!(
                                             stdout,
-                                            crossterm::style::SetBackgroundColor(
-                                                editor.theme.clr_bg
-                                            )
+                                            crossterm::style::SetBackgroundColor(editor.theme.bg)
                                         )
                                         .unwrap();
                                     }
@@ -440,7 +487,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
                 execute!(
                     stdout,
-                    crossterm::style::SetBackgroundColor(editor.theme.clr_bg)
+                    crossterm::style::SetBackgroundColor(editor.theme.bg)
                 )
                 .unwrap();
                 fill_to_eol(cols_remaining.max(0) as usize);
@@ -455,12 +502,12 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             {
                 execute!(
                     stdout,
-                    crossterm::style::SetForegroundColor(editor.theme.clr_fg)
+                    crossterm::style::SetForegroundColor(editor.theme.fg)
                 )
                 .unwrap();
                 execute!(
                     stdout,
-                    crossterm::style::SetBackgroundColor(editor.theme.clr_gutter)
+                    crossterm::style::SetBackgroundColor(editor.theme.gutter)
                 )
                 .unwrap();
                 execute!(stdout, MoveTo(0, screen_rows as u16)).unwrap();
@@ -490,7 +537,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                     let row_len = active_buffer.doc.buffer().line_len(cursor_point.row as u32);
 
                     print!(
-                        "[{}/{}] {} {} {},{} rl:{} {}",
+                        "[{}/{}] {} {} {},{} rl:{} {} {}",
                         active_idx + 1,
                         buffer_count,
                         active_buffer.file_path,
@@ -504,7 +551,8 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                         active_buffer.doc.selection().head().offset,
                         active_buffer.doc.selection().tail().offset,
                         row_len,
-                        editor.pending_cmd
+                        active_buffer.hl.name(),
+                        editor.pending_cmd,
                     );
                 }
             }
@@ -518,14 +566,17 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 execute!(
                     stdout,
                     MoveTo(cmd_col + 1, screen_rows as u16),
-                    crossterm::cursor::SetCursorStyle::BlinkingBlock,
+                    crossterm::cursor::SetCursorStyle::BlinkingBar,
                     crossterm::cursor::Show
                 )
                 .unwrap();
             } else {
                 execute!(
                     stdout,
-                    MoveTo(cursor_screen_col as u16, cursor_screen_row as u16),
+                    MoveTo(
+                        display_snapshot.margin_left as u16 + cursor_screen_col as u16,
+                        display_snapshot.margin_top as u16 + cursor_screen_row as u16
+                    ),
                     match editor.mode {
                         Mode::Insert => crossterm::cursor::SetCursorStyle::BlinkingBar,
                         _ => crossterm::cursor::SetCursorStyle::BlinkingBlock,
@@ -973,7 +1024,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                                     command_text.trim().split_whitespace().collect();
 
                                 if !command_parts.is_empty() {
-                                    let mut save_command = true;
+                                    let save_command = true;
                                     match command_parts[0] {
                                         "q" => break,
                                         "bn" => {

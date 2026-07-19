@@ -2,6 +2,7 @@ use std::{collections::HashMap, path::Path};
 
 use rope::Point;
 use syntect::{
+    LoadingError,
     easy::HighlightLines,
     highlighting::{HighlightState, Style, Theme, ThemeSet, ThemeSettings},
     parsing::{ParseState, SyntaxReference, SyntaxSet},
@@ -11,9 +12,9 @@ use text::{Buffer, ToOffset};
 const START_OFFSET: usize = 240;
 const CACHE_INTERVAL: usize = 80;
 
-fn load_theme(tm_file: &str) -> Theme {
+fn load_theme(tm_file: &str) -> Result<Theme, LoadingError> {
     let tm_path = Path::new(tm_file);
-    ThemeSet::get_theme(tm_path).unwrap()
+    ThemeSet::get_theme(tm_path)
 }
 
 fn find_entry<T>(state_cache: &HashMap<usize, T>, target: usize) -> Option<(&usize, &T)> {
@@ -68,15 +69,16 @@ impl Highlights {
 
         let syntax_set = SyntaxSet::load_defaults_newlines(); // Changed to handle new lines for better syntax parsing
         let theme_set = ThemeSet::load_defaults();
-        //let theme = theme_set
-        //.themes
-        //.get("Solarized (dark)")
-        //.unwrap_or(&theme_set.themes["InspiredGitHub"]);
-        let theme = theme_set
-            .themes
-            .get("base16-ocean.dark")
-            .unwrap_or(&theme_set.themes["Solarized (dark)"]);
-        // let theme = load_theme("./themes/Dracula.tmTheme");
+
+        // let mut theme = theme_set
+        //     .themes
+        //     .get("base16-ocean.dark")
+        //     // .unwrap_or(&theme_set.themes["InspiredGitHub"]);
+        //     .unwrap_or(&theme_set.themes["Solarized (dark)"]);
+
+        let theme = load_theme("./test/themes/Dracula.tmTheme")
+            .unwrap_or(theme_set.themes.get("base16-ocean.dark").unwrap().clone());
+
         let syntax = syntax_set
             .find_syntax_by_extension(&extension)
             .unwrap_or_else(|| syntax_set.find_syntax_plain_text());
@@ -156,6 +158,10 @@ impl Highlights {
                 hl = HighlightLines::from_state(&self.theme, hs, ps);
             }
         }
+    }
+
+    pub fn name(&self) -> String {
+        self.syntax.name.clone()
     }
 
     pub fn render_line(&self, line: usize) -> Option<&StyleCache> {
