@@ -3,7 +3,7 @@ use std::{collections::HashMap, path::Path};
 use rope::Point;
 use syntect::{
     easy::HighlightLines,
-    highlighting::{Color, HighlightState, Style, Theme, ThemeSet, ThemeSettings},
+    highlighting::{HighlightState, Style, Theme, ThemeSet, ThemeSettings},
     parsing::{ParseState, SyntaxReference, SyntaxSet},
 };
 use text::{Buffer, ToOffset};
@@ -105,7 +105,7 @@ impl Highlights {
 
         self.highlight_start = 0;
 
-        if let Some((key, value)) =
+        if let Some((_key, value)) =
             find_entry::<StateCache>(&self.state_cache, start.saturating_sub(CACHE_INTERVAL))
         {
             let ln = value.line_number;

@@ -1,0 +1,7 @@
+[package]
+name = "lsp_mock"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# None needed

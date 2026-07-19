@@ -1,44 +1,29 @@
 mod actions;
+mod display;
 mod document;
 mod highlight;
 mod selections;
 
 use std::{
     cmp::Ordering,
-    collections::HashMap,
-    fmt::Debug,
-    io::{stdout, Result, Write},
+    io::{Write, stdout},
     ops::Range,
-    path::Path,
-    thread,
     time::{Duration, Instant},
 };
 
 use crossterm::{
     cursor::MoveTo,
-    event::{self, read, Event, KeyCode, KeyEvent, KeyModifiers},
+    event::{self, Event, KeyCode, KeyModifiers},
     execute,
     terminal::{Clear, ClearType},
 };
 
-use rope::Point;
-use sum_tree::Bias;
-use syntect::{
-    easy::HighlightLines,
-    highlighting::{Color, Style, ThemeSet},
-    parsing::SyntaxSet,
-};
-use text::{
-    Anchor, AnchorRangeExt, Buffer, BufferId, BufferSnapshot, Selection, SelectionGoal, ToOffset,
-    ToPoint,
-};
+use text::ToPoint;
 
 use actions::{Action, Mode};
+use display::display_map::DisplayMap;
 use document::{BufferText, Document};
 use highlight::Highlights;
-use selections::SelectionCollection;
-
-use clock;
 
 pub trait ToCrossTerm {
     fn rgb(&self) -> crossterm::style::Color;
@@ -103,7 +88,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
     let mut cmd = match Document::new("") {
         Ok(doc) => doc,
-        Err(err) => {
+        Err(_err) => {
             return Ok(());
         }
     };
@@ -112,16 +97,23 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
     let mut stdout = stdout();
     crossterm::terminal::enable_raw_mode().unwrap();
-    execute!(stdout, Clear(ClearType::All), MoveTo(0, 0)).unwrap();
+    execute!(
+        stdout,
+        crossterm::event::EnableBracketedPaste,
+        Clear(ClearType::All),
+        MoveTo(0, 0)
+    )
+    .unwrap();
 
     let mut hl = Highlights::new(file_path);
+    let mut display_map = DisplayMap::new(doc.buffer().snapshot().clone(), None);
     let mut scroll_x: u32 = 0;
     let mut scroll_y: u32 = 0;
 
     let tab_size = 4;
 
     // Prepare default background pair
-    let (clr_fg, clr_bg, clr_caret, clr_current_line, clr_select, clr_gutter) = {
+    let (clr_fg, clr_bg, clr_caret, _clr_current_line, clr_select, clr_gutter) = {
         let settings = hl.theme_settings();
         let fg = settings.foreground.unwrap();
         let bg = settings.background.unwrap();
@@ -137,9 +129,9 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
     execute!(stdout, crossterm::cursor::Hide).unwrap();
 
-    let mut paste_buffer = String::new();
-    let mut last_char_time = Instant::now();
-    let paste_timeout = Duration::from_millis(5); // threshold to separate pastes from normal typing
+    let _paste_buffer = String::new();
+    let _last_char_time = Instant::now();
+    let _paste_timeout = Duration::from_millis(5); // threshold to separate pastes from normal typing
 
     let mut dirty_hl = true;
     let mut should_redraw = false;
@@ -159,11 +151,16 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         prev_screen_rows = screen_rows;
         prev_screen_cols = screen_cols;
 
+        // update display map
+        display_map.set_wrap_width(Some(screen_cols as u32));
+        display_map.sync(doc.buffer().snapshot().clone());
+        let display_snapshot = display_map.snapshot();
+
         // get cursor information
         let cursor = doc.selection();
         let cursor_head = cursor.head();
         let cursor_tail = cursor.tail();
-        let mut cursor_range = if cursor_head.cmp(&cursor_tail, &doc.buffer()) == Ordering::Less {
+        let _cursor_range = if cursor_head.cmp(&cursor_tail, &doc.buffer()) == Ordering::Less {
             Range {
                 start: cursor_head,
                 end: cursor_tail,
@@ -175,8 +172,9 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             }
         };
         let cursor_point = cursor_head.to_point(&doc.buffer());
-        let cursor_row = cursor_point.row as i32;
-        let cursor_col = cursor_point.column as i32;
+        let display_cursor = display_snapshot.point_to_display_point(cursor_point);
+        let cursor_row = display_cursor.row() as i32;
+        let cursor_col = display_cursor.column() as i32;
         let visible_rows = screen_rows - 1;
         let visible_cols = screen_cols;
 
@@ -208,19 +206,21 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         //------------------
         if should_redraw {
             should_redraw = false;
-
-            // execute!(stdout, MoveTo(0, 0)).unwrap();
-            // execute!(stdout, Clear(ClearType::All), MoveTo(0, 0)).unwrap();
+            execute!(stdout, crossterm::cursor::Hide).unwrap();
 
             let buffer = doc.buffer();
-            let total_rows = buffer.row_count();
+            let total_rows = display_snapshot.row_count();
             let end_line = (scroll_y + visible_rows as u32).min(total_rows);
 
             if dirty_hl {
+                let start_buffer_row = display_snapshot.buffer_row_for_display_row(scroll_y);
+                let end_buffer_row =
+                    display_snapshot.buffer_row_for_display_row(end_line.saturating_sub(1));
+
                 hl.highlight_lines(
                     doc.buffer(),
-                    scroll_y as usize,
-                    (end_line - scroll_y) as usize,
+                    start_buffer_row as usize,
+                    (end_buffer_row - start_buffer_row + 1) as usize,
                 );
             }
             dirty_hl = true;
@@ -228,14 +228,15 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             let mut screen_row = 0;
             for row in scroll_y..end_line {
                 execute!(stdout, MoveTo(0, screen_row)).unwrap();
-                let text = doc.buffer().row_text(row) + " ";
+                let text = display_snapshot.line_text(row) + " ";
+                let buffer_row = display_snapshot.buffer_row_for_display_row(row);
+                let buffer_range = display_snapshot.buffer_range_for_display_row(row);
+                let start_col = buffer_range.start.column;
 
-                let mut ranges;
-                if let Some(style_cache) = hl.render_line(row as usize) {
+                let ranges;
+                if let Some(style_cache) = hl.render_line(buffer_row as usize) {
                     ranges = &style_cache.styles;
-                    // use ranges safely here
                 } else {
-                    // handle missing case, maybe skip or default:
                     execute!(stdout, crossterm::style::SetBackgroundColor(clr_bg)).unwrap();
                     fill_to_eol(screen_cols as usize);
                     screen_row += 1;
@@ -245,15 +246,31 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 // style range
                 let mut range_iter = ranges.iter();
                 let mut current_range = range_iter.next();
-                let mut range_remaining = current_range.map_or(0, |(_, s, e)| e - s);
+
+                // Skip ranges that end before our start_col
+                while let Some((_, _s, e)) = current_range {
+                    if *e <= start_col {
+                        current_range = range_iter.next();
+                    } else {
+                        break;
+                    }
+                }
+
+                let mut range_remaining =
+                    current_range.map_or(
+                        0,
+                        |(_, s, e)| {
+                            if *s < start_col { e - start_col } else { e - s }
+                        },
+                    );
                 let mut current_style = current_range.map(|(style, _, _)| style);
 
                 let mut x_scroll = scroll_x;
                 let mut cols_remaining = screen_cols;
-                let at_cursor_row = cursor_row == row as i32;
 
-                let mut rc = 0;
                 for (column, ch) in text.chars().enumerate() {
+                    let rc = start_col + column as u32;
+
                     if range_remaining == 0 {
                         current_range = range_iter.next();
                         range_remaining = current_range.map_or(0, |(_, s, e)| e - s);
@@ -268,20 +285,16 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                         bg = style.background.darken(10).rgb();
                     }
 
-                    if at_cursor_row {
-                        // bg = clr_current_line.clone();
-                    }
-
                     let (selected, mut selected_line, at_cursor) =
-                        doc.selections().is_selected(row, rc, &buffer);
-                    if selected {
+                        doc.selections().is_selected(buffer_row, rc, &buffer);
+                    if selected && (mode == Mode::Visual || mode == Mode::Visual_Line) {
                         bg = clr_select;
                     }
                     selected_line = selected_line && mode == Mode::Visual_Line;
                     if selected_line {
                         bg = clr_select;
                     }
-                    if at_cursor {
+                    if at_cursor && mode != Mode::Insert && mode != Mode::Command {
                         fg = clr_bg;
                         bg = clr_caret;
                     }
@@ -296,7 +309,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                             '\t' => {
                                 for _i in 0..tab_size {
                                     print!(" ");
-                                    if at_cursor {
+                                    if at_cursor && mode != Mode::Insert && mode != Mode::Command {
                                         execute!(
                                             stdout,
                                             crossterm::style::SetBackgroundColor(clr_bg)
@@ -305,13 +318,10 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                                     }
                                     cols_remaining = cols_remaining.saturating_sub(1);
                                 }
-                                rc += ch.len_utf8() as u32;
                             }
                             _ => {
-                                // let fc = if ch == ' ' && at_cursor { '_' } else { ch };
                                 print!("{}", ch);
                                 cols_remaining = cols_remaining.saturating_sub(1);
-                                rc += ch.len_utf8() as u32;
                             }
                         }
                     }
@@ -323,16 +333,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                     }
                 }
 
-                execute!(
-                    stdout,
-                    crossterm::style::SetBackgroundColor({
-                        // if at_cursor_row {
-                        //     clr_current_line
-                        // } else {
-                        clr_bg
-                        // }
-                    })
-                );
+                execute!(stdout, crossterm::style::SetBackgroundColor(clr_bg)).unwrap();
 
                 // fill_to_eol((screen_cols - text.chars().count() as i32).max(0) as usize);
                 fill_to_eol(cols_remaining.max(0) as usize);
@@ -345,8 +346,8 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
             // statusbar
             {
-                execute!(stdout, crossterm::style::SetForegroundColor(clr_fg));
-                execute!(stdout, crossterm::style::SetBackgroundColor(clr_gutter));
+                execute!(stdout, crossterm::style::SetForegroundColor(clr_fg)).unwrap();
+                execute!(stdout, crossterm::style::SetBackgroundColor(clr_gutter)).unwrap();
                 execute!(stdout, MoveTo(0, screen_rows as u16)).unwrap();
                 fill_to_eol(screen_cols as usize);
                 execute!(stdout, MoveTo(0, screen_rows as u16)).unwrap();
@@ -357,7 +358,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                     print!(":{}", cmd.buffer().row_text(cmd.buffer().row_count() - 1));
                 } else {
                     print!(
-                        "{} {},{} v:{} rl:{} {}",
+                        "{} {},{} rl:{} {}",
                         match mode {
                             Mode::Normal => "NORMAL",
                             Mode::Insert => "INSERT",
@@ -368,11 +369,35 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                         // scroll_y,
                         doc.selection().head().offset,
                         doc.selection().tail().offset,
-                        &doc.buffer().version().get(0), // &doc.buffer().replica_id()
+                        // &doc.buffer().version().get(0), //
+                        // &doc.buffer().replica_id(),
                         row_len,
                         pending_cmd
                     );
                 }
+            }
+
+            if mode == Mode::Command {
+                let cmd_text = cmd.buffer().row_text(cmd.buffer().row_count() - 1);
+                let cmd_col = (cmd_text.chars().count() + 1) as u16;
+                execute!(
+                    stdout,
+                    MoveTo(cmd_col, screen_rows as u16),
+                    crossterm::cursor::SetCursorStyle::BlinkingBar,
+                    crossterm::cursor::Show
+                )
+                .unwrap();
+            } else {
+                execute!(
+                    stdout,
+                    MoveTo(cursor_screen_col as u16, cursor_screen_row as u16),
+                    match mode {
+                        Mode::Insert => crossterm::cursor::SetCursorStyle::BlinkingBar,
+                        _ => crossterm::cursor::SetCursorStyle::BlinkingBlock,
+                    },
+                    crossterm::cursor::Show
+                )
+                .unwrap();
             }
 
             stdout.flush().unwrap();
@@ -382,8 +407,15 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         // input
         //------------------
         if event::poll(Duration::from_millis(50))? {
-            // match event {
-            if let Event::Key(key_event) = event::read()? {
+            let event = event::read()?;
+            if let Event::Paste(content) = &event {
+                if mode == Mode::Insert {
+                    doc.apply_action(&Action::InsertText(content.clone()));
+                    should_redraw = true;
+                }
+            }
+
+            if let Event::Key(key_event) = event {
                 should_redraw = false;
 
                 let current_mode = mode.clone();
@@ -401,25 +433,41 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                     _ => {}
                 }
 
-                let mut action = Action::NoOp;
-                let mut select = mode == Mode::Visual || mode == Mode::Visual_Line;
+                let (count, _) = {
+                    let mut count_str = String::new();
+                    let mut parsing_count = true;
+                    for ch in pending_cmd.chars() {
+                        if parsing_count && ch.is_ascii_digit() {
+                            count_str.push(ch);
+                        } else {
+                            parsing_count = false;
+                        }
+                    }
+                    let count = count_str.parse::<u32>().unwrap_or(1);
+                    (count, ())
+                };
+
+                let select = mode == Mode::Visual || mode == Mode::Visual_Line;
                 let move_action = match (key_event.code, key_event.modifiers) {
-                    (KeyCode::Left, _) => Action::MoveLeft { select },
-                    (KeyCode::Right, _) => Action::MoveRight { select },
-                    (KeyCode::Up, _) => Action::MoveUp { select },
-                    (KeyCode::Down, _) => Action::MoveDown { select },
-                    (KeyCode::PageUp, _) => Action::MoveUpCount {
+                    (KeyCode::Left, _) => Action::MoveLeft { select, count },
+                    (KeyCode::Right, _) => Action::MoveRight { select, count },
+                    (KeyCode::Up, _) => Action::MoveUp { select, count },
+                    (KeyCode::Down, _) => Action::MoveDown { select, count },
+                    (KeyCode::PageUp, _) => Action::MoveUp {
                         select,
-                        count: (visible_rows >> 1) as u32,
+                        count: (visible_rows >> 1) as u32 * count,
                     },
-                    (KeyCode::PageDown, _) => Action::MoveDownCount {
+                    (KeyCode::PageDown, _) => Action::MoveDown {
                         select,
-                        count: (visible_rows >> 1) as u32,
+                        count: (visible_rows >> 1) as u32 * count,
                     },
                     (KeyCode::Home, _) => Action::MoveToStartOfLine { select },
                     (KeyCode::End, _) => Action::MoveToEndOfLine { select },
-                    (KeyCode::Char('{'), _) => Action::MoveToPreviousParagraph { select },
-                    (KeyCode::Char('}'), _) => Action::MoveToNextParagraph { select },
+                    (KeyCode::Char('0'), _) => Action::MoveToStartOfLine { select },
+                    (KeyCode::Char('$'), _) => Action::MoveToEndOfLine { select },
+                    (KeyCode::Char('^'), _) => Action::MoveToStartOfLineNonSpace { select },
+                    (KeyCode::Char('{'), _) => Action::MoveToPreviousParagraph { select, count },
+                    (KeyCode::Char('}'), _) => Action::MoveToNextParagraph { select, count },
                     _ => Action::NoOp,
                 };
 
@@ -457,74 +505,194 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                         }
                         Action::NoOp
                     }
-                    (KeyCode::Char('r'), KeyModifiers::CONTROL) => Action::Redo,
-                    (KeyCode::Char('u'), _) => Action::Undo,
-                    (KeyCode::Char('h'), _) => Action::MoveLeft { select },
-                    (KeyCode::Char('l'), _) => Action::MoveRight { select },
-                    (KeyCode::Char('k'), _) => Action::MoveUp { select },
-                    (KeyCode::Char('j'), _) => Action::MoveDown { select },
-                    (KeyCode::Delete, _) => Action::DeleteText { count: 1 },
-                    (KeyCode::Backspace, _) => Action::MoveLeft { select },
-                    (KeyCode::Left, KeyModifiers::SHIFT) => {
-                        Action::MoveToPreviousWord { select: false }
-                    }
-                    (KeyCode::Right, KeyModifiers::SHIFT) => {
-                        Action::MoveToNextWord { select: false }
-                    }
+                    (KeyCode::Char('r'), KeyModifiers::CONTROL) => Action::Redo { count },
+                    (KeyCode::Char('u'), _) => Action::Undo { count },
+                    (KeyCode::Char('h'), _) => Action::MoveLeft { select, count },
+                    (KeyCode::Char('l'), _) => Action::MoveRight { select, count },
+                    (KeyCode::Char('k'), _) => Action::MoveUp { select, count },
+                    (KeyCode::Char('j'), _) => Action::MoveDown { select, count },
+                    (KeyCode::Delete, _) => Action::DeleteText {
+                        count: count as usize,
+                    },
+                    (KeyCode::Backspace, _) => Action::MoveLeft { select, count },
+                    (KeyCode::Left, KeyModifiers::SHIFT) => Action::MoveToPreviousWord {
+                        select: false,
+                        count,
+                    },
+                    (KeyCode::Right, KeyModifiers::SHIFT) => Action::MoveToNextWord {
+                        select: false,
+                        count,
+                    },
                     (KeyCode::Char(c), _) => {
                         pending_cmd.push(c);
-                        match pending_cmd {
-                            ref s if s.ends_with("gg") => {
-                                pending_cmd.clear();
-                                Action::MoveToStartOfDocument { select }
+                        let (count, cmd_without_count) = {
+                            let mut count_str = String::new();
+                            let mut cmd_str = String::new();
+                            let mut parsing_count = true;
+                            for ch in pending_cmd.chars() {
+                                if parsing_count
+                                    && ch.is_ascii_digit()
+                                    && (ch != '0' || !count_str.is_empty())
+                                {
+                                    count_str.push(ch);
+                                } else {
+                                    parsing_count = false;
+                                    cmd_str.push(ch);
+                                }
                             }
-                            ref s if s.ends_with("G") => {
-                                pending_cmd.clear();
-                                Action::MoveToEndOfDocument { select }
+                            let count = if count_str.is_empty() {
+                                1
+                            } else {
+                                count_str.parse::<u32>().unwrap_or(1)
+                            };
+                            (count, cmd_str)
+                        };
+
+                        let action = match cmd_without_count.as_str() {
+                            "gg" => Some(Action::MoveToStartOfDocument { select }),
+                            "G" => Some(Action::MoveToEndOfDocument { select }),
+                            "dd" => Some(Action::DeleteCurrentLine { count }),
+                            "dw" => Some(Action::DeleteMotion {
+                                count,
+                                motion: Box::new(Action::MoveToNextWord {
+                                    select: true,
+                                    count: 1,
+                                }),
+                            }),
+                            "db" => Some(Action::DeleteMotion {
+                                count,
+                                motion: Box::new(Action::MoveToPreviousWord {
+                                    select: true,
+                                    count: 1,
+                                }),
+                            }),
+                            "de" => Some(Action::DeleteMotion {
+                                count,
+                                motion: Box::new(Action::MoveToNextWordEnd {
+                                    select: true,
+                                    count: 1,
+                                }),
+                            }),
+                            "dge" => Some(Action::DeleteMotion {
+                                count,
+                                motion: Box::new(Action::MoveToPreviousWordEnd {
+                                    select: true,
+                                    count: 1,
+                                }),
+                            }),
+                            "dj" => Some(Action::DeleteMotion {
+                                count,
+                                motion: Box::new(Action::MoveDown {
+                                    select: true,
+                                    count: 1,
+                                }),
+                            }),
+                            "dk" => Some(Action::DeleteMotion {
+                                count,
+                                motion: Box::new(Action::MoveUp {
+                                    select: true,
+                                    count: 1,
+                                }),
+                            }),
+                            "dh" => Some(Action::DeleteMotion {
+                                count,
+                                motion: Box::new(Action::MoveLeft {
+                                    select: true,
+                                    count: 1,
+                                }),
+                            }),
+                            "dl" => Some(Action::DeleteMotion {
+                                count,
+                                motion: Box::new(Action::MoveRight {
+                                    select: true,
+                                    count: 1,
+                                }),
+                            }),
+                            "d0" => Some(Action::DeleteMotion {
+                                count,
+                                motion: Box::new(Action::MoveToStartOfLine { select: true }),
+                            }),
+                            "d$" => Some(Action::DeleteMotion {
+                                count,
+                                motion: Box::new(Action::MoveToEndOfLine { select: true }),
+                            }),
+                            "d^" => Some(Action::DeleteMotion {
+                                count,
+                                motion: Box::new(Action::MoveToStartOfLineNonSpace {
+                                    select: true,
+                                }),
+                            }),
+                            "d{" => Some(Action::DeleteMotion {
+                                count,
+                                motion: Box::new(Action::MoveToPreviousParagraph {
+                                    select: true,
+                                    count: 1,
+                                }),
+                            }),
+                            "d}" => Some(Action::DeleteMotion {
+                                count,
+                                motion: Box::new(Action::MoveToNextParagraph {
+                                    select: true,
+                                    count: 1,
+                                }),
+                            }),
+                            "x" => Some(Action::Delete { count }),
+                            "b" => Some(Action::MoveToPreviousWord { select, count }),
+                            "w" => Some(Action::MoveToNextWord { select, count }),
+                            "e" => Some(Action::MoveToNextWordEnd { select, count }),
+                            "ge" => Some(Action::MoveToPreviousWordEnd { select, count }),
+                            s if s.starts_with('f') && s.len() == 2 => {
+                                let ch = s.chars().nth(1).unwrap();
+                                Some(Action::FindCharacter {
+                                    select,
+                                    count,
+                                    char: ch,
+                                    forward: true,
+                                })
                             }
-                            ref s if s.ends_with("dd") => {
-                                pending_cmd.clear();
-                                Action::DeleteCurrentLine
+                            s if s.starts_with('F') && s.len() == 2 => {
+                                let ch = s.chars().nth(1).unwrap();
+                                Some(Action::FindCharacter {
+                                    select,
+                                    count,
+                                    char: ch,
+                                    forward: false,
+                                })
                             }
-                            ref s if s.ends_with("dw") => {
-                                pending_cmd.clear();
-                                Action::DeleteCurrentWord
-                            }
-                            ref s if s.ends_with("x") => {
-                                pending_cmd.clear();
-                                Action::Delete
-                            }
-                            ref s if s.ends_with("b") => {
-                                pending_cmd.clear();
-                                Action::MoveToPreviousWord { select }
-                            }
-                            ref s if s.ends_with("w") => {
-                                pending_cmd.clear();
-                                Action::MoveToNextWord { select }
-                            }
-                            _ => Action::NoOp,
+                            _ => None,
+                        };
+
+                        if let Some(a) = action {
+                            pending_cmd.clear();
+                            a
+                        } else {
+                            Action::NoOp
                         }
                     }
                     _ => Action::NoOp,
                 };
 
-                let visual_action = Action::NoOp;
+                let _visual_action = Action::NoOp;
 
                 // document actions
-                let insert_action = if mode == Mode::Insert || mode == Mode::Command {
-                    match (key_event.code, key_event.modifiers) {
-                        (KeyCode::Enter, _) => Action::InsertNewLine,
-                        (KeyCode::Tab, _) => Action::InsertTab,
-                        (KeyCode::Delete, _) => Action::Delete,
-                        (KeyCode::Backspace, _) => Action::Backspace,
-                        (KeyCode::Char(c), _) => Action::InsertText(c.to_string()),
-                        _ => Action::NoOp,
+                let insert_action = match (key_event.code, key_event.modifiers) {
+                    (KeyCode::Enter, _) if mode == Mode::Insert => Action::InsertNewLine,
+                    (KeyCode::Tab, _) if mode == Mode::Insert || mode == Mode::Command => {
+                        Action::InsertTab
                     }
-                } else {
-                    Action::NoOp
+                    (KeyCode::Delete, _) if mode == Mode::Insert || mode == Mode::Command => {
+                        Action::Delete { count: 1 }
+                    }
+                    (KeyCode::Backspace, _) if mode == Mode::Insert || mode == Mode::Command => {
+                        Action::Backspace
+                    }
+                    (KeyCode::Char(c), _) if mode == Mode::Insert || mode == Mode::Command => {
+                        Action::InsertText(c.to_string())
+                    }
+                    _ => Action::NoOp,
                 };
 
-                let command_action = if mode != Mode::Insert {
+                let _command_action = if mode != Mode::Insert {
                     match (key_event.code, key_event.modifiers) {
                         _ => Action::NoOp,
                     }
@@ -537,6 +705,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                     Mode::Normal => {
                         if normal_action != Action::NoOp {
                             doc.apply_action(&normal_action);
+                            pending_cmd.clear();
                         } else if move_action != Action::NoOp {
                             doc.apply_action(&move_action);
                             pending_cmd.clear();
@@ -545,6 +714,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                     Mode::Visual => {
                         if normal_action != Action::NoOp {
                             doc.apply_action(&normal_action);
+                            pending_cmd.clear();
                         } else if move_action != Action::NoOp {
                             doc.apply_action(&move_action);
                             pending_cmd.clear();
@@ -553,6 +723,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                     Mode::Visual_Line => {
                         if normal_action != Action::NoOp {
                             doc.apply_action(&normal_action);
+                            pending_cmd.clear();
                         } else if move_action != Action::NoOp {
                             doc.apply_action(&move_action);
                             pending_cmd.clear();
@@ -567,13 +738,28 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                         }
                     }
                     Mode::Command => {
-                        if insert_action != Action::NoOp {
+                        if let (KeyCode::Enter, _) = (key_event.code, key_event.modifiers) {
+                            let command_text = cmd.buffer().row_text(0);
+                            if let Ok(line_number) = command_text.trim().parse::<u32>() {
+                                doc.apply_action(&Action::MoveToLine {
+                                    select: false,
+                                    line: line_number,
+                                });
+                            } else if command_text.trim() == "q" {
+                                break;
+                            }
+                            // Clear command buffer and return to Normal mode
+                            cmd = Document::new("").unwrap();
+                            mode = Mode::Normal;
+                            should_redraw = true;
+                        } else if insert_action != Action::NoOp {
                             cmd.apply_action(&insert_action);
-                        } else if move_action != Action::NoOp {
-                            //cmd.apply_action(&move_action);
+                        } else if let (KeyCode::Backspace, _) =
+                            (key_event.code, key_event.modifiers)
+                        {
+                            cmd.apply_action(&Action::Backspace);
                         }
                     }
-                    _ => {}
                 }
 
                 if !should_redraw {
@@ -591,7 +777,13 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     }
 
     crossterm::terminal::disable_raw_mode().unwrap();
-    execute!(stdout, Clear(ClearType::All), MoveTo(0, 0)).unwrap();
+    execute!(
+        stdout,
+        crossterm::event::DisableBracketedPaste,
+        Clear(ClearType::All),
+        MoveTo(0, 0)
+    )
+    .unwrap();
     execute!(stdout, crossterm::cursor::Show).unwrap();
 
     Ok(())

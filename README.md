@@ -33,7 +33,6 @@ pub enum Action {
     DeleteText { count: usize },
     Backspace,
     Delete,
-    DeleteCurrentWord,
     DeleteCurrentLine,
 
     Indent,
