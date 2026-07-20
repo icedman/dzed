@@ -61,6 +61,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     execute!(stdout, crossterm::cursor::Hide).unwrap();
 
     let mut should_redraw = true;
+    let mut should_sync= true;
     let mut prev_screen_rows = 0;
     let mut prev_screen_cols = 0;
 
@@ -90,9 +91,13 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         } else {
             None
         });
-        active_buffer
-            .display_map
-            .sync(active_buffer.doc.buffer().snapshot().clone());
+
+        if should_sync {
+            active_buffer
+                .display_map
+                .sync(active_buffer.doc.buffer().snapshot().clone());
+            should_sync = false;
+        }
 
         // get cursor information
         let cursor = active_buffer.doc.selection();
@@ -429,6 +434,10 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             match handle_event(&mut editor, event, visible_rows) {
                 HandleEvent::Exit => break,
                 HandleEvent::Redraw => should_redraw = true,
+                HandleEvent::RedrawAndSync => {
+                    should_redraw = true;
+                    should_sync = true;
+                },
                 HandleEvent::NoRedraw => {}
             }
         }

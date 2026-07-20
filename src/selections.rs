@@ -52,10 +52,14 @@ impl SelectionCollection {
         sel
     }
 
-    pub fn update(&mut self, selection: &Selection<Anchor>) {
+    pub fn update(&mut self, buffer: &Buffer, selection: &Selection<Anchor>) {
         if let Some(selected) = self.selections.iter_mut().find(|s| s.id == selection.id) {
             *selected = selection.clone();
         }
+    }
+
+    pub fn update_biases(&mut self, buffer: &Buffer) {
+        
     }
 
     pub fn clear(&mut self) {
@@ -135,9 +139,9 @@ impl SelectionCollection {
         return false;
     }
 
-    pub fn clear_selections(&mut self) {
+    pub fn clear_selections(&mut self, buffer: &Buffer) {
         for cursor in self.selections.clone().iter() {
-            self.update(&Selection {
+            self.update(buffer, &Selection {
                 id: cursor.id,
                 start: cursor.head(),
                 end: cursor.head(),
@@ -164,7 +168,7 @@ impl SelectionCollection {
                 let mut offset = buffer.offset_for_anchor(&buffer.anchor_at(&point, Bias::Left));
                 offset = buffer.clip_offset(offset, Bias::Left);
                 let new_head = buffer.anchor_at(offset, Bias::Left);
-                self.update(&{
+                self.update(buffer, &{
                     Selection {
                         id: cursor.id,
                         start: new_head,
@@ -196,7 +200,7 @@ impl SelectionCollection {
                 let mut offset = buffer.offset_for_anchor(&buffer.anchor_at(&point, Bias::Left));
                 offset = buffer.clip_offset(offset, Bias::Right);
                 let new_head = buffer.anchor_at(offset, Bias::Left);
-                self.update(&{
+                self.update(buffer, &{
                     Selection {
                         id: cursor.id,
                         start: new_head,
@@ -221,7 +225,7 @@ impl SelectionCollection {
                 point = buffer.clip_point(point, cursor.head().bias);
                 let offset = point.to_offset(&buffer);
                 let new_head = buffer.anchor_at(offset, Bias::Left);
-                self.update(&{
+                self.update(buffer, &{
                     Selection {
                         id: cursor.id,
                         start: new_head,
@@ -246,7 +250,7 @@ impl SelectionCollection {
                 point = buffer.clip_point(point, cursor.head().bias);
                 let offset = point.to_offset(&buffer);
                 let new_head = buffer.anchor_at(offset, Bias::Left);
-                self.update(&{
+                self.update(buffer, &{
                     Selection {
                         id: cursor.id,
                         start: new_head,
@@ -267,7 +271,7 @@ impl SelectionCollection {
             point = buffer.clip_point(point, cursor.head().bias);
             let offset = point.to_offset(&buffer);
             let new_head = buffer.anchor_at(offset, Bias::Left);
-            self.update(&{
+            self.update(buffer, &{
                 Selection {
                     id: cursor.id,
                     start: new_head,
@@ -295,7 +299,7 @@ impl SelectionCollection {
             point = buffer.clip_point(point, cursor.head().bias);
             let offset = point.to_offset(&buffer);
             let new_head = buffer.anchor_at(offset, Bias::Left);
-            self.update(&{
+            self.update(buffer, &{
                 Selection {
                     id: cursor.id,
                     start: new_head,
@@ -315,7 +319,7 @@ impl SelectionCollection {
             point = buffer.clip_point(point, cursor.head().bias);
             let offset = point.to_offset(&buffer);
             let new_head = buffer.anchor_at(offset, Bias::Left);
-            self.update(&{
+            self.update(buffer, &{
                 Selection {
                     id: cursor.id,
                     start: new_head,
@@ -338,7 +342,7 @@ impl SelectionCollection {
             point = buffer.clip_point(point, cursor.head().bias);
             let offset = point.to_offset(buffer);
             let new_head = buffer.anchor_at(offset, Bias::Left);
-            self.update(&Selection {
+            self.update(buffer, &Selection {
                 id: cursor.id,
                 start: new_head,
                 end: if anchor { cursor.tail() } else { new_head },
@@ -394,7 +398,7 @@ impl SelectionCollection {
                 point = buffer.clip_point(point, cursor.head().bias);
                 let offset = point.to_offset(buffer);
                 let new_head = buffer.anchor_at(offset, Bias::Left);
-                self.update(&Selection {
+                self.update(buffer, &Selection {
                     id: cursor.id,
                     start: new_head,
                     end: if anchor { cursor.tail() } else { new_head },
@@ -411,7 +415,7 @@ impl SelectionCollection {
             let point = Point { row: 0, column: 0 };
             let offset = point.to_offset(&buffer);
             let new_head = buffer.anchor_at(offset, Bias::Left);
-            self.update(&{
+            self.update(buffer, &{
                 Selection {
                     id: cursor.id,
                     start: new_head,
@@ -432,7 +436,7 @@ impl SelectionCollection {
             };
             let offset = point.to_offset(&buffer);
             let new_head = buffer.anchor_at(offset, Bias::Left);
-            self.update(&{
+            self.update(buffer, &{
                 Selection {
                     id: cursor.id,
                     start: new_head,

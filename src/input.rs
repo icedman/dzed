@@ -6,6 +6,7 @@ use crossterm::event::{Event, KeyCode, KeyModifiers, MouseEventKind};
 
 pub enum HandleEvent {
     Redraw,
+    RedrawAndSync,
     NoRedraw,
     Exit,
 }
@@ -32,13 +33,14 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
             active_buffer
                 .doc
                 .apply_action(&Action::InsertText(content.clone()));
-            return HandleEvent::Redraw;
+            return HandleEvent::RedrawAndSync;
         }
         return HandleEvent::NoRedraw;
     }
 
     if let Event::Key(key_event) = event {
         let mut should_redraw = false;
+        let mut should_sync = false;
         let current_mode = editor.mode.clone();
 
         // Global actions
@@ -103,7 +105,7 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                 should_redraw = true;
                 Action::NoOp
             }
-            (KeyCode::Char('i'), _) => Action::SetNormalMode,
+            (KeyCode::Char('i'), _) => Action::SetInsertMode,
             (KeyCode::Char('v'), _) => Action::SetVisualMode,
             (KeyCode::Char('V'), _) => Action::SetVisualLineMode,
             (KeyCode::Char(':'), _) => Action::SetCommandMode {
@@ -350,8 +352,8 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                     active_buffer.doc.apply_action(&move_action);
                     editor.pending_cmd.clear();
                 } else {
-                    editor.mode = Mode::Normal;
-                    should_redraw = true;
+                    // editor.mode = Mode::Normal;
+                    // should_redraw = true;
                 }
             }
             Mode::VisualLine => {
@@ -457,20 +459,17 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                                 "set" if command_parts.len() > 1 => match command_parts[1] {
                                     "wrap" => editor.wrap = true,
                                     "nowrap" => editor.wrap = false,
-                                    x if command_parts[1].starts_with("nu") => {
-                                        let _ = x; // number
+                                    _ if command_parts[1].starts_with("nu") => {
                                         editor.show_line_numbers = true;
                                     }
-                                    x if command_parts[1].starts_with("nonu") => {
-                                        let _ = x; // nonumber
+                                    _ if command_parts[1].starts_with("nonu") => {
                                         editor.show_line_numbers = false;
                                     }
                                     _ => {}
                                 },
-                                x if command_parts[0].starts_with("syn")
+                                _ if command_parts[0].starts_with("syn")
                                     && command_parts.len() > 1 =>
                                 {
-                                    let _ = x;
                                     match command_parts[1] {
                                         "on" => editor.syntax = true,
                                         "off" => editor.syntax = false,
@@ -518,8 +517,15 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
         {
             should_redraw = true;
         }
+        if normal_action != Action::NoOp
+            || insert_action != Action::NoOp
+        {
+            should_sync = true;
+        }
 
-        return if should_redraw {
+        return if should_sync && should_redraw {
+            HandleEvent::RedrawAndSync
+        } else if should_redraw {
             HandleEvent::Redraw
         } else {
             HandleEvent::NoRedraw
