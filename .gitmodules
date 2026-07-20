@@ -1,0 +1,3 @@
+[submodule "crates/zed"]
+	path = crates/zed
+	url = https://github.com/zed-industries/zed
