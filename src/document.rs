@@ -198,6 +198,7 @@ impl Document {
     }
 
     pub fn select_next_same_word(&mut self, _text: &str) {}
+    pub fn select_previous_same_word(&mut self, _text: &str) {}
 
     pub fn apply_action(&mut self, action: &Action) {
         match action {
@@ -354,7 +355,7 @@ impl Document {
             Action::Redo { count } => self.redo(*count),
             Action::SelectWord => self.select_word(),
             Action::SelectNext(sel) => self.select_next_same_word(&sel),
-            Action::SelectPrevious(sel) => self.select_next_same_word(&sel),
+            Action::SelectPrevious(sel) => self.select_previous_same_word(&sel),
             Action::ClearCursors => self.selections.clear_selections(),
             &Action::Indent | &Action::Unindent => {}
 

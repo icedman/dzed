@@ -136,6 +136,7 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                 select: false,
                 count,
             },
+            (KeyCode::Char('d'), KeyModifiers::CONTROL) => Action::SelectWord,
             (KeyCode::Char(c), _) => {
                 editor.pending_cmd.push(c);
                 let (count, cmd_without_count) = {

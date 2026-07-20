@@ -13,16 +13,16 @@ use std::{
 
 use crossterm::{
     cursor::MoveTo,
-    event::{self, Event},
+    event::{self},
     execute,
     terminal::{Clear, ClearType},
 };
 
 use text::ToPoint;
 
-use actions::{Action, Mode};
-use document::{BufferText, Document};
-use editor::{ColorAdjust, Editor, EditorBuffer, EditorTheme, ToCrossTerm};
+use actions::Mode;
+use document::BufferText;
+use editor::{ColorAdjust, Editor, ToCrossTerm};
 use input::{HandleEvent, handle_event};
 
 fn fill_to_eol(count: usize) {
@@ -267,8 +267,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                         .doc
                         .selections()
                         .is_selected(buffer_row, rc, &buffer);
-                    if selected && (editor.mode == Mode::Visual || editor.mode == Mode::VisualLine)
-                    {
+                    if selected && (editor.mode != Mode::Command) {
                         bg = editor.theme.select;
                     }
                     selected_line = selected_line && editor.mode == Mode::VisualLine;
