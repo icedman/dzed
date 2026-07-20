@@ -7,6 +7,8 @@ mod input;
 mod search;
 mod selections;
 
+use crate::search::TextSearch;
+
 use std::{
     io::{Write, stdout},
     time::Duration,
@@ -203,6 +205,23 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 }
 
                 let text = display_snapshot.line_text(row) + " ";
+
+                let mut matches = Vec::<(usize, usize, &str)>::new();
+                if !editor.search_text.is_empty() {
+                    matches = text.as_str().find_string(&editor.search_text);
+                }
+                // Convert byte-indexed matches into character-indexed ranges for rendering
+                let match_ranges: Vec<(usize, usize)> = matches
+                    .iter()
+                    .map(|(byte_start, byte_len, _)| {
+                        let byte_end = *byte_start + *byte_len;
+                        let start_char = text[..*byte_start].chars().count();
+                        let end_char = text[..byte_end].chars().count();
+                        (start_char, end_char)
+                    })
+                    .collect();
+                let mut match_idx = 0usize;
+
                 let buffer_row = display_snapshot.buffer_row_for_display_row(row);
                 let buffer_range = display_snapshot.buffer_range_for_display_row(row);
                 let start_col = buffer_range.start.column;
@@ -254,6 +273,17 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
                 for (column, ch) in text.chars().enumerate() {
                     let rc = start_col + column as u32;
+                    // Determine if current column is within a search match range
+                    let mut in_match = false;
+                    while match_idx < match_ranges.len() && column >= match_ranges[match_idx].1 {
+                        match_idx += 1;
+                    }
+                    if match_idx < match_ranges.len() {
+                        let (s, e) = match_ranges[match_idx];
+                        if column >= s && column <= e {
+                            in_match = true;
+                        }
+                    }
 
                     if editor.syntax && range_remaining == 0 {
                         current_range = range_iter.next();
@@ -267,6 +297,11 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                     if let Some(style) = current_style {
                         fg = style.foreground.rgb();
                         bg = style.background.darken(10).rgb();
+                    }
+                    // Apply search match background if not in a selection
+                    if in_match {
+                        fg = editor.theme.find_highlight_fg;
+                        bg = editor.theme.find_highlight_bg;
                     }
 
                     let (selected, mut selected_line, at_cursor) = active_buffer
@@ -375,7 +410,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                     let row_len = active_buffer.doc.buffer().line_len(cursor_point.row as u32);
 
                     print!(
-                        "[{}/{}] {} {} {},{} rl:{} {} {}",
+                        "[{}/{}] {} {} {},{} rl:{} {} {} [{}]",
                         active_idx + 1,
                         buffer_count,
                         active_buffer.file_path,
@@ -391,6 +426,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                         row_len,
                         active_buffer.hl.name(),
                         editor.pending_cmd,
+                        editor.search_text
                     );
                 }
             }

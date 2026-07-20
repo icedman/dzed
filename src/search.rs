@@ -5,8 +5,6 @@ pub trait TextSearch {
     fn find_previous_word(&self, position: usize) -> Option<(usize, usize, &str)>;
     fn find_next_word_end(&self, position: usize) -> Option<(usize, usize, &str)>;
     fn find_previous_word_end(&self, position: usize) -> Option<(usize, usize, &str)>;
-    fn find_current_word(&self, position: usize) -> Option<(usize, usize, &str)>;
-    fn find_next_same_word(&self, position: usize, word: &str) -> Option<(usize, usize, &str)>;
 }
 
 impl TextSearch for str {
@@ -87,18 +85,5 @@ impl TextSearch for str {
             .into_iter()
             .rev()
             .find(|(_, end, _)| (*end - 1) < position)
-    }
-
-    fn find_current_word(&self, position: usize) -> Option<(usize, usize, &str)> {
-        self.find_words()
-            .into_iter()
-            .find(|(start, end, _)| *start <= position && position < *end)
-    }
-
-    fn find_next_same_word(&self, position: usize, word: &str) -> Option<(usize, usize, &str)> {
-        self.find_words()
-            .into_iter()
-            .skip_while(|(start, _, _)| *start <= position)
-            .find(|(_, _, w)| *w == word)
     }
 }

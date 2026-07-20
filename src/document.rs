@@ -106,14 +106,20 @@ impl Document {
             Action::MoveToNextParagraph { select, count } => {
                 self.move_to_next_paragraph(*select, *count)
             }
-            Action::FindCharacter {
+            Action::MoveToPreviousCharacter {
                 select,
                 count,
                 char,
-                forward,
             } => self
                 .selections
-                .find_character(*select, *count, *char, *forward, &self.buffer),
+                .find_character(*select, *count, *char, false, &self.buffer),
+            Action::MoveToNextCharacter {
+                select,
+                count,
+                char,
+            } => self
+                .selections
+                .find_character(*select, *count, *char, true, &self.buffer),
             Action::MoveToStartOfDocument { select } => self
                 .selections
                 .move_to_start_of_document(*select, &self.buffer),
@@ -193,7 +199,8 @@ impl Document {
                     | Action::MoveToLine { select, .. }
                     | Action::MoveToPreviousParagraph { select, .. }
                     | Action::MoveToNextParagraph { select, .. }
-                    | Action::FindCharacter { select, .. } => *select = true,
+                    | Action::MoveToPreviousCharacter { select, .. }
+                    | Action::MoveToNextCharacter { select, .. } => *select = true,
                     _ => {}
                 }
 

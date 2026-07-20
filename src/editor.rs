@@ -16,6 +16,8 @@ pub struct EditorTheme {
     pub bg: crossterm::style::Color,
     pub caret: crossterm::style::Color,
     pub select: crossterm::style::Color,
+    pub find_highlight_fg: crossterm::style::Color,
+    pub find_highlight_bg: crossterm::style::Color,
     pub gutter_fg: crossterm::style::Color,
     pub gutter_bg: crossterm::style::Color,
 }
@@ -29,6 +31,11 @@ impl EditorTheme {
             fg: fg.rgb(),
             bg: bg.darken(10).rgb(),
             caret: settings.caret.unwrap_or(fg).rgb(),
+            find_highlight_fg: settings
+                .find_highlight_foreground
+                .unwrap_or(bg.darken(10))
+                .rgb(),
+            find_highlight_bg: settings.find_highlight.unwrap_or(bg.darken(10)).rgb(),
             select: settings.selection.unwrap_or(bg.darken(10)).rgb(),
             gutter_bg: bg.darken(10).rgb(),
             gutter_fg: hl.comment.rgb(),

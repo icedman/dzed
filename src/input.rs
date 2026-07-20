@@ -13,13 +13,15 @@ pub enum HandleEvent {
 
 pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> HandleEvent {
     // Mouse events: currently no-op placeholders
+    let mut scroll_up = false;
+    let mut scroll_down = false;
     if let Event::Mouse(mouse_event) = &event {
         match mouse_event.kind {
             MouseEventKind::ScrollUp => {
-                // TODO: implement scrolling; currently handled by cursor movement elsewhere
+                scroll_up = true;
             }
             MouseEventKind::ScrollDown => {
-                // TODO: implement scrolling; currently handled by cursor movement elsewhere
+                scroll_down = true;
             }
             _ => {}
         }
@@ -80,7 +82,15 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
             (KeyCode::Right, _) => Action::MoveRight { select, count },
             (KeyCode::Up, _) => Action::MoveUp { select, count },
             (KeyCode::Down, _) => Action::MoveDown { select, count },
+            _ if scroll_up => Action::MoveUp {
+                select,
+                count: (visible_rows >> 1) as u32 * count,
+            },
             (KeyCode::PageUp, _) => Action::MoveUp {
+                select,
+                count: (visible_rows >> 1) as u32 * count,
+            },
+            _ if scroll_down => Action::MoveDown {
                 select,
                 count: (visible_rows >> 1) as u32 * count,
             },
@@ -138,7 +148,9 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                 select: false,
                 count,
             },
-            (KeyCode::Char('d'), KeyModifiers::CONTROL) => Action::SelectIn { kind: SelectInKind::Word },
+            (KeyCode::Char('d'), KeyModifiers::CONTROL) => Action::SelectIn {
+                kind: SelectInKind::Word,
+            },
             (KeyCode::Char(c), _) => {
                 editor.pending_cmd.push(c);
                 let (count, cmd_without_count) = {
@@ -165,7 +177,9 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                 };
 
                 let action = match cmd_without_count.as_str() {
-                    "iw" => Some(Action::SelectIn { kind: SelectInKind::Word }),
+                    "iw" => Some(Action::SelectIn {
+                        kind: SelectInKind::Word,
+                    }),
                     "gg" => Some(Action::MoveToStartOfDocument { select }),
                     "G" => Some(Action::MoveToEndOfDocument { select }),
                     "dd" => Some(Action::DeleteCurrentLine { count }),
@@ -251,6 +265,28 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                             count: 1,
                         }),
                     }),
+                    s if s.starts_with("df") && s.len() == 3 => {
+                        let ch = s.chars().nth(2).unwrap();
+                        Some(Action::DeleteMotion {
+                            count,
+                            motion: Box::new(Action::MoveToNextCharacter {
+                                select: true,
+                                count: 1,
+                                char: ch,
+                            }),
+                        })
+                    }
+                    s if s.starts_with("dF") && s.len() == 3 => {
+                        let ch = s.chars().nth(2).unwrap();
+                        Some(Action::DeleteMotion {
+                            count,
+                            motion: Box::new(Action::MoveToPreviousCharacter {
+                                select: true,
+                                count: 1,
+                                char: ch,
+                            }),
+                        })
+                    }
                     "x" => Some(Action::Delete { count }),
                     "b" => Some(Action::MoveToPreviousWord { select, count }),
                     "w" => Some(Action::MoveToNextWord { select, count }),
@@ -258,20 +294,18 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                     "ge" => Some(Action::MoveToPreviousWordEnd { select, count }),
                     s if s.starts_with('f') && s.len() == 2 => {
                         let ch = s.chars().nth(1).unwrap();
-                        Some(Action::FindCharacter {
+                        Some(Action::MoveToNextCharacter {
                             select,
                             count,
                             char: ch,
-                            forward: true,
                         })
                     }
                     s if s.starts_with('F') && s.len() == 2 => {
                         let ch = s.chars().nth(1).unwrap();
-                        Some(Action::FindCharacter {
+                        Some(Action::MoveToPreviousCharacter {
                             select,
                             count,
                             char: ch,
-                            forward: false,
                         })
                     }
                     _ => None,
@@ -309,6 +343,7 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
             _ => Action::NoOp,
         };
 
+        // handle Action here
         match current_mode {
             Mode::Normal => {
                 if normal_action != Action::NoOp {
@@ -424,7 +459,14 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
 
                     if editor.search {
                         if !command_text.is_empty() {
+                            editor.search_text = command_text.clone();
                             editor.search_history.push(command_text);
+
+                            let active_buffer = editor.buffer_manager.active_mut();
+                            active_buffer.doc.apply_action(&Action::MoveToLine {
+                                select: false,
+                                line: 32,
+                            });
                         }
                     } else {
                         let command_parts: Vec<&str> =
@@ -496,16 +538,24 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                                 return HandleEvent::Exit;
                             }
                         }
-
-                        // Clear command buffer and return to Normal mode
-                        editor.cmd = Document::new("").unwrap();
-                        editor.mode = Mode::Normal;
-                        should_redraw = true;
                     }
+
+                    // Clear command buffer and return to Normal mode
+                    editor.cmd = Document::new("").unwrap();
+                    editor.mode = Mode::Normal;
+                    should_redraw = true;
                 } else if insert_action != Action::NoOp {
                     editor.cmd.apply_action(&insert_action);
+
+                    if current_mode == Mode::Command {
+                        editor.search_text = editor.cmd.buffer().row_text(0);
+                    }
                 } else if let (KeyCode::Backspace, _) = (key_event.code, key_event.modifiers) {
                     editor.cmd.apply_action(&Action::Backspace);
+
+                    if current_mode == Mode::Command {
+                        editor.search_text = editor.cmd.buffer().row_text(0);
+                    }
                 } else if let (KeyCode::Left, _) = (key_event.code, key_event.modifiers) {
                     editor.cmd.apply_action(&Action::Backspace);
                 }
@@ -518,9 +568,7 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
         {
             should_redraw = true;
         }
-        if normal_action != Action::NoOp
-            || insert_action != Action::NoOp
-        {
+        if normal_action != Action::NoOp || insert_action != Action::NoOp {
             should_sync = true;
         }
 

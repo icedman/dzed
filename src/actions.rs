@@ -86,11 +86,25 @@ pub enum Action {
         select: bool,
         count: u32,
     },
-    FindCharacter {
+    MoveToPreviousCharacter {
         select: bool,
         count: u32,
         char: char,
-        forward: bool,
+    },
+    MoveToNextCharacter {
+        select: bool,
+        count: u32,
+        char: char,
+    },
+    MoveToPreviousMatch {
+        select: bool,
+        count: u32,
+        text: String,
+    },
+    MoveToNextMatch {
+        select: bool,
+        count: u32,
+        text: String,
     },
 
     InsertText(String),
@@ -123,7 +137,7 @@ pub enum Action {
     },
 
     SelectIn {
-        kind: SelectInKind 
+        kind: SelectInKind,
     },
 
     ClearCursors,
