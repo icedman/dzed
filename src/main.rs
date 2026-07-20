@@ -4,6 +4,7 @@ mod document;
 mod editor;
 mod highlight;
 mod input;
+mod search;
 mod selections;
 
 use std::{
@@ -61,7 +62,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     execute!(stdout, crossterm::cursor::Hide).unwrap();
 
     let mut should_redraw = true;
-    let mut should_sync= true;
+    let mut should_sync = true;
     let mut prev_screen_rows = 0;
     let mut prev_screen_cols = 0;
 
@@ -437,7 +438,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 HandleEvent::RedrawAndSync => {
                     should_redraw = true;
                     should_sync = true;
-                },
+                }
                 HandleEvent::NoRedraw => {}
             }
         }

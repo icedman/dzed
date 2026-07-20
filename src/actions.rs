@@ -8,6 +8,15 @@ pub enum Mode {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum SelectInKind {
+    Word,
+    Pargraph,
+    Curly,
+    Parenthesis,
+    Square,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Action {
     SetNormalMode,
     SetInsertMode,
@@ -113,9 +122,9 @@ pub enum Action {
         count: u32,
     },
 
-    SelectWord,
-    SelectNext(String),
-    SelectPrevious(String),
+    SelectIn {
+        kind: SelectInKind 
+    },
 
     ClearCursors,
 

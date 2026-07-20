@@ -1,5 +1,6 @@
-use crate::actions::Action;
-use crate::selections::SelectionCollection;
+use crate::actions::{Action, SelectInKind};
+use crate::search::TextSearch;
+use crate::selections::{Motions, SelectionCollection};
 
 use clock::ReplicaId;
 use rope::Point;
@@ -24,90 +25,6 @@ impl BufferText for BufferSnapshot {
         let start = Point::new(row, 0).to_offset(self);
         let end = Point::new(row, self.line_len(row)).to_offset(self);
         self.as_rope().chunks_in_range(start..end).collect()
-    }
-}
-
-pub trait TextSearch {
-    fn words_with_offsets(&self) -> Vec<(usize, usize, &str)>;
-    fn find_next_word(&self, position: usize) -> Option<(usize, usize, &str)>;
-    fn find_previous_word(&self, position: usize) -> Option<(usize, usize, &str)>;
-    fn find_next_word_end(&self, position: usize) -> Option<(usize, usize, &str)>;
-    fn find_previous_word_end(&self, position: usize) -> Option<(usize, usize, &str)>;
-    fn find_current_word(&self, position: usize) -> Option<(usize, usize, &str)>;
-    fn find_next_same_word(&self, position: usize, word: &str) -> Option<(usize, usize, &str)>;
-}
-
-impl TextSearch for str {
-    fn words_with_offsets(&self) -> Vec<(usize, usize, &str)> {
-        let mut words = Vec::new();
-        let mut current_start = None;
-        let mut in_alphanumeric = false;
-
-        for (idx, ch) in self.char_indices() {
-            if ch.is_whitespace() {
-                if let Some(start) = current_start {
-                    words.push((start, idx, &self[start..idx]));
-                    current_start = None;
-                }
-            } else {
-                let ch_is_alphanumeric = ch.is_alphanumeric() || ch == '_';
-                if let Some(start) = current_start {
-                    if ch_is_alphanumeric != in_alphanumeric {
-                        words.push((start, idx, &self[start..idx]));
-                        current_start = Some(idx);
-                        in_alphanumeric = ch_is_alphanumeric;
-                    }
-                } else {
-                    current_start = Some(idx);
-                    in_alphanumeric = ch_is_alphanumeric;
-                }
-            }
-        }
-
-        if let Some(start) = current_start {
-            words.push((start, self.len(), &self[start..]));
-        }
-
-        words
-    }
-
-    fn find_next_word(&self, position: usize) -> Option<(usize, usize, &str)> {
-        self.words_with_offsets()
-            .into_iter()
-            .find(|(start, _, _)| *start > position)
-    }
-
-    fn find_previous_word(&self, position: usize) -> Option<(usize, usize, &str)> {
-        self.words_with_offsets()
-            .into_iter()
-            .rev()
-            .find(|(start, _, _)| *start < position)
-    }
-
-    fn find_next_word_end(&self, position: usize) -> Option<(usize, usize, &str)> {
-        self.words_with_offsets()
-            .into_iter()
-            .find(|(_, end, _)| (*end - 1) > position)
-    }
-
-    fn find_previous_word_end(&self, position: usize) -> Option<(usize, usize, &str)> {
-        self.words_with_offsets()
-            .into_iter()
-            .rev()
-            .find(|(_, end, _)| (*end - 1) < position)
-    }
-
-    fn find_current_word(&self, position: usize) -> Option<(usize, usize, &str)> {
-        self.words_with_offsets()
-            .into_iter()
-            .find(|(start, end, _)| *start <= position && position < *end)
-    }
-
-    fn find_next_same_word(&self, position: usize, word: &str) -> Option<(usize, usize, &str)> {
-        self.words_with_offsets()
-            .into_iter()
-            .skip_while(|(start, _, _)| *start <= position)
-            .find(|(_, _, w)| *w == word)
     }
 }
 
@@ -153,13 +70,10 @@ impl Document {
         }
     }
 
-    pub fn select_word(&mut self) {
+    pub fn select_in(&mut self, kind: &SelectInKind) {
         self.move_to_previous_word(false, 1);
         self.move_to_next_word_end(true, 1);
-   }
-
-    pub fn select_next_same_word(&mut self, _text: &str) {}
-    pub fn select_previous_same_word(&mut self, _text: &str) {}
+    }
 
     pub fn apply_action(&mut self, action: &Action) {
         match action {
@@ -253,8 +167,8 @@ impl Document {
                     | Action::MoveToEndOfLine { .. } => true,
                     _ => false,
                 };
-                
-                if (is_textobject) {
+
+                if is_textobject {
                     for idx in 0..*count {
                         self.apply_action(&motion);
                         self.delete_text_object();
@@ -301,9 +215,7 @@ impl Document {
             }
             Action::Undo { count } => self.undo(*count),
             Action::Redo { count } => self.redo(*count),
-            Action::SelectWord => self.select_word(),
-            Action::SelectNext(sel) => self.select_next_same_word(&sel),
-            Action::SelectPrevious(sel) => self.select_previous_same_word(&sel),
+            Action::SelectIn { kind } => self.select_in(kind),
             Action::ClearCursors => self.selections.clear_selections(&self.buffer),
             &Action::Indent | &Action::Unindent => {}
 
@@ -325,11 +237,17 @@ impl Document {
         let cursors = self.selections.selections.clone();
         for cursor in cursors.iter() {
             let (start, mut end) = {
-                let (cs, ce) = 
-                if cursor.head().cmp(&cursor.tail(), &self.buffer) == Ordering::Less {
-                    (cursor.head().bias_left(&self.buffer), cursor.tail().bias_right(&self.buffer)) 
+                let (cs, ce) = if cursor.head().cmp(&cursor.tail(), &self.buffer) == Ordering::Less
+                {
+                    (
+                        cursor.head().bias_left(&self.buffer),
+                        cursor.tail().bias_right(&self.buffer),
+                    )
                 } else {
-                    (cursor.tail().bias_left(&self.buffer), cursor.head().bias_right(&self.buffer)) 
+                    (
+                        cursor.tail().bias_left(&self.buffer),
+                        cursor.head().bias_right(&self.buffer),
+                    )
                 };
 
                 let start = self.buffer.offset_for_anchor(&cs);
@@ -352,20 +270,26 @@ impl Document {
         return delete_count > 0;
     }
 
-    fn delete_text_object(&mut self)  -> bool {
+    fn delete_text_object(&mut self) -> bool {
         let mut delete_count = 0;
         let cursors = self.selections.selections.clone();
         for cursor in cursors.iter() {
-            let (start, mut end) = {
-                let (cs, ce) = 
-                if cursor.head().cmp(&cursor.tail(), &self.buffer) == Ordering::Less {
-                    (cursor.head().bias_left(&self.buffer), cursor.tail().bias_right(&self.buffer)) 
+            let (start, end) = {
+                let (cs, ce) = if cursor.head().cmp(&cursor.tail(), &self.buffer) == Ordering::Less
+                {
+                    (
+                        cursor.head().bias_left(&self.buffer),
+                        cursor.tail().bias_right(&self.buffer),
+                    )
                 } else {
-                    (cursor.tail().bias_left(&self.buffer), cursor.head().bias_right(&self.buffer)) 
+                    (
+                        cursor.tail().bias_left(&self.buffer),
+                        cursor.head().bias_right(&self.buffer),
+                    )
                 };
 
                 let start = self.buffer.offset_for_anchor(&cs);
-                let mut end = self.buffer.offset_for_anchor(&ce);
+                let end = self.buffer.offset_for_anchor(&ce);
                 (start, end)
             };
 
@@ -432,23 +356,30 @@ impl Document {
                 let mut point = cursor.head().to_point(&self.buffer);
                 let text = self.buffer.row_text(point.row);
 
+                let previous_column = point.column;
+
                 if let Some(word) = text.find_previous_word(point.column as usize) {
                     point.column = word.0 as u32;
                 } else {
                     point.column = 0;
                 }
 
-                let offset = point.to_offset(&self.buffer);
-                let new_head = self.buffer.anchor_at(offset, Bias::Left);
-                self.selections.update(&self.buffer, &{
-                    Selection {
-                        id: cursor.id,
-                        start: new_head,
-                        end: if select { cursor.tail() } else { new_head },
-                        reversed: true,
-                        goal: SelectionGoal::None,
-                    }
-                });
+                if point.column == previous_column {
+                    self.selections
+                        .update(&self.buffer, &cursor.move_left_once(select, &self.buffer));
+                } else {
+                    let offset = point.to_offset(&self.buffer);
+                    let new_head = self.buffer.anchor_at(offset, Bias::Left);
+                    self.selections.update(&self.buffer, &{
+                        Selection {
+                            id: cursor.id,
+                            start: new_head,
+                            end: if select { cursor.tail() } else { new_head },
+                            reversed: true,
+                            goal: SelectionGoal::None,
+                        }
+                    });
+                }
             }
         }
     }
@@ -460,24 +391,32 @@ impl Document {
                 let mut point = cursor.head().to_point(&self.buffer);
                 let text = self.buffer.row_text(point.row);
 
+                let previous_column = point.column;
+
                 if let Some(word) = text.find_next_word(point.column as usize) {
                     point.column = word.0 as u32;
                 } else {
                     point.column = self.buffer.line_len(point.row);
                 }
 
-                let mut offset = point.to_offset(&self.buffer);
-                offset = self.buffer.clip_offset(offset, Bias::Left);
-                let new_head = self.buffer.anchor_at(offset, Bias::Right);
-                self.selections.update(&self.buffer, &{
-                    Selection {
-                        id: cursor.id,
-                        end: new_head,
-                        start: if select { cursor.tail() } else { new_head },
-                        reversed: false,
-                        goal: SelectionGoal::None,
-                    }
-                });
+                if point.column == previous_column {
+                    self.selections
+                        .update(&self.buffer, &cursor.move_right_once(select, &self.buffer));
+                } else {
+                    let mut offset = point.to_offset(&self.buffer);
+                    offset = self.buffer.clip_offset(offset, Bias::Left);
+                    let new_head = self.buffer.anchor_at(offset, Bias::Right);
+
+                    self.selections.update(&self.buffer, &{
+                        Selection {
+                            id: cursor.id,
+                            end: new_head,
+                            start: if select { cursor.tail() } else { new_head },
+                            reversed: false,
+                            goal: SelectionGoal::None,
+                        }
+                    });
+                }
             }
         }
     }
@@ -492,7 +431,7 @@ impl Document {
                 if let Some(word) = text.find_next_word_end(point.column as usize) {
                     point.column = (word.1 - 1) as u32;
                 } else {
-                    point.column = self.buffer.line_len(point.row);//.saturating_sub(1);
+                    point.column = self.buffer.line_len(point.row); //.saturating_sub(1);
                 }
 
                 let mut offset = point.to_offset(&self.buffer);

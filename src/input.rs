@@ -1,4 +1,4 @@
-use crate::actions::{Action, Mode};
+use crate::actions::{Action, Mode, SelectInKind};
 use crate::document::BufferText;
 use crate::document::Document;
 use crate::editor::{Editor, EditorBuffer, EditorTheme};
@@ -105,18 +105,18 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                 should_redraw = true;
                 Action::NoOp
             }
-            (KeyCode::Char('i'), _) => Action::SetInsertMode,
-            (KeyCode::Char('v'), _) => Action::SetVisualMode,
-            (KeyCode::Char('V'), _) => Action::SetVisualLineMode,
-            (KeyCode::Char(':'), _) => Action::SetCommandMode {
+            (KeyCode::Char('i'), _) if editor.mode == Mode::Normal => Action::SetInsertMode,
+            (KeyCode::Char('v'), _) if editor.mode == Mode::Normal => Action::SetVisualMode,
+            (KeyCode::Char('V'), _) if editor.mode == Mode::Normal => Action::SetVisualLineMode,
+            (KeyCode::Char(':'), _) if editor.mode == Mode::Normal => Action::SetCommandMode {
                 search: false,
                 pattern: false,
             },
-            (KeyCode::Char('/'), _) => Action::SetCommandMode {
+            (KeyCode::Char('/'), _) if editor.mode == Mode::Normal => Action::SetCommandMode {
                 search: true,
                 pattern: false,
             },
-            (KeyCode::Char('?'), _) => Action::SetCommandMode {
+            (KeyCode::Char('?'), _) if editor.mode == Mode::Normal => Action::SetCommandMode {
                 search: true,
                 pattern: true,
             },
@@ -138,7 +138,7 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                 select: false,
                 count,
             },
-            (KeyCode::Char('d'), KeyModifiers::CONTROL) => Action::SelectWord,
+            (KeyCode::Char('d'), KeyModifiers::CONTROL) => Action::SelectIn { kind: SelectInKind::Word },
             (KeyCode::Char(c), _) => {
                 editor.pending_cmd.push(c);
                 let (count, cmd_without_count) = {
@@ -165,6 +165,7 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                 };
 
                 let action = match cmd_without_count.as_str() {
+                    "iw" => Some(Action::SelectIn { kind: SelectInKind::Word }),
                     "gg" => Some(Action::MoveToStartOfDocument { select }),
                     "G" => Some(Action::MoveToEndOfDocument { select }),
                     "dd" => Some(Action::DeleteCurrentLine { count }),
