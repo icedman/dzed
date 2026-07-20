@@ -1,7 +1,8 @@
 use crate::document::BufferText;
+use crate::search::TextSearch;
 use rope::Point;
 use std::{cmp::Ordering, ops::Range};
-use text::{Anchor, AnchorRangeExt, Buffer, Selection, SelectionGoal, ToOffset, ToPoint};
+use text::{Anchor, Buffer, Selection, SelectionGoal, ToOffset, ToPoint};
 
 use sum_tree::Bias;
 
@@ -25,8 +26,9 @@ pub trait Motions {
     fn move_to_start_of_line(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor>;
     fn move_to_start_of_line_non_space(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor>;
     fn move_to_end_of_line(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor>;
-
     fn move_to_line(&self, anchor: bool, line: u32, buffer: &Buffer) -> Selection<Anchor>;
+    fn move_to_previous_line(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor>;
+    fn move_to_next_line(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor>;
 
     fn find_character(
         &self,
@@ -36,6 +38,9 @@ pub trait Motions {
         forward: bool,
         buffer: &Buffer,
     ) -> Selection<Anchor>;
+
+    fn move_to_previous_match(&mut self, text: &str, buffer: &Buffer) -> Option<Selection<Anchor>>;
+    fn move_to_next_match(&mut self, text: &str, buffer: &Buffer) -> Option<Selection<Anchor>>;
 }
 
 impl Motions for Selection<Anchor> {
@@ -183,6 +188,16 @@ impl Motions for Selection<Anchor> {
         }
     }
 
+    fn move_to_previous_line(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor> {
+        let cursor = self.move_to_start_of_line(anchor, buffer);
+        cursor.move_left_once(anchor, buffer)
+    }
+
+    fn move_to_next_line(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor> {
+        let cursor = self.move_to_end_of_line(anchor, buffer);
+        cursor.move_right_once(anchor, buffer)
+    }
+
     fn find_character(
         &self,
         anchor: bool,
@@ -235,6 +250,56 @@ impl Motions for Selection<Anchor> {
         }
         // not found: return original selection unchanged
         self.clone()
+    }
+
+    fn move_to_previous_match(
+        &mut self,
+        search: &str,
+        buffer: &Buffer,
+    ) -> Option<Selection<Anchor>> {
+        let mut point = self.head().to_point(buffer);
+        let line_text = buffer.row_text(point.row);
+        if let Some(matched) = line_text
+            .to_string()
+            .as_str()
+            .find_previous_match(search, point.column as usize)
+        {
+            point.column = matched.0 as u32;
+            point = buffer.clip_point(point, self.head().bias);
+            let offset = point.to_offset(buffer);
+            let new_head = buffer.anchor_at(offset, Bias::Left);
+            return Some(Selection {
+                id: self.id,
+                start: new_head,
+                end: new_head,
+                reversed: true,
+                goal: SelectionGoal::None,
+            });
+        }
+        return None;
+    }
+
+    fn move_to_next_match(&mut self, search: &str, buffer: &Buffer) -> Option<Selection<Anchor>> {
+        let mut point = self.head().to_point(buffer);
+        let line_text = buffer.row_text(point.row);
+        if let Some(matched) = line_text
+            .to_string()
+            .as_str()
+            .find_next_match(search, point.column as usize)
+        {
+            point.column = matched.0 as u32;
+            point = buffer.clip_point(point, self.head().bias);
+            let offset = point.to_offset(buffer);
+            let new_head = buffer.anchor_at(offset, Bias::Left);
+            return Some(Selection {
+                id: self.id,
+                start: new_head,
+                end: new_head,
+                reversed: true,
+                goal: SelectionGoal::None,
+            });
+        }
+        return None;
     }
 }
 
@@ -505,6 +570,7 @@ impl SelectionCollection {
             );
         }
     }
+
     pub fn move_to_end_of_document(&mut self, anchor: bool, buffer: &Buffer) {
         let cursors = self.selections.clone();
         for cursor in cursors.iter() {
@@ -512,6 +578,39 @@ impl SelectionCollection {
                 buffer,
                 &cursor.clone().move_to_end_of_document(anchor, buffer),
             );
+        }
+    }
+
+    pub fn move_to_previous_match(&mut self, text: &str, buffer: &Buffer) {
+        let cursors = self.selections.clone();
+        for cursor in cursors.iter() {
+            let mut cur = cursor.clone();
+            let point = cursor.head().to_point(&buffer);
+            for _ in 0..(point.row + 1) {
+                if let Some(matched) = cur.move_to_previous_match(text, buffer) {
+                    self.update(buffer, &matched);
+                    break;
+                } else {
+                    cur = cur.move_to_previous_line(false, buffer);
+                }
+            }
+        }
+    }
+
+    pub fn move_to_next_match(&mut self, text: &str, buffer: &Buffer) {
+        let cursors = self.selections.clone();
+        let rows = buffer.row_count();
+        for cursor in cursors.iter() {
+            let mut cur = cursor.clone();
+            let point = cursor.head().to_point(&buffer);
+            for _ in point.row..rows {
+                if let Some(matched) = cur.move_to_next_match(text, buffer) {
+                    self.update(buffer, &matched);
+                    break;
+                } else {
+                    cur = cur.move_to_next_line(false, buffer);
+                }
+            }
         }
     }
 }

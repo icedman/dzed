@@ -136,6 +136,14 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
             (KeyCode::Char('l'), _) => Action::MoveRight { select, count },
             (KeyCode::Char('k'), _) => Action::MoveUp { select, count },
             (KeyCode::Char('j'), _) => Action::MoveDown { select, count },
+            (KeyCode::Char('n'), _) if !editor.search_text.is_empty() => Action::MoveToNextMatch {
+                search: editor.search_text.clone(),
+            },
+            (KeyCode::Char('N'), _) if !editor.search_text.is_empty() => {
+                Action::MoveToPreviousMatch {
+                    search: editor.search_text.clone(),
+                }
+            }
             (KeyCode::Delete, _) => Action::DeleteText {
                 count: count as usize,
             },
@@ -463,9 +471,8 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                             editor.search_history.push(command_text);
 
                             let active_buffer = editor.buffer_manager.active_mut();
-                            active_buffer.doc.apply_action(&Action::MoveToLine {
-                                select: false,
-                                line: 32,
+                            active_buffer.doc.apply_action(&Action::MoveToNextMatch {
+                                search: editor.search_text.clone(),
                             });
                         }
                     } else {

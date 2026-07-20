@@ -97,14 +97,10 @@ pub enum Action {
         char: char,
     },
     MoveToPreviousMatch {
-        select: bool,
-        count: u32,
-        text: String,
+        search: String,
     },
     MoveToNextMatch {
-        select: bool,
-        count: u32,
-        text: String,
+        search: String,
     },
 
     InsertText(String),

@@ -120,6 +120,12 @@ impl Document {
             } => self
                 .selections
                 .find_character(*select, *count, *char, true, &self.buffer),
+            Action::MoveToPreviousMatch { search } => {
+                self.selections.move_to_previous_match(search, &self.buffer)
+            }
+            Action::MoveToNextMatch { search } => {
+                self.selections.move_to_next_match(search, &self.buffer)
+            }
             Action::MoveToStartOfDocument { select } => self
                 .selections
                 .move_to_start_of_document(*select, &self.buffer),
