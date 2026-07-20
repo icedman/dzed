@@ -116,8 +116,11 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                 Action::NoOp
             }
             (KeyCode::Char('i'), _) if editor.mode == Mode::Normal => Action::SetInsertMode,
-            (KeyCode::Char('v'), _) if editor.mode == Mode::Normal => Action::SetVisualMode,
             (KeyCode::Char('V'), _) if editor.mode == Mode::Normal => Action::SetVisualLineMode,
+            (KeyCode::Char('v'), KeyModifiers::CONTROL) if editor.mode == Mode::Normal => {
+                Action::SetVisualBlockMode
+            }
+            (KeyCode::Char('v'), _) if editor.mode == Mode::Normal => Action::SetVisualMode,
             (KeyCode::Char(':'), _) if editor.mode == Mode::Normal => Action::SetCommandMode {
                 search: false,
                 pattern: false,
@@ -357,18 +360,27 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
         match current_mode {
             Mode::Normal => {
                 if normal_action != Action::NoOp {
+                    let active_buffer = editor.buffer_manager.active_mut();
                     match normal_action {
                         Action::SetInsertMode => {
                             editor.mode = Mode::Insert;
                             should_redraw = true;
+                            active_buffer.doc.enter_mode(editor.mode.clone());
                         }
                         Action::SetVisualMode => {
                             editor.mode = Mode::Visual;
                             should_redraw = true;
+                            active_buffer.doc.enter_mode(editor.mode.clone());
                         }
                         Action::SetVisualLineMode => {
                             editor.mode = Mode::VisualLine;
                             should_redraw = true;
+                            active_buffer.doc.enter_mode(editor.mode.clone());
+                        }
+                        Action::SetVisualBlockMode => {
+                            editor.mode = Mode::VisualBlock;
+                            should_redraw = true;
+                            active_buffer.doc.enter_mode(editor.mode.clone());
                         }
                         Action::SetCommandMode { search, pattern } => {
                             editor.mode = Mode::Command;
@@ -377,7 +389,6 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                             should_redraw = true;
                         }
                         _ => {
-                            let active_buffer = editor.buffer_manager.active_mut();
                             active_buffer.doc.apply_action(&normal_action);
                             editor.pending_cmd.clear();
                         }
@@ -388,7 +399,7 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                     editor.pending_cmd.clear();
                 }
             }
-            Mode::Visual => {
+            Mode::Visual | Mode::VisualLine | Mode::VisualBlock => {
                 if normal_action != Action::NoOp {
                     let active_buffer = editor.buffer_manager.active_mut();
                     active_buffer.doc.apply_action(&normal_action);
@@ -396,20 +407,7 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                 } else if move_action != Action::NoOp {
                     let active_buffer = editor.buffer_manager.active_mut();
                     active_buffer.doc.apply_action(&move_action);
-                    editor.pending_cmd.clear();
-                } else {
-                    // editor.mode = Mode::Normal;
-                    // should_redraw = true;
-                }
-            }
-            Mode::VisualLine => {
-                if normal_action != Action::NoOp {
-                    let active_buffer = editor.buffer_manager.active_mut();
-                    active_buffer.doc.apply_action(&normal_action);
-                    editor.pending_cmd.clear();
-                } else if move_action != Action::NoOp {
-                    let active_buffer = editor.buffer_manager.active_mut();
-                    active_buffer.doc.apply_action(&move_action);
+                    active_buffer.doc.sync();
                     editor.pending_cmd.clear();
                 } else {
                     editor.mode = Mode::Normal;

@@ -1,4 +1,4 @@
-use crate::actions::{Action, SelectInKind};
+use crate::actions::{Action, Mode, SelectInKind};
 use crate::search::TextSearch;
 use crate::selections::{Motions, SelectionCollection};
 
@@ -31,6 +31,7 @@ impl BufferText for BufferSnapshot {
 pub struct Document {
     buffer: Buffer,
     selections: SelectionCollection,
+    mode: Mode,
 }
 
 impl Document {
@@ -47,7 +48,11 @@ impl Document {
         let mut selections = SelectionCollection::new();
         selections.add(&buffer, 0);
 
-        Ok(Self { buffer, selections })
+        Ok(Self {
+            buffer,
+            selections,
+            mode: Mode::Normal,
+        })
     }
 
     pub fn new_line(&self) -> &str {
@@ -67,6 +72,22 @@ impl Document {
     pub fn redo(&mut self, count: u32) {
         for _ in 0..count {
             self.buffer.redo();
+        }
+    }
+
+    pub fn enter_mode(&mut self, mode: Mode) {
+        if self.mode == Mode::VisualBlock {
+            self.selections.end_block();
+        }
+        self.mode = mode;
+        if self.mode == Mode::VisualBlock {
+            self.selections.begin_block(&self.buffer);
+        }
+    }
+
+    pub fn sync(&mut self) {
+        if self.mode == Mode::VisualBlock {
+            self.selections.sync_block(&self.buffer);
         }
     }
 

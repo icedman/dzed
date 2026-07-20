@@ -427,6 +427,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                             Mode::Insert => "INSERT",
                             Mode::Visual => "VISUAL",
                             Mode::VisualLine => "V-LINE",
+                            Mode::VisualBlock => "V-BLOCK",
                             Mode::Command => "COMMAND",
                         },
                         active_buffer.doc.selection().head().offset,

@@ -6,6 +6,7 @@ pub enum Mode {
     Insert,
     Visual,
     VisualLine,
+    VisualBlock,
     Command,
 }
 
@@ -24,6 +25,7 @@ pub enum Action {
     SetInsertMode,
     SetVisualMode,
     SetVisualLineMode,
+    SetVisualBlockMode,
     SetCommandMode {
         search: bool,
         pattern: bool,

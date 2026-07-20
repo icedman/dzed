@@ -373,6 +373,7 @@ pub struct SelectionCollection {
     pub point: Point,
     pub search: String,
     pub regex: Option<Regex>,
+    pub block_anchor: Option<Selection<Anchor>>,
 }
 
 impl SelectionCollection {
@@ -383,6 +384,7 @@ impl SelectionCollection {
             point: Point { row: 0, column: 0 },
             search: "".to_string().clone(),
             regex: None,
+            block_anchor: None,
         };
     }
 
@@ -413,72 +415,157 @@ impl SelectionCollection {
         }
     }
 
+    pub fn begin_block(&mut self, buffer: &Buffer) {
+        if let Some(first) = self.first().cloned() {
+            self.block_anchor = Some(first);
+            self.sync_block(buffer);
+        }
+    }
+
+    pub fn sync_block(&mut self, buffer: &Buffer) {
+        if self.selections.is_empty() {
+            return;
+        }
+
+        let Some(anchor_sel) = self.block_anchor.clone() else {
+            return;
+        };
+        let first_sel = self.selections[0].clone();
+
+        // Compute row and column bounds from both selections' heads and tails
+        let mut rows = [
+            anchor_sel.start.to_point(buffer).row,
+            anchor_sel.end.to_point(buffer).row,
+            first_sel.start.to_point(buffer).row,
+            first_sel.end.to_point(buffer).row,
+        ];
+        rows.sort();
+        let row_start = rows[0];
+        let row_end = rows[3];
+
+        let mut cols = [
+            anchor_sel.start.to_point(buffer).column,
+            anchor_sel.end.to_point(buffer).column,
+            first_sel.start.to_point(buffer).column,
+            first_sel.end.to_point(buffer).column,
+        ];
+        cols.sort();
+        let col_start = cols[0];
+        let col_end = cols[3];
+
+        let first_id = first_sel.id;
+        let first_row = first_sel.head().to_point(buffer).row;
+
+        // Remove selections that are outside the block row range, except the first selection
+        self.selections.retain(|sel| {
+            if sel.id == first_id {
+                return true;
+            }
+            let row = sel.head().to_point(buffer).row;
+            row >= row_start && row <= row_end
+        });
+
+        // Ensure a selection exists on each row within the range (inclusive), except the first row
+        for row in row_start..=row_end {
+            if row == first_row {
+                continue;
+            }
+
+            // Find an existing selection on this row (not the first)
+            let existing_idx = self
+                .selections
+                .iter()
+                .position(|s| s.head().to_point(buffer).row == row);
+
+            let line_len = buffer.line_len(row);
+            let s_col = col_start.min(line_len);
+            let e_col = col_end.min(line_len);
+
+            let start_pt = Point { row, column: s_col };
+            let end_pt = Point { row, column: e_col };
+            let start_anchor = buffer.anchor_at(start_pt.to_offset(buffer), Bias::Left);
+            let end_anchor = buffer.anchor_at(end_pt.to_offset(buffer), Bias::Left);
+
+            if let Some(idx) = existing_idx {
+                let id = self.selections[idx].id;
+                self.selections[idx] = Selection {
+                    id,
+                    start: start_anchor,
+                    end: end_anchor,
+                    reversed: false,
+                    goal: SelectionGoal::None,
+                };
+            } else {
+                let id = self.id;
+                self.id += 1;
+                self.selections.push(Selection {
+                    id,
+                    start: start_anchor,
+                    end: end_anchor,
+                    reversed: false,
+                    goal: SelectionGoal::None,
+                });
+            }
+        }
+    }
+
+    pub fn end_block(&mut self) {
+        // Keep only the first selection
+        if !self.selections.is_empty() {
+            // let first = self.selections[0].clone();
+            // self.selections.clear();
+            // self.selections.push(first);
+        }
+        self.block_anchor = None;
+    }
+
     pub fn clear(&mut self) {
         self.selections.clear();
     }
 
     pub fn is_selected(&self, row: u32, column: u32, buffer: &Buffer) -> (bool, bool, bool) {
-        let mut within = true;
-        let mut within_line = true;
-        let mut at_head = false;
+        // Returns (selected_cell, selected_line, at_cursor_head)
         for cursor in self.selections.iter() {
-            let cursor_head = cursor.head();
-            let _head_point = cursor_head.to_point(&buffer);
-            let cursor_tail = cursor.tail();
-            let (cursor_range, normalized) =
-                if cursor_head.cmp(&cursor_tail, &buffer) == Ordering::Less {
-                    (
-                        Range {
-                            start: cursor_head,
-                            end: cursor_tail,
-                        },
-                        false,
-                    )
-                } else {
-                    (
-                        Range {
-                            end: cursor_head,
-                            start: cursor_tail,
-                        },
-                        true,
-                    )
-                };
+            let head = cursor.head();
+            let tail = cursor.tail();
+            let (start, end, normalized) = if head.cmp(&tail, buffer) == Ordering::Less {
+                (head.to_point(buffer), tail.to_point(buffer), false)
+            } else {
+                (tail.to_point(buffer), head.to_point(buffer), true)
+            };
 
-            let start = cursor_range.start.to_point(&buffer);
-            let end = cursor_range.end.to_point(&buffer);
+            // If row is outside this selection's vertical bounds, try next selection
             if row < start.row || row > end.row {
-                within = false;
-                within_line = false;
-                at_head = false;
                 continue;
             }
-            if row == start.row {
-                let sc = start.column;
-                if column < sc {
-                    within = false;
-                    at_head = false;
-                    continue;
-                }
-                if !normalized && column == sc {
-                    at_head = true;
-                }
+
+            // Row is within selection's vertical range
+            let mut selected = true;
+            // Horizontal bounds depending on whether we're on boundary rows
+            if start.row == end.row {
+                // Single-line selection
+                selected = column >= start.column && column <= end.column;
+            } else if row == start.row {
+                selected = column >= start.column;
+            } else if row == end.row {
+                selected = column <= end.column;
+            } else {
+                // Middle rows: all columns inside are selected for VisualLine; for VisualBlock, each row
+                // has its own start/end via separate selections, so this path is fine as 'selected = true'
+                selected = true;
             }
-            if row == end.row {
-                let ec = end.column;
-                if column > ec {
-                    within = false;
-                    at_head = false;
-                    continue;
-                }
-                if normalized && column == ec {
-                    at_head = true;
-                }
-            }
-            if within && at_head {
-                break;
+
+            if selected {
+                let at_head = if normalized {
+                    row == end.row && column == end.column
+                } else {
+                    row == start.row && column == start.column
+                };
+                let selected_line = true; // row is within [start.row, end.row]
+                return (true, selected_line, at_head);
             }
         }
-        (within, within_line, at_head)
+        (false, false, false)
     }
 
     pub fn has_selection(&self, buffer: &Buffer) -> bool {
