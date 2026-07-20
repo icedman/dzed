@@ -1,10 +1,10 @@
 use crate::document::BufferText;
-use crate::search::TextSearch;
+use crate::search::{TextSearch, compile};
+use onig::Regex;
 use rope::Point;
 use std::{cmp::Ordering, ops::Range};
-use text::{Anchor, Buffer, Selection, SelectionGoal, ToOffset, ToPoint};
-
 use sum_tree::Bias;
+use text::{Anchor, Buffer, Selection, SelectionGoal, ToOffset, ToPoint};
 
 pub fn offset_to_column(text: &String, offset: usize) -> u32 {
     let mut cc = 0;
@@ -41,6 +41,16 @@ pub trait Motions {
 
     fn move_to_previous_match(&mut self, text: &str, buffer: &Buffer) -> Option<Selection<Anchor>>;
     fn move_to_next_match(&mut self, text: &str, buffer: &Buffer) -> Option<Selection<Anchor>>;
+    fn move_to_previous_pattern_match(
+        &mut self,
+        search: &Regex,
+        buffer: &Buffer,
+    ) -> Option<Selection<Anchor>>;
+    fn move_to_next_pattern_match(
+        &mut self,
+        search: &Regex,
+        buffer: &Buffer,
+    ) -> Option<Selection<Anchor>>;
 }
 
 impl Motions for Selection<Anchor> {
@@ -301,12 +311,68 @@ impl Motions for Selection<Anchor> {
         }
         return None;
     }
+
+    fn move_to_previous_pattern_match(
+        &mut self,
+        search: &Regex,
+        buffer: &Buffer,
+    ) -> Option<Selection<Anchor>> {
+        let mut point = self.head().to_point(buffer);
+        let line_text = buffer.row_text(point.row);
+        if let Some(matched) = line_text
+            .to_string()
+            .as_str()
+            .find_previous_pattern_match(search, point.column as usize)
+        {
+            point.column = matched.0 as u32;
+            point = buffer.clip_point(point, self.head().bias);
+            let offset = point.to_offset(buffer);
+            let new_head = buffer.anchor_at(offset, Bias::Left);
+            return Some(Selection {
+                id: self.id,
+                start: new_head,
+                end: new_head,
+                reversed: true,
+                goal: SelectionGoal::None,
+            });
+        }
+        return None;
+    }
+
+    fn move_to_next_pattern_match(
+        &mut self,
+        search: &Regex,
+        buffer: &Buffer,
+    ) -> Option<Selection<Anchor>> {
+        let mut point = self.head().to_point(buffer);
+        let line_text = buffer.row_text(point.row);
+        if let Some(matched) = line_text
+            .to_string()
+            .as_str()
+            .find_next_pattern_match(search, point.column as usize)
+        {
+            point.column = matched.0 as u32;
+            point = buffer.clip_point(point, self.head().bias);
+            let offset = point.to_offset(buffer);
+            let new_head = buffer.anchor_at(offset, Bias::Left);
+            return Some(Selection {
+                id: self.id,
+                start: new_head,
+                end: new_head,
+                reversed: true,
+                goal: SelectionGoal::None,
+            });
+        }
+        return None;
+    }
 }
 
 pub struct SelectionCollection {
     pub id: usize,
     pub selections: Vec<Selection<Anchor>>,
     pub point: Point,
+    pub search: String,
+    pub regex: Option<Regex>,
 }
 
 impl SelectionCollection {
@@ -315,6 +381,8 @@ impl SelectionCollection {
             selections: Vec::<Selection<Anchor>>::new(),
             id: 0,
             point: Point { row: 0, column: 0 },
+            search: "".to_string().clone(),
+            regex: None,
         };
     }
 
@@ -581,34 +649,69 @@ impl SelectionCollection {
         }
     }
 
-    pub fn move_to_previous_match(&mut self, text: &str, buffer: &Buffer) {
+    pub fn move_to_previous_match(&mut self, text: &str, pattern: bool, buffer: &Buffer) {
+        if pattern && text != self.search {
+            self.search = text.to_string();
+            self.regex = compile(self.search.as_str());
+        }
         let cursors = self.selections.clone();
         for cursor in cursors.iter() {
             let mut cur = cursor.clone();
             let point = cursor.head().to_point(&buffer);
-            for _ in 0..(point.row + 1) {
-                if let Some(matched) = cur.move_to_previous_match(text, buffer) {
-                    self.update(buffer, &matched);
-                    break;
-                } else {
-                    cur = cur.move_to_previous_line(false, buffer);
+            if pattern {
+                if let Some(ref regex) = self.regex {
+                    for _ in 0..(point.row + 1) {
+                        if let Some(matched) = cur.move_to_previous_pattern_match(regex, buffer) {
+                            self.update(buffer, &matched);
+                            break;
+                        } else {
+                            cur = cur.move_to_previous_line(false, buffer);
+                        }
+                    }
+                }
+            } else {
+                for _ in 0..(point.row + 1) {
+                    if let Some(matched) = cur.move_to_previous_match(text, buffer) {
+                        self.update(buffer, &matched);
+                        break;
+                    } else {
+                        cur = cur.move_to_previous_line(false, buffer);
+                    }
                 }
             }
         }
     }
 
-    pub fn move_to_next_match(&mut self, text: &str, buffer: &Buffer) {
+    pub fn move_to_next_match(&mut self, text: &str, pattern: bool, buffer: &Buffer) {
+        if pattern && text != self.search {
+            self.search = text.to_string();
+            self.regex = compile(self.search.as_str());
+        }
         let cursors = self.selections.clone();
         let rows = buffer.row_count();
         for cursor in cursors.iter() {
             let mut cur = cursor.clone();
             let point = cursor.head().to_point(&buffer);
-            for _ in point.row..rows {
-                if let Some(matched) = cur.move_to_next_match(text, buffer) {
-                    self.update(buffer, &matched);
-                    break;
-                } else {
-                    cur = cur.move_to_next_line(false, buffer);
+
+            if pattern {
+                if let Some(ref regex) = self.regex {
+                    for _ in point.row..rows {
+                        if let Some(matched) = cur.move_to_next_pattern_match(regex, buffer) {
+                            self.update(buffer, &matched);
+                            break;
+                        } else {
+                            cur = cur.move_to_next_line(false, buffer);
+                        }
+                    }
+                }
+            } else {
+                for _ in point.row..rows {
+                    if let Some(matched) = cur.move_to_next_match(text, buffer) {
+                        self.update(buffer, &matched);
+                        break;
+                    } else {
+                        cur = cur.move_to_next_line(false, buffer);
+                    }
                 }
             }
         }

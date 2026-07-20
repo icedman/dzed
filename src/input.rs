@@ -138,10 +138,12 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
             (KeyCode::Char('j'), _) => Action::MoveDown { select, count },
             (KeyCode::Char('n'), _) if !editor.search_text.is_empty() => Action::MoveToNextMatch {
                 search: editor.search_text.clone(),
+                pattern: editor.pattern,
             },
             (KeyCode::Char('N'), _) if !editor.search_text.is_empty() => {
                 Action::MoveToPreviousMatch {
                     search: editor.search_text.clone(),
+                    pattern: editor.pattern,
                 }
             }
             (KeyCode::Delete, _) => Action::DeleteText {
@@ -371,7 +373,7 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                         Action::SetCommandMode { search, pattern } => {
                             editor.mode = Mode::Command;
                             editor.search = search;
-                            editor.regex = pattern;
+                            editor.pattern = pattern;
                             should_redraw = true;
                         }
                         _ => {
@@ -425,7 +427,8 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                 }
             }
             Mode::Command => {
-                if move_action != Action::NoOp {
+                let mut update_search = false;
+                if move_action != Action::NoOp && !editor.search {
                     match move_action {
                         Action::MoveUp { .. } => {
                             if !editor.command_history.is_empty() {
@@ -462,6 +465,43 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                     should_redraw = true;
                 }
 
+                if move_action != Action::NoOp && editor.search {
+                    match move_action {
+                        Action::MoveUp { .. } => {
+                            if !editor.search_history.is_empty() {
+                                let h_idx = editor
+                                    .search_history
+                                    .len()
+                                    .saturating_sub(editor.history_idx + 1);
+                                if let Some(h_cmd) = editor.search_history.get(h_idx) {
+                                    editor.cmd = Document::new("").unwrap();
+                                    editor.cmd.apply_action(&Action::InsertText(h_cmd.clone()));
+                                }
+                                if editor.history_idx < editor.search_history.len() {
+                                    editor.history_idx += 1;
+                                }
+                            }
+                        }
+                        Action::MoveDown { .. } => {
+                            if !editor.search_history.is_empty() {
+                                editor.cmd = Document::new("").unwrap();
+                                if editor.history_idx > 0 {
+                                    editor.history_idx -= 1;
+                                }
+                                let h_idx = editor
+                                    .search_history
+                                    .len()
+                                    .saturating_sub(editor.history_idx);
+                                if let Some(h_cmd) = editor.search_history.get(h_idx) {
+                                    editor.cmd.apply_action(&Action::InsertText(h_cmd.clone()));
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                    should_redraw = true;
+                }
+
                 if let (KeyCode::Enter, _) = (key_event.code, key_event.modifiers) {
                     let command_text = editor.cmd.buffer().row_text(0);
 
@@ -473,6 +513,7 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                             let active_buffer = editor.buffer_manager.active_mut();
                             active_buffer.doc.apply_action(&Action::MoveToNextMatch {
                                 search: editor.search_text.clone(),
+                                pattern: editor.pattern,
                             });
                         }
                     } else {
@@ -553,18 +594,16 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                     should_redraw = true;
                 } else if insert_action != Action::NoOp {
                     editor.cmd.apply_action(&insert_action);
-
-                    if current_mode == Mode::Command {
-                        editor.search_text = editor.cmd.buffer().row_text(0);
-                    }
+                    update_search = true;
                 } else if let (KeyCode::Backspace, _) = (key_event.code, key_event.modifiers) {
                     editor.cmd.apply_action(&Action::Backspace);
-
-                    if current_mode == Mode::Command {
-                        editor.search_text = editor.cmd.buffer().row_text(0);
-                    }
+                    update_search = true;
                 } else if let (KeyCode::Left, _) = (key_event.code, key_event.modifiers) {
                     editor.cmd.apply_action(&Action::Backspace);
+                }
+
+                if current_mode == Mode::Command && update_search && editor.search {
+                    editor.search_text = editor.cmd.buffer().row_text(0);
                 }
             }
         }

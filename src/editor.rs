@@ -2,6 +2,7 @@ use crate::actions::Mode;
 use crate::display::display_map::DisplayMap;
 use crate::document::Document;
 use crate::highlight::Highlights;
+use onig::Regex;
 
 pub struct EditorBuffer {
     pub file_path: String,
@@ -148,8 +149,10 @@ pub struct Editor {
     pub history_idx: usize,
     pub pending_cmd: String,
     pub search: bool,
-    pub regex: bool,
+    pub pattern: bool,
     pub search_text: String,
+    pub regex_string: String,
+    pub regex: Option<Regex>,
     pub mode: Mode,
     pub theme: EditorTheme,
     pub wrap: bool,
@@ -179,8 +182,10 @@ impl Editor {
             history_idx: 0,
             pending_cmd: String::new(),
             search: false,
-            regex: false,
+            pattern: false,
             search_text: "".to_string(),
+            regex: None,
+            regex_string: "".to_string(),
             mode: Mode::Normal,
             theme,
             wrap: false,

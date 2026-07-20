@@ -7,7 +7,7 @@ mod input;
 mod search;
 mod selections;
 
-use crate::search::TextSearch;
+use crate::search::{TextSearch, compile};
 
 use std::{
     io::{Write, stdout},
@@ -207,7 +207,15 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 let text = display_snapshot.line_text(row) + " ";
 
                 let mut matches = Vec::<(usize, usize, &str)>::new();
-                if !editor.search_text.is_empty() {
+                if editor.pattern {
+                    if editor.search_text != editor.regex_string {
+                        editor.regex_string = editor.search_text.clone();
+                        editor.regex = compile(editor.regex_string.as_str());
+                    }
+                    if let Some(ref regex) = editor.regex {
+                        matches = text.as_str().find_pattern(&regex);
+                    }
+                } else if !editor.search_text.is_empty() {
                     matches = text.as_str().find_string(&editor.search_text);
                 }
                 // Convert byte-indexed matches into character-indexed ranges for rendering
@@ -391,7 +399,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                     let mut cmd_char = ':';
                     if editor.search {
                         cmd_char = '/';
-                        if editor.regex {
+                        if editor.pattern {
                             cmd_char = '?';
                         }
                     }

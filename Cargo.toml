@@ -19,10 +19,10 @@ settings = { path = "./crates/zed/crates/settings" }
 theme = { path = "./crates/zed/crates/theme" }
 util = { path = "./crates/zed/crates/util" }
 syntect = { git = "https://github.com/trishume/syntect" }
+onig = { version = "6.5.2", default-features = false }
 smol = "2.0.2"
 serde = { version = "1.0.217", features = ["derive"] }
 rand = "0.8.5"
 log = "0.4"
 unicode-segmentation = "1.12.0"
 ui = { path = "./crates/zed/crates/ui" }
-

@@ -1,12 +1,35 @@
+use onig::Regex;
+
+pub fn compile(pattern: &str) -> Option<Regex> {
+    match Regex::new(pattern) {
+        Ok(regex) => Some(regex),
+        Err(err) => {
+            eprintln!("Regex compile error: {}", err);
+            None
+        }
+    }
+}
+
 pub trait TextSearch {
     fn find_string(&self, text: &str) -> Vec<(usize, usize, &str)>;
+    fn find_pattern(&self, regex: &Regex) -> Vec<(usize, usize, &str)>;
     fn find_words(&self) -> Vec<(usize, usize, &str)>;
     fn find_next_word(&self, position: usize) -> Option<(usize, usize, &str)>;
     fn find_previous_word(&self, position: usize) -> Option<(usize, usize, &str)>;
     fn find_next_word_end(&self, position: usize) -> Option<(usize, usize, &str)>;
     fn find_previous_word_end(&self, position: usize) -> Option<(usize, usize, &str)>;
-    fn find_previous_match(&self, search: &str, position: usize) -> Option<(usize, usize, &str)>;
     fn find_next_match(&self, search: &str, position: usize) -> Option<(usize, usize, &str)>;
+    fn find_previous_match(&self, search: &str, position: usize) -> Option<(usize, usize, &str)>;
+    fn find_next_pattern_match(
+        &self,
+        regex: &Regex,
+        position: usize,
+    ) -> Option<(usize, usize, &str)>;
+    fn find_previous_pattern_match(
+        &self,
+        regex: &Regex,
+        position: usize,
+    ) -> Option<(usize, usize, &str)>;
 }
 
 impl TextSearch for str {
@@ -28,6 +51,18 @@ impl TextSearch for str {
             }
         }
         matches
+    }
+
+    fn find_pattern(&self, regex: &Regex) -> Vec<(usize, usize, &str)> {
+        let mut out = Vec::new();
+        for caps in regex.captures_iter(self) {
+            if let Some((start, end)) = caps.pos(0) {
+                let len = end - start;
+                let slice = &self[start..end];
+                out.push((start, len, slice));
+            }
+        }
+        out
     }
 
     fn find_words(&self) -> Vec<(usize, usize, &str)> {
@@ -76,6 +111,19 @@ impl TextSearch for str {
             .find(|(start, _, _)| *start < position)
     }
 
+    fn find_next_word_end(&self, position: usize) -> Option<(usize, usize, &str)> {
+        self.find_words()
+            .into_iter()
+            .find(|(_, end, _)| (*end - 1) > position)
+    }
+
+    fn find_previous_word_end(&self, position: usize) -> Option<(usize, usize, &str)> {
+        self.find_words()
+            .into_iter()
+            .rev()
+            .find(|(_, end, _)| (*end - 1) < position)
+    }
+
     fn find_next_match(&self, search: &str, position: usize) -> Option<(usize, usize, &str)> {
         self.find_string(search)
             .into_iter()
@@ -89,16 +137,24 @@ impl TextSearch for str {
             .find(|(start, _, _)| *start < position)
     }
 
-    fn find_next_word_end(&self, position: usize) -> Option<(usize, usize, &str)> {
-        self.find_words()
+    fn find_next_pattern_match(
+        &self,
+        search: &Regex,
+        position: usize,
+    ) -> Option<(usize, usize, &str)> {
+        self.find_pattern(search)
             .into_iter()
-            .find(|(_, end, _)| (*end - 1) > position)
+            .find(|(start, _, _)| *start > position)
     }
 
-    fn find_previous_word_end(&self, position: usize) -> Option<(usize, usize, &str)> {
-        self.find_words()
+    fn find_previous_pattern_match(
+        &self,
+        search: &Regex,
+        position: usize,
+    ) -> Option<(usize, usize, &str)> {
+        self.find_pattern(search)
             .into_iter()
             .rev()
-            .find(|(_, end, _)| (*end - 1) < position)
+            .find(|(start, _, _)| *start < position)
     }
 }

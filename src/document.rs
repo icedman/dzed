@@ -120,11 +120,12 @@ impl Document {
             } => self
                 .selections
                 .find_character(*select, *count, *char, true, &self.buffer),
-            Action::MoveToPreviousMatch { search } => {
-                self.selections.move_to_previous_match(search, &self.buffer)
-            }
-            Action::MoveToNextMatch { search } => {
-                self.selections.move_to_next_match(search, &self.buffer)
+            Action::MoveToPreviousMatch { search, pattern } => self
+                .selections
+                .move_to_previous_match(search, *pattern, &self.buffer),
+            Action::MoveToNextMatch { search, pattern } => {
+                self.selections
+                    .move_to_next_match(search, *pattern, &self.buffer)
             }
             Action::MoveToStartOfDocument { select } => self
                 .selections
@@ -362,6 +363,7 @@ impl Document {
         self.selections.has_selection(&self.buffer)
     }
 
+    // move these to selections/motions
     pub fn move_to_previous_word(&mut self, select: bool, count: u32) {
         for _ in 0..count {
             let cursors = self.selections.selections.clone();

@@ -1,3 +1,5 @@
+use onig::Regex;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Mode {
     Normal,
@@ -98,9 +100,11 @@ pub enum Action {
     },
     MoveToPreviousMatch {
         search: String,
+        pattern: bool,
     },
     MoveToNextMatch {
         search: String,
+        pattern: bool,
     },
 
     InsertText(String),
