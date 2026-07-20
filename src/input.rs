@@ -1,0 +1,529 @@
+use crate::actions::{Action, Mode};
+use crate::document::BufferText;
+use crate::document::Document;
+use crate::editor::{Editor, EditorBuffer, EditorTheme};
+use crossterm::event::{Event, KeyCode, KeyModifiers, MouseEventKind};
+
+pub enum HandleEvent {
+    Redraw,
+    NoRedraw,
+    Exit,
+}
+
+pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> HandleEvent {
+    // Mouse events: currently no-op placeholders
+    if let Event::Mouse(mouse_event) = &event {
+        match mouse_event.kind {
+            MouseEventKind::ScrollUp => {
+                // TODO: implement scrolling; currently handled by cursor movement elsewhere
+            }
+            MouseEventKind::ScrollDown => {
+                // TODO: implement scrolling; currently handled by cursor movement elsewhere
+            }
+            _ => {}
+        }
+        return HandleEvent::NoRedraw;
+    }
+
+    // Bracketed paste
+    if let Event::Paste(content) = &event {
+        if editor.mode == Mode::Insert {
+            let active_buffer = editor.buffer_manager.active_mut();
+            active_buffer
+                .doc
+                .apply_action(&Action::InsertText(content.clone()));
+            return HandleEvent::Redraw;
+        }
+        return HandleEvent::NoRedraw;
+    }
+
+    if let Event::Key(key_event) = event {
+        let mut should_redraw = false;
+        let current_mode = editor.mode.clone();
+
+        // Global actions
+        match (key_event.code, key_event.modifiers) {
+            (KeyCode::Esc, _) => {
+                editor.mode = Mode::Normal;
+                should_redraw = true;
+                let active_buffer = editor.buffer_manager.active_mut();
+                if active_buffer.doc.has_selection() {
+                    active_buffer.doc.apply_action(&Action::ClearCursors);
+                }
+            }
+            (KeyCode::Char('q'), KeyModifiers::CONTROL) => return HandleEvent::Exit,
+            _ => {}
+        }
+
+        // Count from pending_cmd prefix
+        let (count, _) = {
+            let mut count_str = String::new();
+            let mut parsing_count = true;
+            for ch in editor.pending_cmd.chars() {
+                if parsing_count && ch.is_ascii_digit() {
+                    count_str.push(ch);
+                } else {
+                    parsing_count = false;
+                }
+            }
+            let count = count_str.parse::<u32>().unwrap_or(1);
+            (count, ())
+        };
+
+        let select = editor.mode == Mode::Visual || editor.mode == Mode::VisualLine;
+
+        // Motions (arrow keys et al.)
+        let move_action = match (key_event.code, key_event.modifiers) {
+            (KeyCode::Left, _) => Action::MoveLeft { select, count },
+            (KeyCode::Right, _) => Action::MoveRight { select, count },
+            (KeyCode::Up, _) => Action::MoveUp { select, count },
+            (KeyCode::Down, _) => Action::MoveDown { select, count },
+            (KeyCode::PageUp, _) => Action::MoveUp {
+                select,
+                count: (visible_rows >> 1) as u32 * count,
+            },
+            (KeyCode::PageDown, _) => Action::MoveDown {
+                select,
+                count: (visible_rows >> 1) as u32 * count,
+            },
+            (KeyCode::Home, _) => Action::MoveToStartOfLine { select },
+            (KeyCode::End, _) => Action::MoveToEndOfLine { select },
+            (KeyCode::Char('0'), _) => Action::MoveToStartOfLine { select },
+            (KeyCode::Char('$'), _) => Action::MoveToEndOfLine { select },
+            (KeyCode::Char('^'), _) => Action::MoveToStartOfLineNonSpace { select },
+            (KeyCode::Char('{'), _) => Action::MoveToPreviousParagraph { select, count },
+            (KeyCode::Char('}'), _) => Action::MoveToNextParagraph { select, count },
+            _ => Action::NoOp,
+        };
+
+        // Normal-mode commands and cmd-building
+        let normal_action = match (key_event.code, key_event.modifiers) {
+            (KeyCode::Esc, _) => {
+                editor.pending_cmd.clear();
+                should_redraw = true;
+                Action::NoOp
+            }
+            (KeyCode::Char('i'), _) => Action::SetNormalMode,
+            (KeyCode::Char('v'), _) => Action::SetVisualMode,
+            (KeyCode::Char('V'), _) => Action::SetVisualLineMode,
+            (KeyCode::Char(':'), _) => Action::SetCommandMode {
+                search: false,
+                pattern: false,
+            },
+            (KeyCode::Char('/'), _) => Action::SetCommandMode {
+                search: true,
+                pattern: false,
+            },
+            (KeyCode::Char('?'), _) => Action::SetCommandMode {
+                search: true,
+                pattern: true,
+            },
+            (KeyCode::Char('r'), KeyModifiers::CONTROL) => Action::Redo { count },
+            (KeyCode::Char('u'), _) => Action::Undo { count },
+            (KeyCode::Char('h'), _) => Action::MoveLeft { select, count },
+            (KeyCode::Char('l'), _) => Action::MoveRight { select, count },
+            (KeyCode::Char('k'), _) => Action::MoveUp { select, count },
+            (KeyCode::Char('j'), _) => Action::MoveDown { select, count },
+            (KeyCode::Delete, _) => Action::DeleteText {
+                count: count as usize,
+            },
+            (KeyCode::Backspace, _) => Action::MoveLeft { select, count },
+            (KeyCode::Left, KeyModifiers::SHIFT) => Action::MoveToPreviousWord {
+                select: false,
+                count,
+            },
+            (KeyCode::Right, KeyModifiers::SHIFT) => Action::MoveToNextWord {
+                select: false,
+                count,
+            },
+            (KeyCode::Char(c), _) => {
+                editor.pending_cmd.push(c);
+                let (count, cmd_without_count) = {
+                    let mut count_str = String::new();
+                    let mut cmd_str = String::new();
+                    let mut parsing_count = true;
+                    for ch in editor.pending_cmd.chars() {
+                        if parsing_count
+                            && ch.is_ascii_digit()
+                            && (ch != '0' || !count_str.is_empty())
+                        {
+                            count_str.push(ch);
+                        } else {
+                            parsing_count = false;
+                            cmd_str.push(ch);
+                        }
+                    }
+                    let count = if count_str.is_empty() {
+                        1
+                    } else {
+                        count_str.parse::<u32>().unwrap_or(1)
+                    };
+                    (count, cmd_str)
+                };
+
+                let action = match cmd_without_count.as_str() {
+                    "gg" => Some(Action::MoveToStartOfDocument { select }),
+                    "G" => Some(Action::MoveToEndOfDocument { select }),
+                    "dd" => Some(Action::DeleteCurrentLine { count }),
+                    "dw" => Some(Action::DeleteMotion {
+                        count,
+                        motion: Box::new(Action::MoveToNextWord {
+                            select: true,
+                            count: 1,
+                        }),
+                    }),
+                    "db" => Some(Action::DeleteMotion {
+                        count,
+                        motion: Box::new(Action::MoveToPreviousWord {
+                            select: true,
+                            count: 1,
+                        }),
+                    }),
+                    "de" => Some(Action::DeleteMotion {
+                        count,
+                        motion: Box::new(Action::MoveToNextWordEnd {
+                            select: true,
+                            count: 1,
+                        }),
+                    }),
+                    "dge" => Some(Action::DeleteMotion {
+                        count,
+                        motion: Box::new(Action::MoveToPreviousWordEnd {
+                            select: true,
+                            count: 1,
+                        }),
+                    }),
+                    "dj" => Some(Action::DeleteMotion {
+                        count,
+                        motion: Box::new(Action::MoveDown {
+                            select: true,
+                            count: 1,
+                        }),
+                    }),
+                    "dk" => Some(Action::DeleteMotion {
+                        count,
+                        motion: Box::new(Action::MoveUp {
+                            select: true,
+                            count: 1,
+                        }),
+                    }),
+                    "dh" => Some(Action::DeleteMotion {
+                        count,
+                        motion: Box::new(Action::MoveLeft {
+                            select: true,
+                            count: 1,
+                        }),
+                    }),
+                    "dl" => Some(Action::DeleteMotion {
+                        count,
+                        motion: Box::new(Action::MoveRight {
+                            select: true,
+                            count: 1,
+                        }),
+                    }),
+                    "d0" => Some(Action::DeleteMotion {
+                        count,
+                        motion: Box::new(Action::MoveToStartOfLine { select: true }),
+                    }),
+                    "d$" => Some(Action::DeleteMotion {
+                        count,
+                        motion: Box::new(Action::MoveToEndOfLine { select: true }),
+                    }),
+                    "d^" => Some(Action::DeleteMotion {
+                        count,
+                        motion: Box::new(Action::MoveToStartOfLineNonSpace { select: true }),
+                    }),
+                    "d{" => Some(Action::DeleteMotion {
+                        count,
+                        motion: Box::new(Action::MoveToPreviousParagraph {
+                            select: true,
+                            count: 1,
+                        }),
+                    }),
+                    "d}" => Some(Action::DeleteMotion {
+                        count,
+                        motion: Box::new(Action::MoveToNextParagraph {
+                            select: true,
+                            count: 1,
+                        }),
+                    }),
+                    "x" => Some(Action::Delete { count }),
+                    "b" => Some(Action::MoveToPreviousWord { select, count }),
+                    "w" => Some(Action::MoveToNextWord { select, count }),
+                    "e" => Some(Action::MoveToNextWordEnd { select, count }),
+                    "ge" => Some(Action::MoveToPreviousWordEnd { select, count }),
+                    s if s.starts_with('f') && s.len() == 2 => {
+                        let ch = s.chars().nth(1).unwrap();
+                        Some(Action::FindCharacter {
+                            select,
+                            count,
+                            char: ch,
+                            forward: true,
+                        })
+                    }
+                    s if s.starts_with('F') && s.len() == 2 => {
+                        let ch = s.chars().nth(1).unwrap();
+                        Some(Action::FindCharacter {
+                            select,
+                            count,
+                            char: ch,
+                            forward: false,
+                        })
+                    }
+                    _ => None,
+                };
+
+                if let Some(a) = action {
+                    editor.pending_cmd.clear();
+                    a
+                } else {
+                    Action::NoOp
+                }
+            }
+            _ => Action::NoOp,
+        };
+
+        // Insert & command text input
+        let insert_action = match (key_event.code, key_event.modifiers) {
+            (KeyCode::Enter, _) if editor.mode == Mode::Insert => Action::InsertNewLine,
+            (KeyCode::Tab, _) if editor.mode == Mode::Insert || editor.mode == Mode::Command => {
+                Action::InsertTab
+            }
+            (KeyCode::Delete, _) if editor.mode == Mode::Insert || editor.mode == Mode::Command => {
+                Action::Delete { count: 1 }
+            }
+            (KeyCode::Backspace, _)
+                if editor.mode == Mode::Insert || editor.mode == Mode::Command =>
+            {
+                Action::Backspace
+            }
+            (KeyCode::Char(c), _)
+                if editor.mode == Mode::Insert || editor.mode == Mode::Command =>
+            {
+                Action::InsertText(c.to_string())
+            }
+            _ => Action::NoOp,
+        };
+
+        match current_mode {
+            Mode::Normal => {
+                if normal_action != Action::NoOp {
+                    match normal_action {
+                        Action::SetInsertMode => {
+                            editor.mode = Mode::Insert;
+                            should_redraw = true;
+                        }
+                        Action::SetVisualMode => {
+                            editor.mode = Mode::Visual;
+                            should_redraw = true;
+                        }
+                        Action::SetVisualLineMode => {
+                            editor.mode = Mode::VisualLine;
+                            should_redraw = true;
+                        }
+                        Action::SetCommandMode { search, pattern } => {
+                            editor.mode = Mode::Command;
+                            editor.search = search;
+                            editor.regex = pattern;
+                            should_redraw = true;
+                        }
+                        _ => {
+                            let active_buffer = editor.buffer_manager.active_mut();
+                            active_buffer.doc.apply_action(&normal_action);
+                            editor.pending_cmd.clear();
+                        }
+                    }
+                } else if move_action != Action::NoOp {
+                    let active_buffer = editor.buffer_manager.active_mut();
+                    active_buffer.doc.apply_action(&move_action);
+                    editor.pending_cmd.clear();
+                }
+            }
+            Mode::Visual => {
+                if normal_action != Action::NoOp {
+                    let active_buffer = editor.buffer_manager.active_mut();
+                    active_buffer.doc.apply_action(&normal_action);
+                    editor.pending_cmd.clear();
+                } else if move_action != Action::NoOp {
+                    let active_buffer = editor.buffer_manager.active_mut();
+                    active_buffer.doc.apply_action(&move_action);
+                    editor.pending_cmd.clear();
+                } else {
+                    editor.mode = Mode::Normal;
+                    should_redraw = true;
+                }
+            }
+            Mode::VisualLine => {
+                if normal_action != Action::NoOp {
+                    let active_buffer = editor.buffer_manager.active_mut();
+                    active_buffer.doc.apply_action(&normal_action);
+                    editor.pending_cmd.clear();
+                } else if move_action != Action::NoOp {
+                    let active_buffer = editor.buffer_manager.active_mut();
+                    active_buffer.doc.apply_action(&move_action);
+                    editor.pending_cmd.clear();
+                } else {
+                    editor.mode = Mode::Normal;
+                    should_redraw = true;
+                }
+            }
+            Mode::Insert => {
+                if insert_action != Action::NoOp {
+                    let active_buffer = editor.buffer_manager.active_mut();
+                    active_buffer.doc.apply_action(&insert_action);
+                } else if move_action != Action::NoOp {
+                    let active_buffer = editor.buffer_manager.active_mut();
+                    active_buffer.doc.apply_action(&move_action);
+                    editor.pending_cmd.clear();
+                }
+            }
+            Mode::Command => {
+                if move_action != Action::NoOp {
+                    match move_action {
+                        Action::MoveUp { .. } => {
+                            if !editor.command_history.is_empty() {
+                                let h_idx = editor
+                                    .command_history
+                                    .len()
+                                    .saturating_sub(editor.history_idx + 1);
+                                if let Some(h_cmd) = editor.command_history.get(h_idx) {
+                                    editor.cmd = Document::new("").unwrap();
+                                    editor.cmd.apply_action(&Action::InsertText(h_cmd.clone()));
+                                }
+                                if editor.history_idx < editor.command_history.len() {
+                                    editor.history_idx += 1;
+                                }
+                            }
+                        }
+                        Action::MoveDown { .. } => {
+                            if !editor.command_history.is_empty() {
+                                editor.cmd = Document::new("").unwrap();
+                                if editor.history_idx > 0 {
+                                    editor.history_idx -= 1;
+                                }
+                                let h_idx = editor
+                                    .command_history
+                                    .len()
+                                    .saturating_sub(editor.history_idx);
+                                if let Some(h_cmd) = editor.command_history.get(h_idx) {
+                                    editor.cmd.apply_action(&Action::InsertText(h_cmd.clone()));
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                    should_redraw = true;
+                }
+
+                if let (KeyCode::Enter, _) = (key_event.code, key_event.modifiers) {
+                    let command_text = editor.cmd.buffer().row_text(0);
+
+                    if editor.search {
+                        if !command_text.is_empty() {
+                            editor.search_history.push(command_text);
+                        }
+                    } else {
+                        let command_parts: Vec<&str> =
+                            command_text.trim().split_whitespace().collect();
+
+                        if !command_parts.is_empty() {
+                            let mut exit = false;
+                            let save_command = true;
+                            match command_parts[0] {
+                                "q" => {
+                                    exit = true;
+                                }
+                                "bn" => {
+                                    editor.buffer_manager.switch_next();
+                                    editor.theme = EditorTheme::from_highlights(
+                                        &editor.buffer_manager.active().hl,
+                                    );
+                                }
+                                "bp" => {
+                                    editor.buffer_manager.switch_prev();
+                                    editor.theme = EditorTheme::from_highlights(
+                                        &editor.buffer_manager.active().hl,
+                                    );
+                                }
+                                "e" if command_parts.len() > 1 => {
+                                    if let Ok(new_buffer) = EditorBuffer::new(command_parts[1]) {
+                                        editor.buffer_manager.add_buffer(new_buffer);
+                                        editor.theme = EditorTheme::from_highlights(
+                                            &editor.buffer_manager.active().hl,
+                                        );
+                                    }
+                                }
+                                "set" if command_parts.len() > 1 => match command_parts[1] {
+                                    "wrap" => editor.wrap = true,
+                                    "nowrap" => editor.wrap = false,
+                                    x if command_parts[1].starts_with("nu") => {
+                                        let _ = x; // number
+                                        editor.show_line_numbers = true;
+                                    }
+                                    x if command_parts[1].starts_with("nonu") => {
+                                        let _ = x; // nonumber
+                                        editor.show_line_numbers = false;
+                                    }
+                                    _ => {}
+                                },
+                                x if command_parts[0].starts_with("syn")
+                                    && command_parts.len() > 1 =>
+                                {
+                                    let _ = x;
+                                    match command_parts[1] {
+                                        "on" => editor.syntax = true,
+                                        "off" => editor.syntax = false,
+                                        _ => {}
+                                    }
+                                }
+                                cmd if cmd.parse::<u32>().is_ok() => {
+                                    let line_number = cmd.parse::<u32>().unwrap();
+                                    let active_buffer = editor.buffer_manager.active_mut();
+                                    active_buffer.doc.apply_action(&Action::MoveToLine {
+                                        select: false,
+                                        line: line_number,
+                                    });
+                                }
+                                _ => {}
+                            }
+
+                            if save_command {
+                                editor.command_history.push(command_text.trim().to_string());
+                            }
+
+                            if exit {
+                                return HandleEvent::Exit;
+                            }
+                        }
+
+                        // Clear command buffer and return to Normal mode
+                        editor.cmd = Document::new("").unwrap();
+                        editor.mode = Mode::Normal;
+                        should_redraw = true;
+                    }
+                } else if insert_action != Action::NoOp {
+                    editor.cmd.apply_action(&insert_action);
+                } else if let (KeyCode::Backspace, _) = (key_event.code, key_event.modifiers) {
+                    editor.cmd.apply_action(&Action::Backspace);
+                } else if let (KeyCode::Left, _) = (key_event.code, key_event.modifiers) {
+                    editor.cmd.apply_action(&Action::Backspace);
+                }
+            }
+        }
+
+        if normal_action != Action::NoOp
+            || move_action != Action::NoOp
+            || insert_action != Action::NoOp
+        {
+            should_redraw = true;
+        }
+
+        return if should_redraw {
+            HandleEvent::Redraw
+        } else {
+            HandleEvent::NoRedraw
+        };
+    }
+
+    HandleEvent::NoRedraw
+}

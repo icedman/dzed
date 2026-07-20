@@ -359,6 +359,7 @@ impl Document {
             &Action::Indent | &Action::Unindent => {}
 
             Action::NoOp => {}
+            _ => {}
         }
     }
 

@@ -9,6 +9,15 @@ pub enum Mode {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Action {
+    SetNormalMode,
+    SetInsertMode,
+    SetVisualMode,
+    SetVisualLineMode,
+    SetCommandMode {
+        search: bool,
+        pattern: bool,
+    },
+
     MoveUp {
         select: bool,
         count: u32,
