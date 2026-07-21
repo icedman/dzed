@@ -1,3 +1,4 @@
+use std::cmp::min;
 use std::sync::Arc;
 use text::{BufferSnapshot, Point};
 
@@ -16,6 +17,9 @@ impl WrapPoint {
 pub struct WrapMap {
     wrap_width: Option<u32>,
     snapshot: WrapSnapshot,
+    scroll_y: u32,
+    screen_cols: u32,
+    screen_rows: u32,
 }
 
 #[derive(Clone)]
@@ -32,7 +36,12 @@ pub(crate) struct RowMapping {
 }
 
 impl WrapMap {
-    pub fn new(buffer: BufferSnapshot, wrap_width: Option<u32>) -> Self {
+    pub fn new(
+        buffer: BufferSnapshot,
+        wrap_width: Option<u32>,
+        screen_rows: u32,
+        screen_cols: u32,
+    ) -> Self {
         let mut map = Self {
             wrap_width,
             snapshot: WrapSnapshot {
@@ -40,26 +49,40 @@ impl WrapMap {
                 wrap_width,
                 row_mappings: Arc::new(Vec::new()),
             },
+            scroll_y: 0,
+            screen_rows,
+            screen_cols,
         };
         map.sync(buffer);
         map
+    }
+
+    pub fn set_view(&mut self, scroll_y: u32, rows: u32, cols: u32) {
+        self.screen_cols = cols;
+        self.screen_rows = rows;
+        self.scroll_y = scroll_y;
     }
 
     pub fn sync(&mut self, buffer: BufferSnapshot) {
         let mut row_mappings = Vec::with_capacity(buffer.row_count() as usize);
         let mut current_display_row = 0;
 
+        let start = self.scroll_y.saturating_sub(self.screen_rows * 2);
+        let end = min(buffer.row_count(), self.scroll_y + (self.screen_rows));
+
         for row in 0..buffer.row_count() {
             let line_len = buffer.line_len(row);
             let mut wrap_indices = Vec::new();
             wrap_indices.push(0);
 
-            if let Some(width) = self.wrap_width {
-                if width > 0 {
-                    let mut current_col = width;
-                    while current_col < line_len {
-                        wrap_indices.push(current_col);
-                        current_col += width;
+            if row > start && row < end {
+                if let Some(width) = self.wrap_width {
+                    if width > 0 {
+                        let mut current_col = width;
+                        while current_col < line_len {
+                            wrap_indices.push(current_col);
+                            current_col += width;
+                        }
                     }
                 }
             }

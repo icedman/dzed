@@ -7,10 +7,10 @@ mod input;
 mod search;
 mod selections;
 
-use crate::search::{TextSearch, compile};
+use crate::search::{compile, TextSearch};
 
 use std::{
-    io::{Write, stdout},
+    io::{stdout, Write},
     time::Duration,
 };
 
@@ -26,7 +26,7 @@ use text::ToPoint;
 use actions::Mode;
 use document::BufferText;
 use editor::{ColorAdjust, Editor, ToCrossTerm};
-use input::{HandleEvent, handle_event};
+use input::{handle_event, HandleEvent};
 
 fn fill_to_eol(count: usize) {
     for _ in 0..count {
@@ -265,7 +265,11 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                     current_range.map_or(
                         0,
                         |(_, s, e)| {
-                            if *s < start_col { e - start_col } else { e - s }
+                            if *s < start_col {
+                                e - start_col
+                            } else {
+                                e - s
+                            }
                         },
                     );
 

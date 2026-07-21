@@ -601,7 +601,7 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                     editor.cmd = Document::new("").unwrap();
                     {
                         let active_buffer = editor.buffer_manager.active_mut();
-                        active_buffer.doc.enter_mode((Mode::Normal));
+                        active_buffer.doc.enter_mode(Mode::Normal);
                     }
                     should_redraw = true;
                 } else if insert_action != Action::NoOp {

@@ -2,10 +2,10 @@ use std::{collections::HashMap, path::Path};
 
 use rope::Point;
 use syntect::{
-    LoadingError,
     easy::HighlightLines,
     highlighting::{Color, HighlightState, Style, Theme, ThemeSet, ThemeSettings},
     parsing::{ParseState, SyntaxReference, SyntaxSet},
+    LoadingError,
 };
 use text::{Buffer, ToOffset};
 
