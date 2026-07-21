@@ -9,8 +9,9 @@ use syntect::{
 };
 use text::{Buffer, BufferSnapshot, ToOffset};
 
-const START_OFFSET: u32 = 128;
+const ENABLE_STATE_CACHE: bool = true;
 const CACHE_INTERVAL: u32 = 32;
+const START_OFFSET: u32 = 1024;
 
 fn find_entry<T>(state_cache: &HashMap<usize, T>, target: usize) -> Option<(&usize, &T)> {
     let mut nearest_key = None;
@@ -93,19 +94,21 @@ impl Highlights {
 
         let mut start: u32 = start_row.saturating_sub(START_OFFSET);
 
-        if let Some((_key, value)) = find_entry::<StateCache>(
-            &self.state_cache,
-            start_row.saturating_sub(CACHE_INTERVAL) as usize,
-        ) {
-            let ln: u32 = value.line_number as u32;
-            if ln > start && ln < start_row {
-                start = ln;
-                self.highlight_start = ln;
-                cached_highlighter = Some(HighlightLines::from_state(
-                    theme,
-                    value.highlight_state.clone(),
-                    value.parser_state.clone(),
-                ));
+        if ENABLE_STATE_CACHE {
+            if let Some((_key, value)) = find_entry::<StateCache>(
+                &self.state_cache,
+                start_row.saturating_sub(CACHE_INTERVAL) as usize,
+            ) {
+                let ln: u32 = value.line_number as u32;
+                if ln > start && ln < start_row {
+                    start = ln;
+                    self.highlight_start = ln;
+                    cached_highlighter = Some(HighlightLines::from_state(
+                        theme,
+                        value.highlight_state.clone(),
+                        value.parser_state.clone(),
+                    ));
+                }
             }
         }
 
@@ -137,7 +140,7 @@ impl Highlights {
             }
 
             // state cache
-            if row % CACHE_INTERVAL == 0 {
+            if ENABLE_STATE_CACHE && row % CACHE_INTERVAL == 0 {
                 let (hs, ps) = highlighter.state();
                 self.state_cache.insert(
                     row as usize,

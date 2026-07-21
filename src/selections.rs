@@ -125,9 +125,9 @@ impl Motions for Selection<Anchor> {
             point.row += 1;
             point.column = 0;
         }
-        let mut offset = buffer.offset_for_anchor(&buffer.anchor_at(&point, Bias::Left));
+        let mut offset = buffer.offset_for_anchor(&buffer.anchor_at(&point, Bias::Right));
         offset = buffer.clip_offset(offset, Bias::Right);
-        let new_head = buffer.anchor_at(offset, Bias::Left);
+        let new_head = buffer.anchor_at(offset, Bias::Right);
         Selection {
             id: self.id,
             start: new_head,

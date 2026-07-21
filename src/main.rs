@@ -16,7 +16,7 @@ use crate::theme::{ColorAdjust, ToCrossTerm};
 
 use std::{
     io::{Write, stdout},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use crossterm::{
@@ -76,7 +76,11 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut prev_screen_cols = 0;
     let mut last_cursor_style = None;
 
+    let mut ticks: Duration = Duration::ZERO;
+
     loop {
+        let start = Instant::now();
+
         // get screen dimensions
         let (screen_cols, screen_rows) = {
             let (cols, rows) = crossterm::terminal::size().unwrap();
@@ -126,7 +130,6 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                             buf.current_wrap_task_id = task_id.0;
                             buf.display_map.apply_wrap_snapshot(wrap_snapshot);
                             should_redraw = true;
-                            should_sync = true;
                         }
                     }
                 }
@@ -537,7 +540,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 execute!(
                     stdout,
                     MoveTo(cmd_col + 1, screen_rows as u16),
-                    crossterm::cursor::Show
+                    // crossterm::cursor::Show
                 )
                 .unwrap();
             } else {
@@ -547,13 +550,21 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                         display_snapshot.margin_left as u16 + cursor_screen_col as u16,
                         display_snapshot.margin_top as u16 + cursor_screen_row as u16
                     ),
-                    crossterm::cursor::Show
+                    // crossterm::cursor::Show
                 )
                 .unwrap();
             }
 
+            if editor.mode == Mode::Insert {
+                execute!(stdout, crossterm::cursor::Show).unwrap();
+                ticks = Duration::ZERO;
+            }
+
             stdout.flush().unwrap();
         }
+
+        let elapsed = start.elapsed();
+        ticks += elapsed;
 
         //------------------
         // input
@@ -587,7 +598,6 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         MoveTo(0, 0)
     )
     .unwrap();
-    execute!(stdout, crossterm::cursor::Show).unwrap();
 
     Ok(())
 }
