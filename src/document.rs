@@ -85,6 +85,10 @@ impl Document {
         }
     }
 
+    pub fn current_mode(&self) -> Mode {
+        return self.mode.clone();
+    }
+
     pub fn sync(&mut self) {
         if self.mode == Mode::VisualBlock {
             self.selections.sync_block(&self.buffer);
@@ -378,6 +382,10 @@ impl Document {
 
     pub fn selections(&self) -> &SelectionCollection {
         &self.selections
+    }
+
+    pub fn clear_selections(&mut self) {
+        self.selections.clear(&self.buffer);
     }
 
     pub fn has_selection(&self) -> bool {

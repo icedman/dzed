@@ -475,7 +475,7 @@ impl SelectionCollection {
             let existing_idx = self
                 .selections
                 .iter()
-                .position(|s| s.head().to_point(buffer).row == row);
+                .position(|s| s.id != first_id && s.head().to_point(buffer).row == row);
 
             let line_len = buffer.line_len(row);
             let s_col = col_start.min(line_len);
@@ -507,6 +507,28 @@ impl SelectionCollection {
                 });
             }
         }
+
+        // Finally, update the first selection so it conforms to the block at its row
+        let line_len = buffer.line_len(first_row);
+        let s_col = col_start.min(line_len);
+        let e_col = col_end.min(line_len);
+        let start_pt = Point {
+            row: first_row,
+            column: s_col,
+        };
+        let end_pt = Point {
+            row: first_row,
+            column: e_col,
+        };
+        let start_anchor = buffer.anchor_at(start_pt.to_offset(buffer), Bias::Left);
+        let end_anchor = buffer.anchor_at(end_pt.to_offset(buffer), Bias::Left);
+        self.selections[0] = Selection {
+            id: first_id,
+            start: start_anchor,
+            end: end_anchor,
+            reversed: false,
+            goal: SelectionGoal::None,
+        };
     }
 
     pub fn end_block(&mut self) {
@@ -519,8 +541,12 @@ impl SelectionCollection {
         self.block_anchor = None;
     }
 
-    pub fn clear(&mut self) {
-        self.selections.clear();
+    pub fn clear(&mut self, buffer: &Buffer) {
+        self.clear_selections(buffer);
+        if let Some(first) = self.first().cloned() {
+            self.selections.clear();
+            self.selections.push(first);
+        }
     }
 
     pub fn is_selected(&self, row: u32, column: u32, buffer: &Buffer) -> (bool, bool, bool) {
