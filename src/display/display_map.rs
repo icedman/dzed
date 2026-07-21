@@ -46,7 +46,7 @@ pub struct DisplaySnapshot {
 impl DisplayMap {
     pub fn new(buffer: BufferSnapshot, wrap_width: Option<u32>) -> Self {
         Self {
-            wrap_map: WrapMap::new(buffer, wrap_width, 0, 0),
+            wrap_map: WrapMap::new(buffer, wrap_width),
             scroll_x: 0,
             scroll_y: 0,
             screen_rows: 0,
@@ -122,9 +122,6 @@ impl DisplayMap {
                 cursor_screen_col = cursor_col - self.scroll_x as i32;
             }
         }
-
-        self.wrap_map
-            .set_view(self.scroll_y, self.screen_rows, self.screen_cols);
     }
 }
 
