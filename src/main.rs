@@ -109,6 +109,12 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 .display_map
                 .sync(active_buffer.doc.buffer().snapshot().clone());
             active_buffer.dirty_hl = true;
+
+            let (start, _) = active_buffer
+                .doc
+                .selections()
+                .rows_in_selection(active_buffer.doc.buffer());
+            active_buffer.hl.invalidate_state(start);
             should_sync = false;
         }
 

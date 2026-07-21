@@ -549,6 +549,24 @@ impl SelectionCollection {
         self.selections.last()
     }
 
+    pub fn rows_in_selection(&self, buffer: &Buffer) -> (u32, u32) {
+        let mut start: u32 = buffer.row_count();
+        let mut end: u32 = 0;
+        for cursor in self.selections.iter() {
+            let mut rows = [
+                cursor.start.to_point(buffer).row,
+                cursor.end.to_point(buffer).row,
+            ];
+            rows.sort();
+            let row_start = rows[0];
+            let row_end = rows[1];
+            start = std::cmp::min(row_start, start);
+            end = std::cmp::max(row_end, end);
+        }
+
+        return (start, end);
+    }
+
     pub fn add(&mut self, buffer: &Buffer, offset: usize) -> Selection<Anchor> {
         let sel = Selection {
             id: self.id,

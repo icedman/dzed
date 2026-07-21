@@ -4,14 +4,39 @@ use rope::Point;
 use syntect::{
     LoadingError,
     easy::HighlightLines,
-    highlighting::{Color, Style, Theme, ThemeSet, ThemeSettings},
-    parsing::{SyntaxReference, SyntaxSet},
+    highlighting::{Color, HighlightState, Style, Theme, ThemeSet, ThemeSettings},
+    parsing::{ParseState, SyntaxReference, SyntaxSet},
 };
 use text::{Buffer, ToOffset};
+
+const START_OFFSET: u32 = 240;
+const CACHE_INTERVAL: u32 = 80;
 
 fn load_theme(tm_file: &str) -> Result<Theme, LoadingError> {
     let tm_path = Path::new(tm_file);
     ThemeSet::get_theme(tm_path)
+}
+
+fn find_entry<T>(state_cache: &HashMap<usize, T>, target: usize) -> Option<(&usize, &T)> {
+    let mut nearest_key = None;
+    let mut min_diff = usize::MAX;
+
+    for key in state_cache.keys() {
+        if *key == target {
+            return Some((key, state_cache.get(key).unwrap()));
+        } else if *key > target && (*key - target) < min_diff {
+            nearest_key = Some(key);
+            min_diff = *key - target;
+        }
+    }
+
+    nearest_key.map(|key| (key, state_cache.get(key).unwrap()))
+}
+
+pub struct StateCache {
+    pub line_number: u32,
+    pub highlight_state: HighlightState,
+    pub parser_state: ParseState,
 }
 
 pub struct StyleCache {
@@ -22,7 +47,9 @@ pub struct Highlights {
     theme: Theme,
     syntax_set: SyntaxSet,
     syntax: SyntaxReference,
+    state_cache: HashMap<usize, StateCache>,
     style_cache: HashMap<u32, StyleCache>,
+    highlight_start: u32,
     // theme extras
     pub comment: Color,
 }
@@ -82,32 +109,48 @@ impl Highlights {
             theme: theme.clone(),
             syntax_set: syntax_set.clone(),
             syntax: syntax.clone(),
+            state_cache: HashMap::new(),
             style_cache: HashMap::new(),
+            highlight_start: 0,
             comment: comment,
         }
     }
 
     pub fn highlight_lines(&mut self, buffer: &Buffer, start_row: u32, row_count: u32) {
         self.style_cache.clear();
+        let mut highlighter = HighlightLines::new(&self.syntax, &self.theme);
 
         if row_count == 0 || start_row >= buffer.row_count() {
             return;
         }
 
+        let mut start: u32 = start_row.saturating_sub(START_OFFSET);
+
+        if let Some((_key, value)) = find_entry::<StateCache>(
+            &self.state_cache,
+            start_row.saturating_sub(CACHE_INTERVAL) as usize,
+        ) {
+            let ln: u32 = value.line_number as u32;
+            if ln > start && ln < start_row {
+                start = ln;
+                self.highlight_start = ln;
+                highlighter = HighlightLines::from_state(
+                    &self.theme,
+                    value.highlight_state.clone(),
+                    value.parser_state.clone(),
+                );
+            }
+        }
+
         // Syntect parsing is stateful across lines. Parse from the beginning so
         // multiline strings/comments are correct, but only retain requested rows.
         let end_row = start_row.saturating_add(row_count).min(buffer.row_count());
-        let mut highlighter = HighlightLines::new(&self.syntax, &self.theme);
 
-        for row in 0..end_row {
+        for row in start..end_row {
             let text = row_text(buffer, row) + "\n";
             let ranges = highlighter
                 .highlight_line(&text, &self.syntax_set)
                 .expect("syntax highlighting failed");
-
-            if row < start_row {
-                continue;
-            }
 
             let mut styles = Vec::with_capacity(ranges.len());
             let mut column = 0_u32;
@@ -118,6 +161,20 @@ impl Highlights {
             }
 
             self.style_cache.insert(row, StyleCache { styles });
+
+            // state cache
+            if row % CACHE_INTERVAL == 0 {
+                let (hs, ps) = highlighter.state();
+                self.state_cache.insert(
+                    row as usize,
+                    StateCache {
+                        line_number: row,
+                        highlight_state: hs.clone(),
+                        parser_state: ps.clone(),
+                    },
+                );
+                highlighter = HighlightLines::from_state(&self.theme, hs, ps);
+            }
         }
     }
 
@@ -131,6 +188,10 @@ impl Highlights {
 
     pub fn contains_rows(&self, start_row: u32, end_row: u32) -> bool {
         (start_row..end_row).all(|row| self.style_cache.contains_key(&row))
+    }
+
+    pub fn invalidate_state(&mut self, start_row: u32) {
+        self.state_cache.retain(|&row, _| row < start_row as usize);
     }
 
     pub fn theme_settings(&self) -> &ThemeSettings {
