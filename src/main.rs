@@ -220,17 +220,19 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 let text = display_snapshot.line_text(row) + " ";
 
                 let mut matches = Vec::<(usize, usize, &str)>::new();
-                if editor.pattern {
-                    if editor.search_text != editor.regex_string {
-                        editor.regex_string = editor.search_text.clone();
-                        editor.regex = compile(editor.regex_string.as_str());
+                profiler.profile("search", || {
+                    if editor.pattern {
+                        if editor.search_text != editor.regex_string {
+                            editor.regex_string = editor.search_text.clone();
+                            editor.regex = compile(editor.regex_string.as_str());
+                        }
+                        if let Some(ref regex) = editor.regex {
+                            matches = text.as_str().find_pattern(&regex);
+                        }
+                    } else if !editor.search_text.is_empty() {
+                        matches = text.as_str().find_string(&editor.search_text);
                     }
-                    if let Some(ref regex) = editor.regex {
-                        matches = text.as_str().find_pattern(&regex);
-                    }
-                } else if !editor.search_text.is_empty() {
-                    matches = text.as_str().find_string(&editor.search_text);
-                }
+                });
                 // Convert byte-indexed matches into character-indexed ranges for rendering
                 let match_ranges: Vec<(usize, usize)> = matches
                     .iter()
