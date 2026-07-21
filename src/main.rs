@@ -4,9 +4,11 @@ mod document;
 mod editor;
 mod highlight;
 mod input;
+mod profiler;
 mod search;
 mod selections;
 
+use crate::profiler::Profiler;
 use crate::search::{TextSearch, compile};
 
 use std::{
@@ -35,6 +37,8 @@ fn fill_to_eol(count: usize) {
 }
 
 fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let mut profiler = Profiler::new();
+
     let args: Vec<String> = std::env::args().collect();
     let file_paths = if args.len() > 1 {
         args[1..].to_vec()
@@ -105,9 +109,11 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             .set_wrap_width(editor.wrap.then_some(wrap_cols as u32));
 
         if should_sync {
-            active_buffer
-                .display_map
-                .sync(active_buffer.doc.buffer().snapshot().clone());
+            profiler.profile("display_map.sync", || {
+                active_buffer
+                    .display_map
+                    .sync(active_buffer.doc.buffer().snapshot().clone());
+            });
             active_buffer.dirty_hl = true;
 
             let (start, _) = active_buffer
@@ -163,11 +169,13 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                         .hl
                         .contains_rows(start_buffer_row, end_buffer_row_exclusive)
                 {
-                    active_buffer.hl.highlight_lines(
-                        active_buffer.doc.buffer(),
-                        start_buffer_row,
-                        end_buffer_row_exclusive - start_buffer_row,
-                    );
+                    profiler.profile("hl.highlight_lines", || {
+                        active_buffer.hl.highlight_lines(
+                            active_buffer.doc.buffer(),
+                            start_buffer_row,
+                            end_buffer_row_exclusive - start_buffer_row,
+                        );
+                    });
                     active_buffer.dirty_hl = false;
                 }
             }
