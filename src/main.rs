@@ -5,6 +5,7 @@ mod document;
 mod editor;
 mod highlight;
 mod input;
+mod keymap;
 mod profiler;
 mod search;
 mod selections;

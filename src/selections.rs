@@ -96,7 +96,13 @@ impl Motions for Selection<Anchor> {
     fn move_left_once(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor> {
         let mut point = self.head().to_point(&buffer);
         if point.column != 0 {
-            point.column = point.column.saturating_sub(1);
+            let row_text = buffer.row_text(point.row);
+            let current_col = point.column as usize;
+            if let Some(ch) = row_text[..current_col].chars().next_back() {
+                point.column = point.column.saturating_sub(ch.len_utf8() as u32);
+            } else {
+                point.column = point.column.saturating_sub(1);
+            }
         } else if point.row > 0 {
             point.row = point.row.saturating_sub(1);
             point.column = buffer.line_len(point.row);
@@ -115,12 +121,15 @@ impl Motions for Selection<Anchor> {
 
     fn move_right_once(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor> {
         let mut point = self.head().to_point(&buffer);
-        let l = {
-            let row_text = buffer.row_text(point.row);
-            row_text.len()
-        } as u32;
+        let row_text = buffer.row_text(point.row);
+        let l = row_text.len() as u32;
         if point.column < l {
-            point.column += 1;
+            let current_col = point.column as usize;
+            if let Some(ch) = row_text[current_col..].chars().next() {
+                point.column += ch.len_utf8() as u32;
+            } else {
+                point.column += 1;
+            }
         } else {
             point.row += 1;
             point.column = 0;

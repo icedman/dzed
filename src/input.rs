@@ -1,9 +1,121 @@
 use crate::actions::Mode::{Command, VisualBlock, VisualLine};
-use crate::actions::{Action, Mode, SelectInKind};
+use crate::actions::{Action, Mode};
 use crate::document::BufferText;
 use crate::document::Document;
 use crate::editor::{Editor, EditorBuffer};
+use crate::keymap::{KeyCombo, Keymap};
 use crossterm::event::{Event, KeyCode, KeyModifiers, MouseEventKind};
+
+pub fn apply_context(action: Action, select: bool, count: u32) -> Action {
+    match action {
+        Action::MoveUp { .. } => Action::MoveUp { select, count },
+        Action::MoveDown { .. } => Action::MoveDown { select, count },
+        Action::MoveLeft { .. } => Action::MoveLeft { select, count },
+        Action::MoveRight { .. } => Action::MoveRight { select, count },
+        Action::MoveToPreviousWord { .. } => Action::MoveToPreviousWord { select, count },
+        Action::MoveToNextWord { .. } => Action::MoveToNextWord { select, count },
+        Action::MoveToPreviousWordEnd { .. } => Action::MoveToPreviousWordEnd { select, count },
+        Action::MoveToNextWordEnd { .. } => Action::MoveToNextWordEnd { select, count },
+        Action::MoveToStartOfDocument { .. } => Action::MoveToStartOfDocument { select },
+        Action::MoveToEndOfDocument { .. } => Action::MoveToEndOfDocument { select },
+        Action::MoveToStartOfLine { .. } => Action::MoveToStartOfLine { select },
+        Action::MoveToStartOfLineNonSpace { .. } => Action::MoveToStartOfLineNonSpace { select },
+        Action::MoveToEndOfLine { .. } => Action::MoveToEndOfLine { select },
+        Action::MoveToLine { line, .. } => Action::MoveToLine { select, line },
+        Action::MoveToPreviousParagraph { .. } => Action::MoveToPreviousParagraph { select, count },
+        Action::MoveToNextParagraph { .. } => Action::MoveToNextParagraph { select, count },
+        Action::MoveToPreviousCharacter { char, .. } => Action::MoveToPreviousCharacter {
+            select,
+            count,
+            char,
+        },
+        Action::MoveToNextCharacter { char, .. } => Action::MoveToNextCharacter {
+            select,
+            count,
+            char,
+        },
+        Action::DeleteText { .. } => Action::DeleteText {
+            count: count as usize,
+        },
+        Action::Delete { .. } => Action::Delete { count },
+        Action::DeleteCurrentLine { .. } => Action::DeleteCurrentLine { count },
+        Action::DeleteMotion { motion, .. } => Action::DeleteMotion {
+            count,
+            motion: Box::new(apply_context(*motion, true, 1)),
+        },
+        Action::ChangeMotion { motion, .. } => Action::ChangeMotion {
+            count,
+            motion: Box::new(apply_context(*motion, true, 1)),
+        },
+        Action::ChangeCurrentLine { .. } => Action::ChangeCurrentLine { count },
+        Action::Undo { .. } => Action::Undo { count },
+        Action::Redo { .. } => Action::Redo { count },
+        Action::SetInsertModeMotion { motion } => Action::SetInsertModeMotion {
+            motion: Box::new(apply_context(*motion, select, count)),
+        },
+        other => other,
+    }
+}
+
+fn resolve_pattern_pending_action(cmd: &str, select: bool, count: u32) -> Option<Action> {
+    if cmd.starts_with("df") && cmd.len() == 3 {
+        let ch = cmd.chars().nth(2).unwrap();
+        Some(Action::DeleteMotion {
+            count,
+            motion: Box::new(Action::MoveToNextCharacter {
+                select: true,
+                count: 1,
+                char: ch,
+            }),
+        })
+    } else if cmd.starts_with("dF") && cmd.len() == 3 {
+        let ch = cmd.chars().nth(2).unwrap();
+        Some(Action::DeleteMotion {
+            count,
+            motion: Box::new(Action::MoveToPreviousCharacter {
+                select: true,
+                count: 1,
+                char: ch,
+            }),
+        })
+    } else if cmd.starts_with("cf") && cmd.len() == 3 {
+        let ch = cmd.chars().nth(2).unwrap();
+        Some(Action::ChangeMotion {
+            count,
+            motion: Box::new(Action::MoveToNextCharacter {
+                select: true,
+                count: 1,
+                char: ch,
+            }),
+        })
+    } else if cmd.starts_with("cF") && cmd.len() == 3 {
+        let ch = cmd.chars().nth(2).unwrap();
+        Some(Action::ChangeMotion {
+            count,
+            motion: Box::new(Action::MoveToPreviousCharacter {
+                select: true,
+                count: 1,
+                char: ch,
+            }),
+        })
+    } else if cmd.starts_with('f') && cmd.len() == 2 {
+        let ch = cmd.chars().nth(1).unwrap();
+        Some(Action::MoveToNextCharacter {
+            select,
+            count,
+            char: ch,
+        })
+    } else if cmd.starts_with('F') && cmd.len() == 2 {
+        let ch = cmd.chars().nth(1).unwrap();
+        Some(Action::MoveToPreviousCharacter {
+            select,
+            count,
+            char: ch,
+        })
+    } else {
+        None
+    }
+}
 
 pub enum HandleEvent {
     Redraw,
@@ -17,7 +129,6 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
     let mut scroll_up = false;
     let mut scroll_down = false;
 
-    // event to Action
     if let Event::Mouse(mouse_event) = &event {
         match mouse_event.kind {
             MouseEventKind::ScrollUp => {
@@ -53,6 +164,8 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
             current_mode = active_buffer.doc.current_mode();
         }
 
+        let combo = KeyCombo::from(&key_event);
+
         // Global actions
         match (key_event.code, key_event.modifiers) {
             (KeyCode::Esc, _) => {
@@ -75,7 +188,7 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
         }
 
         // Count from pending_cmd prefix
-        let (count, _) = {
+        let count = {
             let mut count_str = String::new();
             let mut parsing_count = true;
             for ch in editor.pending_cmd.chars() {
@@ -85,415 +198,167 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                     parsing_count = false;
                 }
             }
-            let count = count_str.parse::<u32>().unwrap_or(1);
-            (count, ())
+            count_str.parse::<u32>().unwrap_or(1)
         };
 
-        let select = editor.mode == Mode::Visual || editor.mode == Mode::VisualLine;
+        let select = editor.mode == Mode::Visual
+            || editor.mode == Mode::VisualLine
+            || editor.mode == Mode::VisualBlock;
 
-        // Motions (arrow keys et al.)
-        let move_action = match (key_event.code, key_event.modifiers) {
-            (KeyCode::Left, _) => Action::MoveLeft { select, count },
-            (KeyCode::Right, _) => Action::MoveRight { select, count },
-            (KeyCode::Up, _) => Action::MoveUp { select, count },
-            (KeyCode::Down, _) => Action::MoveDown { select, count },
-            _ if scroll_up => Action::MoveUp {
-                select,
-                count: (visible_rows >> 1) as u32 * count,
-            },
-            (KeyCode::PageUp, _) => Action::MoveUp {
-                select,
-                count: (visible_rows >> 1) as u32 * count,
-            },
-            _ if scroll_down => Action::MoveDown {
-                select,
-                count: (visible_rows >> 1) as u32 * count,
-            },
-            (KeyCode::PageDown, _) => Action::MoveDown {
-                select,
-                count: (visible_rows >> 1) as u32 * count,
-            },
-            (KeyCode::Home, _) => Action::MoveToStartOfLine { select },
-            (KeyCode::End, _) => Action::MoveToEndOfLine { select },
-            (KeyCode::Char('0'), _) => Action::MoveToStartOfLine { select },
-            (KeyCode::Char('$'), _) => Action::MoveToEndOfLine { select },
-            (KeyCode::Char('^'), _) => Action::MoveToStartOfLineNonSpace { select },
-            (KeyCode::Char('{'), _) => Action::MoveToPreviousParagraph { select, count },
-            (KeyCode::Char('}'), _) => Action::MoveToNextParagraph { select, count },
-            _ => Action::NoOp,
-        };
+        // Resolve motions from keymap (applies to normal, visual, and insert/command modes)
+        let mut move_action = if let Some(action) = editor.keymap.get_normal_action(&combo) {
+            let is_motion = matches!(
+                action,
+                Action::MoveLeft { .. }
+                    | Action::MoveRight { .. }
+                    | Action::MoveUp { .. }
+                    | Action::MoveDown { .. }
+                    | Action::MoveToStartOfLine { .. }
+                    | Action::MoveToEndOfLine { .. }
+                    | Action::MoveToStartOfLineNonSpace { .. }
+                    | Action::MoveToPreviousParagraph { .. }
+                    | Action::MoveToNextParagraph { .. }
+            );
+            let is_char_motion = matches!(combo.code, KeyCode::Char(_));
+            let is_insert_or_command = editor.mode == Mode::Insert || editor.mode == Mode::Command;
 
-        // Normal-mode commands and cmd-building
-        let normal_action = match (key_event.code, key_event.modifiers) {
-            (KeyCode::Esc, _) => {
-                editor.pending_cmd.clear();
-                should_redraw = true;
-                Action::NoOp
-            }
-            (KeyCode::Char('i'), _) if editor.mode == Mode::Normal => Action::SetInsertMode,
-            (KeyCode::Char('I'), _) if editor.mode == Mode::Normal => Action::SetInsertModeMotion {
-                motion: Box::new(Action::MoveToStartOfLine { select }),
-            },
-            (KeyCode::Char('a'), _) if editor.mode == Mode::Normal => Action::SetInsertModeMotion {
-                motion: Box::new(Action::MoveRight { select, count }),
-            },
-            (KeyCode::Char('A'), _) if editor.mode == Mode::Normal => Action::SetInsertModeMotion {
-                motion: Box::new(Action::MoveToEndOfLine { select }),
-            },
-            (KeyCode::Char('V'), _) if editor.mode == Mode::Normal => Action::SetVisualLineMode,
-            (KeyCode::Char('v'), KeyModifiers::CONTROL) if editor.mode == Mode::Normal => {
-                Action::SetVisualBlockMode
-            }
-            (KeyCode::Char('v'), _) if editor.mode == Mode::Normal => Action::SetVisualMode,
-            (KeyCode::Char(':'), _) if editor.mode == Mode::Normal => Action::SetCommandMode {
-                search: false,
-                pattern: false,
-            },
-            (KeyCode::Char('/'), _) if editor.mode == Mode::Normal => Action::SetCommandMode {
-                search: true,
-                pattern: false,
-            },
-            (KeyCode::Char('?'), _) if editor.mode == Mode::Normal => Action::SetCommandMode {
-                search: true,
-                pattern: true,
-            },
-            (KeyCode::Char('r'), KeyModifiers::CONTROL) => Action::Redo { count },
-            (KeyCode::Char('u'), _) => Action::Undo { count },
-            (KeyCode::Char('h'), _) => Action::MoveLeft { select, count },
-            (KeyCode::Char('l'), _) => Action::MoveRight { select, count },
-            (KeyCode::Char('k'), _) => Action::MoveUp { select, count },
-            (KeyCode::Char('j'), _) => Action::MoveDown { select, count },
-            (KeyCode::Char('n'), _) if !editor.search_text.is_empty() => Action::MoveToNextMatch {
-                search: editor.search_text.clone(),
-                pattern: editor.pattern,
-            },
-            (KeyCode::Char('N'), _) if !editor.search_text.is_empty() => {
-                Action::MoveToPreviousMatch {
-                    search: editor.search_text.clone(),
-                    pattern: editor.pattern,
-                }
-            }
-            (KeyCode::Delete, _) => Action::DeleteText {
-                count: count as usize,
-            },
-            (KeyCode::Backspace, _) => Action::MoveLeft { select, count },
-            (KeyCode::Left, KeyModifiers::SHIFT) => Action::MoveToPreviousWord {
-                select: false,
-                count,
-            },
-            (KeyCode::Right, KeyModifiers::SHIFT) => Action::MoveToNextWord {
-                select: false,
-                count,
-            },
-            (KeyCode::Char('d'), KeyModifiers::CONTROL) => Action::SelectIn {
-                kind: SelectInKind::Word,
-            },
-            (KeyCode::Char(c), _) => {
-                editor.pending_cmd.push(c);
-                let (count, cmd_without_count) = {
-                    let mut count_str = String::new();
-                    let mut cmd_str = String::new();
-                    let mut parsing_count = true;
-                    for ch in editor.pending_cmd.chars() {
-                        if parsing_count
-                            && ch.is_ascii_digit()
-                            && (ch != '0' || !count_str.is_empty())
-                        {
-                            count_str.push(ch);
-                        } else {
-                            parsing_count = false;
-                            cmd_str.push(ch);
+            if is_motion && (!is_insert_or_command || !is_char_motion) {
+                let resolved = apply_context(action, select, count);
+                match resolved {
+                    Action::MoveUp { select, count } if combo.code == KeyCode::PageUp => {
+                        Action::MoveUp {
+                            select,
+                            count: (visible_rows >> 1) as u32 * count,
                         }
                     }
-                    let count = if count_str.is_empty() {
-                        1
-                    } else {
-                        count_str.parse::<u32>().unwrap_or(1)
-                    };
-                    (count, cmd_str)
-                };
-
-                let action = match cmd_without_count.as_str() {
-                    "iw" => Some(Action::SelectIn {
-                        kind: SelectInKind::Word,
-                    }),
-                    "aw" => Some(Action::SelectAround {
-                        kind: SelectInKind::Word,
-                    }),
-                    "gg" => Some(Action::MoveToStartOfDocument { select }),
-                    "G" => Some(Action::MoveToEndOfDocument { select }),
-                    "dd" => Some(Action::DeleteCurrentLine { count }),
-                    "dw" => Some(Action::DeleteMotion {
-                        count,
-                        motion: Box::new(Action::MoveToNextWord {
-                            select: true,
-                            count: 1,
-                        }),
-                    }),
-                    "db" => Some(Action::DeleteMotion {
-                        count,
-                        motion: Box::new(Action::MoveToPreviousWord {
-                            select: true,
-                            count: 1,
-                        }),
-                    }),
-                    "de" => Some(Action::DeleteMotion {
-                        count,
-                        motion: Box::new(Action::MoveToNextWordEnd {
-                            select: true,
-                            count: 1,
-                        }),
-                    }),
-                    "dge" => Some(Action::DeleteMotion {
-                        count,
-                        motion: Box::new(Action::MoveToPreviousWordEnd {
-                            select: true,
-                            count: 1,
-                        }),
-                    }),
-                    "dj" => Some(Action::DeleteMotion {
-                        count,
-                        motion: Box::new(Action::MoveDown {
-                            select: true,
-                            count: 1,
-                        }),
-                    }),
-                    "dk" => Some(Action::DeleteMotion {
-                        count,
-                        motion: Box::new(Action::MoveUp {
-                            select: true,
-                            count: 1,
-                        }),
-                    }),
-                    "dh" => Some(Action::DeleteMotion {
-                        count,
-                        motion: Box::new(Action::MoveLeft {
-                            select: true,
-                            count: 1,
-                        }),
-                    }),
-                    "dl" => Some(Action::DeleteMotion {
-                        count,
-                        motion: Box::new(Action::MoveRight {
-                            select: true,
-                            count: 1,
-                        }),
-                    }),
-                    "d0" => Some(Action::DeleteMotion {
-                        count,
-                        motion: Box::new(Action::MoveToStartOfLine { select: true }),
-                    }),
-                    "d$" => Some(Action::DeleteMotion {
-                        count,
-                        motion: Box::new(Action::MoveToEndOfLine { select: true }),
-                    }),
-                    "d^" => Some(Action::DeleteMotion {
-                        count,
-                        motion: Box::new(Action::MoveToStartOfLineNonSpace { select: true }),
-                    }),
-                    "d{" => Some(Action::DeleteMotion {
-                        count,
-                        motion: Box::new(Action::MoveToPreviousParagraph {
-                            select: true,
-                            count: 1,
-                        }),
-                    }),
-                    "d}" => Some(Action::DeleteMotion {
-                        count,
-                        motion: Box::new(Action::MoveToNextParagraph {
-                            select: true,
-                            count: 1,
-                        }),
-                    }),
-                    "D" => Some(Action::DeleteMotion {
-                        count,
-                        motion: Box::new(Action::MoveToEndOfLine { select: true }),
-                    }),
-                    s if s.starts_with("df") && s.len() == 3 => {
-                        let ch = s.chars().nth(2).unwrap();
-                        Some(Action::DeleteMotion {
-                            count,
-                            motion: Box::new(Action::MoveToNextCharacter {
-                                select: true,
-                                count: 1,
-                                char: ch,
-                            }),
-                        })
-                    }
-                    s if s.starts_with("dF") && s.len() == 3 => {
-                        let ch = s.chars().nth(2).unwrap();
-                        Some(Action::DeleteMotion {
-                            count,
-                            motion: Box::new(Action::MoveToPreviousCharacter {
-                                select: true,
-                                count: 1,
-                                char: ch,
-                            }),
-                        })
-                    }
-                    "cc" => Some(Action::ChangeCurrentLine { count }),
-                    "cw" => Some(Action::ChangeMotion {
-                        count,
-                        motion: Box::new(Action::MoveToNextWord {
-                            select: true,
-                            count: 1,
-                        }),
-                    }),
-                    "cb" => Some(Action::ChangeMotion {
-                        count,
-                        motion: Box::new(Action::MoveToPreviousWord {
-                            select: true,
-                            count: 1,
-                        }),
-                    }),
-                    "ce" => Some(Action::ChangeMotion {
-                        count,
-                        motion: Box::new(Action::MoveToNextWordEnd {
-                            select: true,
-                            count: 1,
-                        }),
-                    }),
-                    "cge" => Some(Action::ChangeMotion {
-                        count,
-                        motion: Box::new(Action::MoveToPreviousWordEnd {
-                            select: true,
-                            count: 1,
-                        }),
-                    }),
-                    "cj" => Some(Action::ChangeMotion {
-                        count,
-                        motion: Box::new(Action::MoveDown {
-                            select: true,
-                            count: 1,
-                        }),
-                    }),
-                    "ck" => Some(Action::ChangeMotion {
-                        count,
-                        motion: Box::new(Action::MoveUp {
-                            select: true,
-                            count: 1,
-                        }),
-                    }),
-                    "ch" => Some(Action::ChangeMotion {
-                        count,
-                        motion: Box::new(Action::MoveLeft {
-                            select: true,
-                            count: 1,
-                        }),
-                    }),
-                    "cl" => Some(Action::ChangeMotion {
-                        count,
-                        motion: Box::new(Action::MoveRight {
-                            select: true,
-                            count: 1,
-                        }),
-                    }),
-                    "c0" => Some(Action::ChangeMotion {
-                        count,
-                        motion: Box::new(Action::MoveToStartOfLine { select: true }),
-                    }),
-                    "c$" => Some(Action::ChangeMotion {
-                        count,
-                        motion: Box::new(Action::MoveToEndOfLine { select: true }),
-                    }),
-                    "c^" => Some(Action::ChangeMotion {
-                        count,
-                        motion: Box::new(Action::MoveToStartOfLineNonSpace { select: true }),
-                    }),
-                    "c{" => Some(Action::ChangeMotion {
-                        count,
-                        motion: Box::new(Action::MoveToPreviousParagraph {
-                            select: true,
-                            count: 1,
-                        }),
-                    }),
-                    "c}" => Some(Action::ChangeMotion {
-                        count,
-                        motion: Box::new(Action::MoveToNextParagraph {
-                            select: true,
-                            count: 1,
-                        }),
-                    }),
-                    "C" => Some(Action::ChangeMotion {
-                        count,
-                        motion: Box::new(Action::MoveToEndOfLine { select: true }),
-                    }),
-                    s if s.starts_with("cf") && s.len() == 3 => {
-                        let ch = s.chars().nth(2).unwrap();
-                        Some(Action::ChangeMotion {
-                            count,
-                            motion: Box::new(Action::MoveToNextCharacter {
-                                select: true,
-                                count: 1,
-                                char: ch,
-                            }),
-                        })
-                    }
-                    s if s.starts_with("cF") && s.len() == 3 => {
-                        let ch = s.chars().nth(2).unwrap();
-                        Some(Action::ChangeMotion {
-                            count,
-                            motion: Box::new(Action::MoveToPreviousCharacter {
-                                select: true,
-                                count: 1,
-                                char: ch,
-                            }),
-                        })
-                    }
-                    "x" => Some(Action::Delete { count }),
-                    "b" => Some(Action::MoveToPreviousWord { select, count }),
-                    "w" => Some(Action::MoveToNextWord { select, count }),
-                    "e" => Some(Action::MoveToNextWordEnd { select, count }),
-                    "ge" => Some(Action::MoveToPreviousWordEnd { select, count }),
-                    s if s.starts_with('f') && s.len() == 2 => {
-                        let ch = s.chars().nth(1).unwrap();
-                        Some(Action::MoveToNextCharacter {
+                    Action::MoveDown { select, count } if combo.code == KeyCode::PageDown => {
+                        Action::MoveDown {
                             select,
-                            count,
-                            char: ch,
-                        })
+                            count: (visible_rows >> 1) as u32 * count,
+                        }
                     }
-                    s if s.starts_with('F') && s.len() == 2 => {
-                        let ch = s.chars().nth(1).unwrap();
-                        Some(Action::MoveToPreviousCharacter {
-                            select,
-                            count,
-                            char: ch,
-                        })
-                    }
-                    _ => None,
-                };
-
-                if let Some(a) = action {
-                    editor.pending_cmd.clear();
-                    a
-                } else {
-                    Action::NoOp
+                    _ => resolved,
                 }
+            } else {
+                Action::NoOp
             }
-            _ => Action::NoOp,
+        } else {
+            Action::NoOp
         };
 
-        // Insert & command text input
-        let insert_action = match (key_event.code, key_event.modifiers) {
-            (KeyCode::Enter, _) if editor.mode == Mode::Insert => Action::InsertNewLine,
-            (KeyCode::Tab, _) if editor.mode == Mode::Insert || editor.mode == Mode::Command => {
-                Action::InsertTab
+        // Fallback for dead scroll up/down code placeholders
+        if move_action == Action::NoOp {
+            if scroll_up {
+                move_action = Action::MoveUp {
+                    select,
+                    count: (visible_rows >> 1) as u32 * count,
+                };
+            } else if scroll_down {
+                move_action = Action::MoveDown {
+                    select,
+                    count: (visible_rows >> 1) as u32 * count,
+                };
             }
-            (KeyCode::Delete, _) if editor.mode == Mode::Insert || editor.mode == Mode::Command => {
-                Action::Delete { count: 1 }
+        }
+
+        // Resolve Normal & Visual Mode actions
+        let mut normal_action = Action::NoOp;
+        if current_mode == Mode::Normal
+            || current_mode == Mode::Visual
+            || current_mode == Mode::VisualLine
+            || current_mode == Mode::VisualBlock
+        {
+            if combo.code == KeyCode::Esc {
+                editor.pending_cmd.clear();
+                should_redraw = true;
+            } else if let Some(action) = editor.keymap.get_normal_action(&combo) {
+                let is_mode_changing = matches!(
+                    action,
+                    Action::SetInsertMode
+                        | Action::SetInsertModeMotion { .. }
+                        | Action::SetVisualMode
+                        | Action::SetVisualLineMode
+                        | Action::SetVisualBlockMode
+                        | Action::SetCommandMode { .. }
+                );
+                if !(is_mode_changing && editor.mode != Mode::Normal) {
+                    let resolved = apply_context(action, select, count);
+                    normal_action = match resolved {
+                        Action::MoveToNextMatch { .. } if !editor.search_text.is_empty() => {
+                            Action::MoveToNextMatch {
+                                search: editor.search_text.clone(),
+                                pattern: editor.pattern,
+                            }
+                        }
+                        Action::MoveToPreviousMatch { .. } if !editor.search_text.is_empty() => {
+                            Action::MoveToPreviousMatch {
+                                search: editor.search_text.clone(),
+                                pattern: editor.pattern,
+                            }
+                        }
+                        _ => resolved,
+                    };
+                }
             }
-            (KeyCode::Backspace, _)
-                if editor.mode == Mode::Insert || editor.mode == Mode::Command =>
-            {
-                Action::Backspace
+
+            // Fallback for single char / pending commands building
+            if normal_action == Action::NoOp {
+                if let KeyCode::Char(c) = combo.code {
+                    editor.pending_cmd.push(c);
+                    let (parsed_count, cmd_without_count) = {
+                        let mut count_str = String::new();
+                        let mut cmd_str = String::new();
+                        let mut parsing_count = true;
+                        for ch in editor.pending_cmd.chars() {
+                            if parsing_count
+                                && ch.is_ascii_digit()
+                                && (ch != '0' || !count_str.is_empty())
+                            {
+                                count_str.push(ch);
+                            } else {
+                                parsing_count = false;
+                                cmd_str.push(ch);
+                            }
+                        }
+                        let count = if count_str.is_empty() {
+                            1
+                        } else {
+                            count_str.parse::<u32>().unwrap_or(1)
+                        };
+                        (count, cmd_str)
+                    };
+
+                    let pending_action = if let Some(action) =
+                        editor.keymap.get_pending_action(&cmd_without_count)
+                    {
+                        Some(action)
+                    } else {
+                        resolve_pattern_pending_action(&cmd_without_count, select, parsed_count)
+                    };
+
+                    if let Some(a) = pending_action {
+                        editor.pending_cmd.clear();
+                        normal_action = apply_context(a, select, parsed_count);
+                    }
+                }
             }
-            (KeyCode::Char(c), _)
-                if editor.mode == Mode::Insert || editor.mode == Mode::Command =>
-            {
+        }
+
+        // Resolve Insert & Command Mode Actions
+        let insert_action = if let Some(action) = editor.keymap.get_insert_action(&combo) {
+            if editor.mode == Mode::Insert || editor.mode == Mode::Command {
+                action
+            } else {
+                Action::NoOp
+            }
+        } else if editor.mode == Mode::Insert || editor.mode == Mode::Command {
+            if let KeyCode::Char(c) = combo.code {
                 Action::InsertText(c.to_string())
+            } else {
+                Action::NoOp
             }
-            _ => Action::NoOp,
+        } else {
+            Action::NoOp
         };
 
         //----------------------------
@@ -652,8 +517,6 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                     } else {
                         let command_parts: Vec<&str> =
                             command_text.trim().split_whitespace().collect();
-
-                        // refactor to generate Action
 
                         if !command_parts.is_empty() {
                             let mut exit = false;
