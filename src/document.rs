@@ -1,3 +1,4 @@
+use crate::actions::Mode::Insert;
 use crate::actions::{Action, Mode, SelectInKind};
 use crate::selections::{Motions, SelectionCollection};
 
@@ -102,7 +103,24 @@ impl Document {
     }
 
     pub fn apply_action(&mut self, action: &Action) {
+        let mut next_action = Action::NoOp;
         match action {
+            Action::ChangeMotion { .. } => next_action = Action::SetInsertMode,
+            _ => {}
+        }
+        if self.mode == Mode::VisualBlock {
+            match action {
+                Action::Delete { .. } | Action::DeleteMotion { .. } => {
+                    next_action = Action::SetInsertMode
+                }
+                _ => {}
+            }
+        }
+        match action {
+            Action::SetInsertMode => {
+                self.enter_mode(Mode::Insert);
+                return;
+            }
             Action::MoveUp { select, count } => {
                 self.selections.move_up(*select, *count, &self.buffer)
             }
@@ -187,23 +205,25 @@ impl Document {
             }
             Action::Backspace => {
                 if self.delete_text(0) {
-                    return;
+                    //
+                } else {
+                    self.selections.move_left(false, 1, &self.buffer);
+                    self.delete_text(1);
                 }
-                self.selections.move_left(false, 1, &self.buffer);
-                self.delete_text(1);
             }
             Action::Delete { count } => {
                 if self.delete_text(0) {
-                    return;
-                }
-                for _ in 0..*count {
-                    self.delete_text(1);
+                    //
+                } else {
+                    for _ in 0..*count {
+                        self.delete_text(1);
+                    }
                 }
             }
             Action::DeleteCurrentLine { count } => {
                 self.delete_current_line(*count);
             }
-            Action::DeleteMotion { count, motion } => {
+            Action::ChangeMotion { count, motion } | Action::DeleteMotion { count, motion } => {
                 let mut motion = (**motion).clone();
                 let is_textobject = match &motion {
                     Action::MoveToNextWord { .. }
@@ -217,34 +237,33 @@ impl Document {
                         self.apply_action(&motion);
                         self.delete_text_object();
                     }
-                    return;
-                }
+                } else {
+                    match &mut motion {
+                        Action::MoveUp { select, .. }
+                        | Action::MoveDown { select, .. }
+                        | Action::MoveLeft { select, .. }
+                        | Action::MoveRight { select, .. }
+                        | Action::MoveToPreviousWord { select, .. }
+                        | Action::MoveToNextWord { select, .. }
+                        | Action::MoveToPreviousWordEnd { select, .. }
+                        | Action::MoveToNextWordEnd { select, .. }
+                        | Action::MoveToStartOfDocument { select }
+                        | Action::MoveToEndOfDocument { select }
+                        | Action::MoveToStartOfLine { select }
+                        | Action::MoveToStartOfLineNonSpace { select }
+                        | Action::MoveToEndOfLine { select }
+                        | Action::MoveToLine { select, .. }
+                        | Action::MoveToPreviousParagraph { select, .. }
+                        | Action::MoveToNextParagraph { select, .. }
+                        | Action::MoveToPreviousCharacter { select, .. }
+                        | Action::MoveToNextCharacter { select, .. } => *select = true,
+                        _ => {}
+                    }
 
-                match &mut motion {
-                    Action::MoveUp { select, .. }
-                    | Action::MoveDown { select, .. }
-                    | Action::MoveLeft { select, .. }
-                    | Action::MoveRight { select, .. }
-                    | Action::MoveToPreviousWord { select, .. }
-                    | Action::MoveToNextWord { select, .. }
-                    | Action::MoveToPreviousWordEnd { select, .. }
-                    | Action::MoveToNextWordEnd { select, .. }
-                    | Action::MoveToStartOfDocument { select }
-                    | Action::MoveToEndOfDocument { select }
-                    | Action::MoveToStartOfLine { select }
-                    | Action::MoveToStartOfLineNonSpace { select }
-                    | Action::MoveToEndOfLine { select }
-                    | Action::MoveToLine { select, .. }
-                    | Action::MoveToPreviousParagraph { select, .. }
-                    | Action::MoveToNextParagraph { select, .. }
-                    | Action::MoveToPreviousCharacter { select, .. }
-                    | Action::MoveToNextCharacter { select, .. } => *select = true,
-                    _ => {}
-                }
-
-                for idx in 0..*count {
-                    self.apply_action(&motion);
-                    self.delete_text(0);
+                    for idx in 0..*count {
+                        self.apply_action(&motion);
+                        self.delete_text(0);
+                    }
                 }
             }
             Action::InsertNewLine => {
@@ -263,10 +282,13 @@ impl Document {
             Action::SelectIn { kind } => self.select_in(kind),
             Action::ClearCursors => self.selections.clear_selections(&self.buffer),
             &Action::Indent | &Action::Unindent => {}
-
-            Action::NoOp => {}
+            Action::NoOp => {
+                return;
+            }
             _ => {}
         }
+
+        self.apply_action(&next_action);
     }
 
     fn insert_text(&mut self, text: &str) {

@@ -86,6 +86,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         prev_screen_cols = screen_cols;
 
         let active_buffer = editor.buffer_manager.active_mut();
+        editor.mode = active_buffer.doc.current_mode();
 
         // Update layout before wrapping so the wrap width reflects the current gutter.
         let row_count = active_buffer.doc.buffer().row_count();

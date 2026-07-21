@@ -127,6 +127,11 @@ pub enum Action {
         count: u32,
         motion: Box<Action>,
     },
+    Change,
+    ChangeMotion {
+        count: u32,
+        motion: Box<Action>,
+    },
 
     Indent,
     Unindent,

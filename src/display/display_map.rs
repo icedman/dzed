@@ -23,8 +23,6 @@ pub struct DisplayMap {
     wrap_map: WrapMap,
     pub scroll_x: u32,
     pub scroll_y: u32,
-    pub screen_rows: u32,
-    pub screen_cols: u32,
     pub margin_left: u32,
     pub margin_right: u32,
     pub margin_top: u32,
@@ -35,8 +33,6 @@ pub struct DisplaySnapshot {
     pub(crate) wrap_snapshot: WrapSnapshot,
     pub scroll_x: u32,
     pub scroll_y: u32,
-    pub screen_rows: u32,
-    pub screen_cols: u32,
     pub margin_left: u32,
     pub margin_right: u32,
     pub margin_top: u32,
@@ -49,8 +45,6 @@ impl DisplayMap {
             wrap_map: WrapMap::new(buffer, wrap_width),
             scroll_x: 0,
             scroll_y: 0,
-            screen_rows: 0,
-            screen_cols: 0,
             margin_left: 0,
             margin_right: 0,
             margin_top: 0,
@@ -63,8 +57,6 @@ impl DisplayMap {
             wrap_snapshot: self.wrap_map.snapshot(),
             scroll_x: self.scroll_x,
             scroll_y: self.scroll_y,
-            screen_rows: self.screen_rows,
-            screen_cols: self.screen_cols,
             margin_left: self.margin_left,
             margin_right: self.margin_right,
             margin_top: self.margin_top,
@@ -88,9 +80,6 @@ impl DisplayMap {
     ) {
         let cursor_row = display_cursor.row() as i32;
         let cursor_col = display_cursor.column() as i32;
-
-        self.screen_rows = screen_rows as u32;
-        self.screen_cols = screen_cols as u32;
 
         let visible_rows = (screen_rows - 1)
             .saturating_sub(self.margin_top as i32)

@@ -13,11 +13,6 @@ pub enum HandleEvent {
 }
 
 pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> HandleEvent {
-    {
-        let active_buffer = editor.buffer_manager.active();
-        editor.mode = active_buffer.doc.current_mode();
-    }
-
     // Mouse events: currently no-op placeholders
     let mut scroll_up = false;
     let mut scroll_down = false;
@@ -51,6 +46,11 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
         let mut should_sync = false;
         let mut current_mode = editor.mode.clone();
 
+        {
+            let active_buffer = editor.buffer_manager.active_mut();
+            current_mode = active_buffer.doc.current_mode();
+        }
+
         // Global actions
         match (key_event.code, key_event.modifiers) {
             (KeyCode::Esc, _) => {
@@ -67,7 +67,6 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
 
                 active_buffer.doc.enter_mode(Mode::Normal);
                 current_mode = Mode::Normal;
-                editor.mode = Mode::Normal;
             }
             (KeyCode::Char('q'), KeyModifiers::CONTROL) => return HandleEvent::Exit,
             _ => {}
@@ -314,6 +313,110 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                             }),
                         })
                     }
+                    "cw" => Some(Action::ChangeMotion {
+                        count,
+                        motion: Box::new(Action::MoveToNextWord {
+                            select: true,
+                            count: 1,
+                        }),
+                    }),
+                    "cb" => Some(Action::ChangeMotion {
+                        count,
+                        motion: Box::new(Action::MoveToPreviousWord {
+                            select: true,
+                            count: 1,
+                        }),
+                    }),
+                    "ce" => Some(Action::ChangeMotion {
+                        count,
+                        motion: Box::new(Action::MoveToNextWordEnd {
+                            select: true,
+                            count: 1,
+                        }),
+                    }),
+                    "cge" => Some(Action::ChangeMotion {
+                        count,
+                        motion: Box::new(Action::MoveToPreviousWordEnd {
+                            select: true,
+                            count: 1,
+                        }),
+                    }),
+                    "cj" => Some(Action::ChangeMotion {
+                        count,
+                        motion: Box::new(Action::MoveDown {
+                            select: true,
+                            count: 1,
+                        }),
+                    }),
+                    "ck" => Some(Action::ChangeMotion {
+                        count,
+                        motion: Box::new(Action::MoveUp {
+                            select: true,
+                            count: 1,
+                        }),
+                    }),
+                    "ch" => Some(Action::ChangeMotion {
+                        count,
+                        motion: Box::new(Action::MoveLeft {
+                            select: true,
+                            count: 1,
+                        }),
+                    }),
+                    "cl" => Some(Action::ChangeMotion {
+                        count,
+                        motion: Box::new(Action::MoveRight {
+                            select: true,
+                            count: 1,
+                        }),
+                    }),
+                    "c0" => Some(Action::ChangeMotion {
+                        count,
+                        motion: Box::new(Action::MoveToStartOfLine { select: true }),
+                    }),
+                    "c$" => Some(Action::ChangeMotion {
+                        count,
+                        motion: Box::new(Action::MoveToEndOfLine { select: true }),
+                    }),
+                    "c^" => Some(Action::ChangeMotion {
+                        count,
+                        motion: Box::new(Action::MoveToStartOfLineNonSpace { select: true }),
+                    }),
+                    "c{" => Some(Action::ChangeMotion {
+                        count,
+                        motion: Box::new(Action::MoveToPreviousParagraph {
+                            select: true,
+                            count: 1,
+                        }),
+                    }),
+                    "c}" => Some(Action::ChangeMotion {
+                        count,
+                        motion: Box::new(Action::MoveToNextParagraph {
+                            select: true,
+                            count: 1,
+                        }),
+                    }),
+                    s if s.starts_with("cf") && s.len() == 3 => {
+                        let ch = s.chars().nth(2).unwrap();
+                        Some(Action::ChangeMotion {
+                            count,
+                            motion: Box::new(Action::MoveToNextCharacter {
+                                select: true,
+                                count: 1,
+                                char: ch,
+                            }),
+                        })
+                    }
+                    s if s.starts_with("cF") && s.len() == 3 => {
+                        let ch = s.chars().nth(2).unwrap();
+                        Some(Action::ChangeMotion {
+                            count,
+                            motion: Box::new(Action::MoveToPreviousCharacter {
+                                select: true,
+                                count: 1,
+                                char: ch,
+                            }),
+                        })
+                    }
                     "x" => Some(Action::Delete { count }),
                     "b" => Some(Action::MoveToPreviousWord { select, count }),
                     "w" => Some(Action::MoveToNextWord { select, count }),
@@ -419,20 +522,16 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                     active_buffer.doc.apply_action(&move_action);
                     active_buffer.doc.sync();
                     editor.pending_cmd.clear();
-                } else {
-                    let active_buffer = editor.buffer_manager.active_mut();
-                    active_buffer.doc.enter_mode(editor.mode.clone());
-                    should_redraw = true;
                 }
             }
             Mode::Insert => {
+                editor.pending_cmd.clear();
                 if insert_action != Action::NoOp {
                     let active_buffer = editor.buffer_manager.active_mut();
                     active_buffer.doc.apply_action(&insert_action);
                 } else if move_action != Action::NoOp {
                     let active_buffer = editor.buffer_manager.active_mut();
                     active_buffer.doc.apply_action(&move_action);
-                    editor.pending_cmd.clear();
                 }
             }
             Mode::Command => {
@@ -633,7 +732,7 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
             should_sync = true;
         }
 
-        return if should_sync && should_redraw {
+        return if should_sync {
             HandleEvent::RedrawAndSync
         } else if should_redraw {
             HandleEvent::Redraw

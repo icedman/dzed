@@ -118,7 +118,7 @@ impl Highlights {
 
     pub fn highlight_lines(&mut self, buffer: &Buffer, start_row: u32, row_count: u32) {
         self.style_cache.clear();
-        let mut highlighter = HighlightLines::new(&self.syntax, &self.theme);
+        let mut cached_highlighter: Option<HighlightLines> = None;
 
         if row_count == 0 || start_row >= buffer.row_count() {
             return;
@@ -134,17 +134,22 @@ impl Highlights {
             if ln > start && ln < start_row {
                 start = ln;
                 self.highlight_start = ln;
-                highlighter = HighlightLines::from_state(
+                cached_highlighter = Some(HighlightLines::from_state(
                     &self.theme,
                     value.highlight_state.clone(),
                     value.parser_state.clone(),
-                );
+                ));
             }
         }
 
+        let mut highlighter = match cached_highlighter {
+            Some(chl) => chl,
+            None => HighlightLines::new(&self.syntax, &self.theme),
+        };
+
         // Syntect parsing is stateful across lines. Parse from the beginning so
         // multiline strings/comments are correct, but only retain requested rows.
-        let end_row = start_row.saturating_add(row_count).min(buffer.row_count());
+        let end_row = std::cmp::min(buffer.row_count(), start_row.saturating_add(row_count));
 
         for row in start..end_row {
             let text = row_text(buffer, row) + "\n";
