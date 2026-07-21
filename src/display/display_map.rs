@@ -1,5 +1,5 @@
 use crate::display::wrap_map::{WrapMap, WrapPoint, WrapSnapshot};
-use crate::document::BufferText;
+
 use text::{BufferSnapshot, Point};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -131,7 +131,7 @@ impl DisplaySnapshot {
     }
 
     pub fn y(&self) -> u32 {
-        return self.margin_left;
+        self.margin_top
     }
 
     pub fn buffer_snapshot(&self) -> &BufferSnapshot {
@@ -174,24 +174,52 @@ impl DisplaySnapshot {
 
     /// Returns the text for a given display row.
     pub fn line_text(&self, display_row: u32) -> String {
-        let line_len = self.line_len(display_row);
-        if line_len == 0 {
+        let range = self.buffer_range_for_display_row(display_row);
+        if range.is_empty() || range.start.row != range.end.row {
             return String::new();
         }
 
-        let start_point = self.display_point_to_point(DisplayPoint::new(display_row, 0));
-        let buffer = self.buffer_snapshot();
-
-        let buffer_row_text = buffer.row_text(start_point.row);
-        let start_offset = start_point.column as usize;
-        let end_offset = (start_offset + line_len as usize).min(buffer_row_text.len());
-
-        buffer_row_text[start_offset..end_offset].to_string()
+        self.buffer_snapshot()
+            .text_for_range(range)
+            .collect::<String>()
     }
 
     pub fn text_chunks(&self, display_row: u32) -> impl Iterator<Item = &str> {
         // For now, return a single chunk for the line.
         // In the future, this could return multiple chunks for syntax highlighting.
         std::iter::once(Box::leak(self.line_text(display_row).into_boxed_str()) as &str)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clock::ReplicaId;
+    use text::{Buffer, BufferId};
+
+    #[test]
+    fn extracts_wrapped_display_rows() {
+        let buffer = Buffer::new(
+            ReplicaId::LOCAL,
+            BufferId::new(1).unwrap(),
+            "abcdef\nsecond",
+        );
+        let display = DisplayMap::new(buffer.snapshot().clone(), Some(3)).snapshot();
+
+        assert_eq!(display.row_count(), 4);
+        assert_eq!(display.line_text(0), "abc");
+        assert_eq!(display.line_text(1), "def");
+        assert_eq!(display.line_text(2), "sec");
+        assert_eq!(display.line_text(3), "ond");
+    }
+
+    #[test]
+    fn extracts_utf8_text_by_buffer_points() {
+        let buffer = Buffer::new(ReplicaId::LOCAL, BufferId::new(1).unwrap(), "aéøbc");
+        let display = DisplayMap::new(buffer.snapshot().clone(), Some(3)).snapshot();
+
+        assert_eq!(display.line_text(0), "aé");
+        assert_eq!(display.line_text(1), "øb");
+        assert_eq!(display.line_text(2), "c");
     }
 }

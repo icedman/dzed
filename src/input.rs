@@ -571,7 +571,10 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                                     && command_parts.len() > 1 =>
                                 {
                                     match command_parts[1] {
-                                        "on" => editor.syntax = true,
+                                        "on" => {
+                                            editor.syntax = true;
+                                            editor.buffer_manager.active_mut().dirty_hl = true;
+                                        }
                                         "off" => editor.syntax = false,
                                         _ => {}
                                     }

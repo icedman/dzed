@@ -1,5 +1,6 @@
+use std::{cmp, ops::Range};
 use sum_tree::{Bias, ContextLessSummary, Dimension, Dimensions, Item, SeekTarget, SumTree};
-use text::{BufferSnapshot, Point};
+use text::{BufferSnapshot, Edit, Point};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct WrapPoint {
@@ -131,21 +132,43 @@ impl SeekTarget<'_, TransformSummary, Dimensions<WrapPoint, Point>> for Point {
 
 impl WrapMap {
     pub fn new(buffer: BufferSnapshot, wrap_width: Option<u32>) -> Self {
-        let mut map = Self {
+        Self {
             wrap_width,
             snapshot: WrapSnapshot {
-                buffer: buffer.clone(),
+                transforms: build_transforms(&buffer, wrap_width),
+                buffer,
                 wrap_width,
-                transforms: SumTree::default(),
             },
-        };
-        map.sync(buffer);
-        map
+        }
     }
 
     pub fn sync(&mut self, buffer: BufferSnapshot) {
+        if buffer.version == self.snapshot.buffer.version {
+            self.snapshot.buffer = buffer;
+            return;
+        }
+
+        let edits = buffer
+            .edits_since::<Point>(&self.snapshot.buffer.version)
+            .collect::<Vec<_>>();
+
+        if edits.is_empty() {
+            self.snapshot = WrapSnapshot {
+                transforms: build_transforms(&buffer, self.wrap_width),
+                buffer,
+                wrap_width: self.wrap_width,
+            };
+            return;
+        }
+
+        let transforms = rebuild_edited_rows(
+            &self.snapshot,
+            &buffer,
+            self.wrap_width,
+            merge_row_edits(&edits),
+        );
         self.snapshot = WrapSnapshot {
-            transforms: build_transforms(&buffer, self.wrap_width),
+            transforms,
             buffer,
             wrap_width: self.wrap_width,
         };
@@ -164,10 +187,18 @@ impl WrapMap {
 }
 
 fn build_transforms(buffer: &BufferSnapshot, wrap_width: Option<u32>) -> SumTree<Transform> {
+    build_row_transforms(buffer, wrap_width, 0..buffer.row_count())
+}
+
+fn build_row_transforms(
+    buffer: &BufferSnapshot,
+    wrap_width: Option<u32>,
+    rows: Range<u32>,
+) -> SumTree<Transform> {
     let mut transforms = SumTree::default();
     let max_row = buffer.max_point().row;
 
-    for row in 0..=max_row {
+    for row in rows.start..rows.end.min(buffer.row_count()) {
         let line_len = buffer.line_len(row);
         let mut column = 0;
 
@@ -180,15 +211,103 @@ fn build_transforms(buffer: &BufferSnapshot, wrap_width: Option<u32>) -> SumTree
         }
 
         let remaining = line_len - column;
+        push_isomorphic(&mut transforms, Point::new(0, remaining));
         if row < max_row {
-            push_isomorphic(&mut transforms, Point::new(0, remaining));
-            push_isomorphic(&mut transforms, Point::new(1, 0));
-        } else if remaining > 0 {
-            push_isomorphic(&mut transforms, Point::new(0, remaining));
+            transforms.push(Transform::isomorphic(Point::new(1, 0)), ());
         }
     }
 
     transforms
+}
+
+#[derive(Debug)]
+struct RowEdit {
+    old: Range<u32>,
+    new: Range<u32>,
+}
+
+fn merge_row_edits(edits: &[Edit<Point>]) -> Vec<RowEdit> {
+    let mut row_edits = Vec::<RowEdit>::new();
+
+    for edit in edits {
+        let next = RowEdit {
+            old: edit.old.start.row..edit.old.end.row.saturating_add(1),
+            new: edit.new.start.row..edit.new.end.row.saturating_add(1),
+        };
+
+        if let Some(previous) = row_edits.last_mut()
+            && next.old.start <= previous.old.end
+        {
+            previous.old.end = cmp::max(previous.old.end, next.old.end);
+            previous.new.end = cmp::max(previous.new.end, next.new.end);
+        } else {
+            row_edits.push(next);
+        }
+    }
+
+    row_edits
+}
+
+fn rebuild_edited_rows(
+    old_snapshot: &WrapSnapshot,
+    new_buffer: &BufferSnapshot,
+    wrap_width: Option<u32>,
+    row_edits: Vec<RowEdit>,
+) -> SumTree<Transform> {
+    let mut old_cursor = old_snapshot.transforms.cursor::<Point>(());
+    let mut row_edits = row_edits.into_iter().peekable();
+    let Some(first_edit) = row_edits.peek() else {
+        return old_snapshot.transforms.clone();
+    };
+
+    let first_old_start = Point::new(first_edit.old.start, 0);
+    let mut transforms = old_cursor.slice(&first_old_start, Bias::Right);
+
+    while let Some(edit) = row_edits.next() {
+        let current_new_row = transforms.summary().input.row;
+        if current_new_row < edit.new.start {
+            append_coalesced(
+                &mut transforms,
+                build_row_transforms(new_buffer, wrap_width, current_new_row..edit.new.start),
+            );
+        }
+
+        append_coalesced(
+            &mut transforms,
+            build_row_transforms(new_buffer, wrap_width, edit.new.clone()),
+        );
+
+        old_cursor.seek_forward(&Point::new(edit.old.end, 0), Bias::Right);
+        if let Some(next_edit) = row_edits.peek() {
+            let next_old_start = Point::new(next_edit.old.start, 0);
+            append_coalesced(
+                &mut transforms,
+                old_cursor.slice(&next_old_start, Bias::Right),
+            );
+        } else {
+            append_coalesced(&mut transforms, old_cursor.suffix());
+        }
+    }
+
+    transforms
+}
+
+fn append_coalesced(transforms: &mut SumTree<Transform>, other: SumTree<Transform>) {
+    if transforms.last().is_some_and(Transform::is_isomorphic)
+        && other.first().is_some_and(Transform::is_isomorphic)
+    {
+        let (first, remainder) = {
+            let mut cursor = other.cursor::<TransformSummary>(());
+            cursor.next();
+            let first = cursor.item().unwrap().clone();
+            cursor.next();
+            (first, cursor.suffix())
+        };
+        push_isomorphic(transforms, first.summary.input);
+        transforms.append(remainder, ());
+    } else {
+        transforms.append(other, ());
+    }
 }
 
 fn push_isomorphic(transforms: &mut SumTree<Transform>, extent: Point) {
@@ -199,7 +318,7 @@ fn push_isomorphic(transforms: &mut SumTree<Transform>, extent: Point) {
     let mut extent = Some(extent);
     transforms.update_last(
         |last| {
-            if last.is_isomorphic() {
+            if last.is_isomorphic() && last.summary.input.row == 0 {
                 let extent = extent.take().unwrap();
                 last.summary.input += extent;
                 last.summary
@@ -320,11 +439,38 @@ fn add_wrap_delta_to_point(mut point: Point, delta: WrapPoint) -> Point {
 mod tests {
     use super::*;
     use clock::ReplicaId;
+    use rand::{Rng, SeedableRng, rngs::StdRng};
     use text::{Buffer, BufferId};
 
     fn snapshot(text: &str, wrap_width: Option<u32>) -> WrapSnapshot {
         let buffer = Buffer::new(ReplicaId::LOCAL, BufferId::new(1).unwrap(), text.to_owned());
         WrapMap::new(buffer.snapshot().clone(), wrap_width).snapshot()
+    }
+
+    fn assert_equivalent(actual: &WrapSnapshot, expected: &WrapSnapshot) {
+        assert_eq!(actual.max_point(), expected.max_point());
+        assert_eq!(actual.row_count(), expected.row_count());
+        for row in 0..actual.row_count() {
+            assert_eq!(actual.line_len(row), expected.line_len(row), "row {row}");
+            for column in 0..=actual.line_len(row) {
+                let point = WrapPoint::new(row, column);
+                assert_eq!(
+                    actual.from_wrap_point(point),
+                    expected.from_wrap_point(point),
+                    "wrap point {point:?}"
+                );
+            }
+        }
+        for row in 0..actual.buffer.row_count() {
+            for column in 0..=actual.buffer.line_len(row) {
+                let point = Point::new(row, column);
+                assert_eq!(
+                    actual.to_wrap_point(point),
+                    expected.to_wrap_point(point),
+                    "buffer point {point:?}"
+                );
+            }
+        }
     }
 
     #[test]
@@ -411,5 +557,70 @@ mod tests {
             snapshot.from_wrap_point(WrapPoint::new(10, 10)),
             Point::new(0, 4)
         );
+    }
+
+    #[test]
+    fn incrementally_rebuilds_edited_rows() {
+        let mut buffer = Buffer::new(
+            ReplicaId::LOCAL,
+            BufferId::new(1).unwrap(),
+            "abcdefgh\nshort\ntail",
+        );
+        let mut map = WrapMap::new(buffer.snapshot().clone(), Some(3));
+
+        buffer.edit([(2..4, "XYZW")]);
+        map.sync(buffer.snapshot().clone());
+        let rebuilt = WrapMap::new(buffer.snapshot().clone(), Some(3)).snapshot();
+        assert_equivalent(&map.snapshot(), &rebuilt);
+
+        buffer.edit([(5..5, "\ninserted\n")]);
+        map.sync(buffer.snapshot().clone());
+        let rebuilt = WrapMap::new(buffer.snapshot().clone(), Some(3)).snapshot();
+        assert_equivalent(&map.snapshot(), &rebuilt);
+
+        buffer.edit([(0..3, ""), (12..16, "replacement")]);
+        map.sync(buffer.snapshot().clone());
+        let rebuilt = WrapMap::new(buffer.snapshot().clone(), Some(3)).snapshot();
+        assert_equivalent(&map.snapshot(), &rebuilt);
+    }
+
+    #[test]
+    fn incrementally_rebuilds_after_deleting_newlines() {
+        let mut buffer = Buffer::new(
+            ReplicaId::LOCAL,
+            BufferId::new(1).unwrap(),
+            "one\ntwo\nthree\nfour",
+        );
+        let mut map = WrapMap::new(buffer.snapshot().clone(), Some(2));
+
+        buffer.edit([(3..8, "-")]);
+        map.sync(buffer.snapshot().clone());
+
+        let rebuilt = WrapMap::new(buffer.snapshot().clone(), Some(2)).snapshot();
+        assert_equivalent(&map.snapshot(), &rebuilt);
+    }
+
+    #[test]
+    fn random_incremental_edits_match_full_rebuilds() {
+        let mut rng = StdRng::seed_from_u64(0x5eed);
+        let mut buffer = Buffer::new(
+            ReplicaId::LOCAL,
+            BufferId::new(1).unwrap(),
+            "alpha\nbeta\ngamma\ndelta",
+        );
+        let mut map = WrapMap::new(buffer.snapshot().clone(), Some(4));
+        let replacements = ["", "x", "longer", "\n", "a\nb", "xyz\n\nq"];
+
+        for _ in 0..100 {
+            let len = buffer.len();
+            let start = rng.gen_range(0..=len);
+            let end = rng.gen_range(start..=len);
+            let replacement = replacements[rng.gen_range(0..replacements.len())];
+            buffer.edit([(start..end, replacement)]);
+            map.sync(buffer.snapshot().clone());
+
+            let rebuilt = WrapMap::new(buffer.snapshot().clone(), Some(4)).snapshot();
+            assert_equivalent(&map.snapshot(), &rebuilt);
+        }
     }
 }

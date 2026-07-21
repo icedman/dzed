@@ -2,55 +2,27 @@ use std::{collections::HashMap, path::Path};
 
 use rope::Point;
 use syntect::{
-    easy::HighlightLines,
-    highlighting::{Color, HighlightState, Style, Theme, ThemeSet, ThemeSettings},
-    parsing::{ParseState, SyntaxReference, SyntaxSet},
     LoadingError,
+    easy::HighlightLines,
+    highlighting::{Color, Style, Theme, ThemeSet, ThemeSettings},
+    parsing::{SyntaxReference, SyntaxSet},
 };
 use text::{Buffer, ToOffset};
-
-const START_OFFSET: usize = 240;
-const CACHE_INTERVAL: usize = 80;
 
 fn load_theme(tm_file: &str) -> Result<Theme, LoadingError> {
     let tm_path = Path::new(tm_file);
     ThemeSet::get_theme(tm_path)
 }
 
-fn find_entry<T>(state_cache: &HashMap<usize, T>, target: usize) -> Option<(&usize, &T)> {
-    let mut nearest_key = None;
-    let mut min_diff = usize::MAX;
-
-    for key in state_cache.keys() {
-        if *key == target {
-            return Some((key, state_cache.get(key).unwrap()));
-        } else if *key > target && (*key - target) < min_diff {
-            nearest_key = Some(key);
-            min_diff = *key - target;
-        }
-    }
-
-    nearest_key.map(|key| (key, state_cache.get(key).unwrap()))
-}
-
-pub struct StateCache {
-    pub line_number: usize,
-    pub highlight_state: HighlightState,
-    pub parser_state: ParseState,
-}
-
 pub struct StyleCache {
-    pub line_number: usize,
-    pub styles: Vec<(Style, u32, u32)>, // Corrected typo for list of tuples
+    pub styles: Vec<(Style, u32, u32)>,
 }
 
 pub struct Highlights {
     theme: Theme,
     syntax_set: SyntaxSet,
     syntax: SyntaxReference,
-    state_cache: HashMap<usize, StateCache>,
-    style_cache: HashMap<usize, StyleCache>,
-    highlight_start: usize,
+    style_cache: HashMap<u32, StyleCache>,
     // theme extras
     pub comment: Color,
 }
@@ -110,77 +82,42 @@ impl Highlights {
             theme: theme.clone(),
             syntax_set: syntax_set.clone(),
             syntax: syntax.clone(),
-            state_cache: HashMap::<usize, StateCache>::new(),
-            style_cache: HashMap::<usize, StyleCache>::new(),
+            style_cache: HashMap::new(),
             comment: comment,
-            highlight_start: 0,
         }
     }
 
-    pub fn update_from_line(&mut self, threshold: usize) {
-        self.state_cache
-            .retain(|&k, _| k <= threshold.saturating_sub(4));
-    }
-
-    pub fn highlight_lines(&mut self, buffer: &Buffer, start: usize, count: usize) {
+    pub fn highlight_lines(&mut self, buffer: &Buffer, start_row: u32, row_count: u32) {
         self.style_cache.clear();
-        let mut hl = HighlightLines::new(&self.syntax, &self.theme);
 
-        // todo START_OFFSET should consider visible rows
-        let mut sub_start: usize = start.saturating_sub(START_OFFSET);
-
-        self.highlight_start = 0;
-
-        if let Some((_key, value)) =
-            find_entry::<StateCache>(&self.state_cache, start.saturating_sub(CACHE_INTERVAL))
-        {
-            let ln = value.line_number;
-            if ln > sub_start && ln < start {
-                sub_start = ln;
-                self.highlight_start = ln;
-                hl = HighlightLines::from_state(
-                    &self.theme,
-                    value.highlight_state.clone(),
-                    value.parser_state.clone(),
-                );
-            }
+        if row_count == 0 || start_row >= buffer.row_count() {
+            return;
         }
 
-        let end = start + count;
-        for row in sub_start..end {
-            let text = row_text(buffer, row as u32) + "\n";
-            let ranges = hl
-                .highlight_line(&text, &self.syntax_set)
-                .expect("handle empty range");
-            let mut vec = Vec::<(Style, u32, u32)>::new();
-            let mut col = 0;
-            for (style, text) in ranges.iter() {
-                let start = col;
-                let end = start + text.chars().count();
-                col = end;
-                vec.push((style.clone(), start as u32, end as u32));
-            }
-            self.style_cache.insert(
-                row,
-                StyleCache {
-                    line_number: row,
-                    styles: vec,
-                },
-            );
+        // Syntect parsing is stateful across lines. Parse from the beginning so
+        // multiline strings/comments are correct, but only retain requested rows.
+        let end_row = start_row.saturating_add(row_count).min(buffer.row_count());
+        let mut highlighter = HighlightLines::new(&self.syntax, &self.theme);
 
-            // state cache
-            if row % CACHE_INTERVAL == 0 {
-                let (hs, ps) = hl.state();
-                self.state_cache.insert(
-                    row,
-                    StateCache {
-                        line_number: row,
-                        highlight_state: hs.clone(),
-                        parser_state: ps.clone(),
-                    },
-                );
-                hl = HighlightLines::from_state(&self.theme, hs, ps);
+        for row in 0..end_row {
+            let text = row_text(buffer, row) + "\n";
+            let ranges = highlighter
+                .highlight_line(&text, &self.syntax_set)
+                .expect("syntax highlighting failed");
+
+            if row < start_row {
+                continue;
             }
+
+            let mut styles = Vec::with_capacity(ranges.len());
+            let mut column = 0_u32;
+            for (style, text) in ranges {
+                let start_column = column;
+                column += text.len() as u32;
+                styles.push((style, start_column, column));
+            }
+
+            self.style_cache.insert(row, StyleCache { styles });
         }
     }
 
@@ -188,24 +125,66 @@ impl Highlights {
         self.syntax.name.clone()
     }
 
-    pub fn render_line(&self, line: usize) -> Option<&StyleCache> {
-        self.style_cache.get(&line)
+    pub fn render_row(&self, row: u32) -> Option<&StyleCache> {
+        self.style_cache.get(&row)
     }
 
-    // Prepare default background pair
-    pub fn get_default_style(&self) -> Style {
-        let mut hl = HighlightLines::new(&self.syntax, &self.theme);
-        let ranges = hl.highlight_line(" ", &self.syntax_set).unwrap();
-        ranges.first().map(|(style, _)| style.clone()).unwrap()
+    pub fn contains_rows(&self, start_row: u32, end_row: u32) -> bool {
+        (start_row..end_row).all(|row| self.style_cache.contains_key(&row))
     }
 
     pub fn theme_settings(&self) -> &ThemeSettings {
         return &self.theme.settings;
     }
+}
 
-    pub fn stats(&self) -> (usize, usize) {
-        let cache_len = self.state_cache.len();
-        let highlight_start = self.highlight_start;
-        (cache_len, highlight_start)
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clock::ReplicaId;
+    use text::BufferId;
+
+    fn buffer(text: &str) -> Buffer {
+        Buffer::new(ReplicaId::LOCAL, BufferId::new(1).unwrap(), text.to_owned())
+    }
+
+    #[test]
+    fn highlights_requested_rows_with_multiline_context() {
+        let buffer = buffer("fn main() {\n/* comment\nstill comment */\nlet value = 1;\n}");
+        let mut highlights = Highlights::new("test.rs", "base16-ocean.dark");
+
+        highlights.highlight_lines(&buffer, 2, 2);
+
+        assert!(highlights.render_row(0).is_none());
+        assert!(highlights.render_row(1).is_none());
+        assert!(highlights.render_row(2).is_some());
+        assert!(highlights.render_row(3).is_some());
+        assert!(highlights.contains_rows(2, 4));
+        assert!(!highlights.contains_rows(1, 4));
+    }
+
+    #[test]
+    fn style_ranges_use_buffer_byte_columns() {
+        let buffer = buffer("let café = 1;");
+        let mut highlights = Highlights::new("test.rs", "base16-ocean.dark");
+
+        highlights.highlight_lines(&buffer, 0, 1);
+
+        let styles = &highlights.render_row(0).unwrap().styles;
+        assert_eq!(styles.first().unwrap().1, 0);
+        assert_eq!(styles.last().unwrap().2, buffer.line_len(0) + 1);
+    }
+
+    #[test]
+    fn replaces_cache_when_viewport_changes() {
+        let buffer = buffer("one\ntwo\nthree\nfour");
+        let mut highlights = Highlights::new("test.rs", "base16-ocean.dark");
+
+        highlights.highlight_lines(&buffer, 0, 2);
+        assert!(highlights.contains_rows(0, 2));
+
+        highlights.highlight_lines(&buffer, 2, 2);
+        assert!(!highlights.contains_rows(0, 2));
+        assert!(highlights.contains_rows(2, 4));
     }
 }

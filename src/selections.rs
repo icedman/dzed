@@ -1,5 +1,5 @@
 use crate::document::BufferText;
-use crate::search::{compile, TextSearch};
+use crate::search::{TextSearch, compile};
 use onig::Regex;
 use rope::Point;
 use std::{cmp::Ordering, ops::Range};

@@ -7,10 +7,10 @@ mod input;
 mod search;
 mod selections;
 
-use crate::search::{compile, TextSearch};
+use crate::search::{TextSearch, compile};
 
 use std::{
-    io::{stdout, Write},
+    io::{Write, stdout},
     time::Duration,
 };
 
@@ -26,7 +26,7 @@ use text::ToPoint;
 use actions::Mode;
 use document::BufferText;
 use editor::{ColorAdjust, Editor, ToCrossTerm};
-use input::{handle_event, HandleEvent};
+use input::{HandleEvent, handle_event};
 
 fn fill_to_eol(count: usize) {
     for _ in 0..count {
@@ -83,38 +83,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
         let active_buffer = editor.buffer_manager.active_mut();
 
-        // update display map
-        let display_snapshot = active_buffer.display_map.snapshot();
-        let wrap_cols = screen_cols
-            .saturating_sub(display_snapshot.margin_left as i32)
-            .saturating_sub(display_snapshot.margin_right as i32);
-
-        active_buffer.display_map.set_wrap_width(if editor.wrap {
-            Some(wrap_cols as u32)
-        } else {
-            None
-        });
-
-        if should_sync {
-            active_buffer
-                .display_map
-                .sync(active_buffer.doc.buffer().snapshot().clone());
-            should_sync = false;
-        }
-
-        // get cursor information
-        let cursor = active_buffer.doc.selection();
-        let cursor_head = cursor.head();
-        let cursor_point = cursor_head.to_point(&active_buffer.doc.buffer());
-        let display_cursor = active_buffer
-            .display_map
-            .snapshot()
-            .point_to_display_point(cursor_point);
-
-        active_buffer
-            .display_map
-            .scroll_to_cursor(display_cursor, screen_rows, screen_cols);
-
+        // Update layout before wrapping so the wrap width reflects the current gutter.
         let row_count = active_buffer.doc.buffer().row_count();
         let gutter_width = if editor.show_line_numbers {
             2 + if row_count == 0 {
@@ -127,6 +96,31 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         };
 
         active_buffer.display_map.margin_left = gutter_width as u32;
+        let wrap_cols = screen_cols
+            .saturating_sub(active_buffer.display_map.margin_left as i32)
+            .saturating_sub(active_buffer.display_map.margin_right as i32)
+            .max(1);
+        active_buffer
+            .display_map
+            .set_wrap_width(editor.wrap.then_some(wrap_cols as u32));
+
+        if should_sync {
+            active_buffer
+                .display_map
+                .sync(active_buffer.doc.buffer().snapshot().clone());
+            active_buffer.dirty_hl = true;
+            should_sync = false;
+        }
+
+        let cursor = active_buffer.doc.selection();
+        let cursor_point = cursor.head().to_point(active_buffer.doc.buffer());
+        let display_cursor = active_buffer
+            .display_map
+            .snapshot()
+            .point_to_display_point(cursor_point);
+        active_buffer
+            .display_map
+            .scroll_to_cursor(display_cursor, screen_rows, screen_cols);
 
         let display_snapshot = active_buffer.display_map.snapshot();
         let cursor_row = display_cursor.row() as i32;
@@ -151,24 +145,29 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             let total_rows = display_snapshot.row_count();
             let end_line = (display_snapshot.scroll_y + visible_rows as u32).min(total_rows);
 
-            if active_buffer.dirty_hl {
+            if editor.syntax && end_line > display_snapshot.scroll_y {
                 let start_buffer_row =
                     display_snapshot.buffer_row_for_display_row(display_snapshot.scroll_y);
                 let end_buffer_row =
                     display_snapshot.buffer_row_for_display_row(end_line.saturating_sub(1));
+                let end_buffer_row_exclusive = end_buffer_row + 1;
 
-                active_buffer.hl.highlight_lines(
-                    active_buffer.doc.buffer(),
-                    start_buffer_row as usize,
-                    (end_buffer_row - start_buffer_row + 1) as usize,
-                );
+                if active_buffer.dirty_hl
+                    || !active_buffer
+                        .hl
+                        .contains_rows(start_buffer_row, end_buffer_row_exclusive)
+                {
+                    active_buffer.hl.highlight_lines(
+                        active_buffer.doc.buffer(),
+                        start_buffer_row,
+                        end_buffer_row_exclusive - start_buffer_row,
+                    );
+                    active_buffer.dirty_hl = false;
+                }
             }
-            active_buffer.dirty_hl = true;
 
             let mut prev_line_number = -1;
             let mut screen_row = display_snapshot.margin_top as u16;
-
-            let default_style = active_buffer.hl.get_default_style();
 
             for row in display_snapshot.scroll_y..end_line {
                 execute!(
@@ -234,57 +233,26 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 let buffer_range = display_snapshot.buffer_range_for_display_row(row);
                 let start_col = buffer_range.start.column;
 
-                let ranges;
-                if let Some(style_cache) = active_buffer.hl.render_line(buffer_row as usize) {
-                    ranges = &style_cache.styles;
+                let ranges = if editor.syntax {
+                    active_buffer
+                        .hl
+                        .render_row(buffer_row)
+                        .map(|style_cache| style_cache.styles.as_slice())
+                        .unwrap_or(&[])
                 } else {
-                    execute!(
-                        stdout,
-                        crossterm::style::SetBackgroundColor(editor.theme.bg)
-                    )
-                    .unwrap();
-                    fill_to_eol(screen_cols as usize);
-                    screen_row += 1;
-                    continue;
-                }
+                    &[]
+                };
 
-                // style range
-                let mut range_iter = ranges.iter();
-                let mut current_range = range_iter.next();
-
-                // Skip ranges that end before our start_col
-                while let Some((_, _s, e)) = current_range {
-                    if *e <= start_col {
-                        current_range = range_iter.next();
-                    } else {
-                        break;
-                    }
-                }
-
-                let mut range_remaining =
-                    current_range.map_or(
-                        0,
-                        |(_, s, e)| {
-                            if *s < start_col {
-                                e - start_col
-                            } else {
-                                e - s
-                            }
-                        },
-                    );
-
-                let mut current_style = current_range.map(|(style, _, _)| style);
-                if !editor.syntax {
-                    current_style = Some(&default_style);
-                }
+                let mut range_idx = ranges.partition_point(|(_, _, end)| *end <= start_col);
 
                 let mut x_scroll = display_snapshot.scroll_x;
                 let mut cols_remaining = screen_cols
                     .saturating_sub(display_snapshot.margin_left as i32)
                     .saturating_sub(display_snapshot.margin_right as i32);
 
+                let mut byte_column = start_col;
                 for (column, ch) in text.chars().enumerate() {
-                    let rc = start_col + column as u32;
+                    let rc = byte_column;
                     // Determine if current column is within a search match range
                     let mut in_match = false;
                     while match_idx < match_ranges.len() && column >= match_ranges[match_idx].1 {
@@ -297,16 +265,18 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                         }
                     }
 
-                    if editor.syntax && range_remaining == 0 {
-                        current_range = range_iter.next();
-                        range_remaining = current_range.map_or(0, |(_, s, e)| e - s);
-                        current_style = current_range.map(|(style, _, _)| style);
+                    while range_idx < ranges.len() && ranges[range_idx].2 <= rc {
+                        range_idx += 1;
                     }
 
-                    let mut fg = editor.theme.fg.clone();
-                    let mut bg = editor.theme.bg.clone();
+                    let mut fg = editor.theme.fg;
+                    let mut bg = editor.theme.bg;
 
-                    if let Some(style) = current_style {
+                    if editor.syntax
+                        && let Some((style, start, end)) = ranges.get(range_idx)
+                        && *start <= rc
+                        && rc < *end
+                    {
                         fg = style.foreground.rgb();
                         bg = style.background.darken(10).rgb();
                     }
@@ -363,7 +333,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                         }
                     }
 
-                    range_remaining = range_remaining.saturating_sub(1);
+                    byte_column += ch.len_utf8() as u32;
 
                     if cols_remaining <= 0 {
                         break;

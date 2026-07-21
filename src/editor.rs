@@ -189,7 +189,7 @@ impl Editor {
             mode: Mode::Normal,
             theme,
             wrap: false,
-            syntax: true,
+            syntax: false,
             show_line_numbers: false,
         })
     }
