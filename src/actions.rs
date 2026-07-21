@@ -13,7 +13,7 @@ pub enum Mode {
 #[derive(Debug, Clone, PartialEq)]
 pub enum SelectInKind {
     Word,
-    Pargraph,
+    Paragraph,
     Curly,
     Parenthesis,
     Square,
@@ -23,6 +23,9 @@ pub enum SelectInKind {
 pub enum Action {
     SetNormalMode,
     SetInsertMode,
+    SetInsertModeMotion {
+        motion: Box<Action>,
+    },
     SetVisualMode,
     SetVisualLineMode,
     SetVisualBlockMode,
@@ -132,7 +135,9 @@ pub enum Action {
         count: u32,
         motion: Box<Action>,
     },
-
+    ChangeCurrentLine {
+        count: u32,
+    },
     Indent,
     Unindent,
 
@@ -144,6 +149,9 @@ pub enum Action {
     },
 
     SelectIn {
+        kind: SelectInKind,
+    },
+    SelectAround {
         kind: SelectInKind,
     },
 
@@ -181,21 +189,21 @@ Editing:
 - [ ] r{char}, R (Replace single character, Enter Replace mode)
 - [ ] s, S (Substitute character, Substitute line)
 - [x] x, X (Delete character - via Delete)
-- [x] d{motion}, dd, D (DLelete with motion, Delete line, Delete to end of line - via DeleteCurrentLine)
-- [ ] c{motion}, cc, C (Change with motion, Change line, Change to end of line)
+- [x] d{motion}, dd, D (Delete with motion, Delete line, Delete to end of line - via DeleteCurrentLine)
+- [x] c{motion}, cc, C (Change with motion, Change line, Change to end of line)
 - [ ] y{motion}, yy, Y (Yank/Copy with motion, Yank line)
 - [ ] p, P (Put/Paste after/before cursor)
 - [x] u, Ctrl-r (Undo, Redo)
 - [ ] . (Repeat last change)
-- [x] >, < (Indent, Unindent)
+- [ ] >, < (Indent, Unindent)
 
 Search:
-- [ ] /pattern, ?pattern (Search forward/backward)
-- [ ] n, N (Next/Previous search result)
+- [x] /pattern, ?pattern (Search forward/backward)
+- [x] n, N (Next/Previous search result)
 - [ ] *, # (Search for word under cursor forward/backward)
 
 Visual Mode:
-- [ ] v, V, Ctrl-v (Character, Line, and Block visual modes)
+- [x] v, V, Ctrl-v (Character, Line, and Block visual modes)
 - [ ] gv (Reselect last visual selection)
 
 Command Mode:

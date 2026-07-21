@@ -7,9 +7,11 @@ mod input;
 mod profiler;
 mod search;
 mod selections;
+mod theme;
 
 use crate::profiler::Profiler;
 use crate::search::{TextSearch, compile};
+use crate::theme::{ColorAdjust, ToCrossTerm};
 
 use std::{
     io::{Write, stdout},
@@ -27,7 +29,7 @@ use text::ToPoint;
 
 use actions::Mode;
 use document::BufferText;
-use editor::{ColorAdjust, Editor, ToCrossTerm};
+use editor::Editor;
 use input::{HandleEvent, handle_event};
 
 fn fill_to_eol(count: usize) {
@@ -175,6 +177,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                             active_buffer.doc.buffer(),
                             start_buffer_row,
                             end_buffer_row_exclusive - start_buffer_row,
+                            &editor.theme.theme,
                         );
                     });
                     active_buffer.dirty_hl = false;
@@ -205,9 +208,9 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
                     execute!(
                         stdout,
-                        crossterm::style::SetBackgroundColor(editor.theme.gutter_bg) // crossterm::style::SetBackgroundColor(
-                                                                                     //     default_style.background.darken(10).rgb()
-                                                                                     // )
+                        crossterm::style::SetBackgroundColor(editor.theme.gutter) // crossterm::style::SetBackgroundColor(
+                                                                                  //     default_style.background.darken(10).rgb()
+                                                                                  // )
                     )
                     .unwrap();
                     if prev_line_number != line_number as i32 {
@@ -299,8 +302,8 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                     }
                     // Apply search match background if not in a selection
                     if in_match {
-                        fg = editor.theme.find_highlight_fg;
-                        bg = editor.theme.find_highlight_bg;
+                        fg = editor.theme.find_fg;
+                        bg = editor.theme.find;
                     }
 
                     let (selected, mut selected_line, at_cursor) = active_buffer
@@ -379,7 +382,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 .unwrap();
                 execute!(
                     stdout,
-                    crossterm::style::SetBackgroundColor(editor.theme.gutter_bg)
+                    crossterm::style::SetBackgroundColor(editor.theme.gutter)
                 )
                 .unwrap();
                 execute!(stdout, MoveTo(0, screen_rows as u16)).unwrap();

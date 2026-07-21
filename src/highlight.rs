@@ -4,18 +4,13 @@ use rope::Point;
 use syntect::{
     LoadingError,
     easy::HighlightLines,
-    highlighting::{Color, HighlightState, Style, Theme, ThemeSet, ThemeSettings},
+    highlighting::{HighlightState, Style, Theme, ThemeSet},
     parsing::{ParseState, SyntaxReference, SyntaxSet},
 };
 use text::{Buffer, ToOffset};
 
 const START_OFFSET: u32 = 240;
 const CACHE_INTERVAL: u32 = 80;
-
-fn load_theme(tm_file: &str) -> Result<Theme, LoadingError> {
-    let tm_path = Path::new(tm_file);
-    ThemeSet::get_theme(tm_path)
-}
 
 fn find_entry<T>(state_cache: &HashMap<usize, T>, target: usize) -> Option<(&usize, &T)> {
     let mut nearest_key = None;
@@ -44,14 +39,11 @@ pub struct StyleCache {
 }
 
 pub struct Highlights {
-    theme: Theme,
     syntax_set: SyntaxSet,
     syntax: SyntaxReference,
     state_cache: HashMap<usize, StateCache>,
     style_cache: HashMap<u32, StyleCache>,
     highlight_start: u32,
-    // theme extras
-    pub comment: Color,
 }
 
 fn row_text(buffer: &Buffer, row: u32) -> String {
@@ -61,7 +53,7 @@ fn row_text(buffer: &Buffer, row: u32) -> String {
 }
 
 impl Highlights {
-    pub fn new(file_path: &str, theme_path: &str) -> Self {
+    pub fn new(file_path: &str) -> Self {
         let extension = Path::new(file_path)
             .extension()
             .and_then(|ext| ext.to_str())
@@ -69,54 +61,27 @@ impl Highlights {
             .unwrap_or_default();
 
         let syntax_set = SyntaxSet::load_defaults_newlines(); // Changed to handle new lines for better syntax parsing
-        let theme_set = ThemeSet::load_defaults();
-
-        let default_theme = theme_set.themes.get("base16-ocean.dark").unwrap();
-        let theme = load_theme(theme_path).unwrap_or_else(|_| {
-            theme_set
-                .themes
-                .get(theme_path)
-                .cloned()
-                .unwrap_or_else(|| default_theme.clone())
-        });
 
         let syntax = syntax_set
             .find_syntax_by_extension(&extension)
             .unwrap_or_else(|| syntax_set.find_syntax_plain_text());
 
-        let mut hl = HighlightLines::new(&syntax, &theme);
-        let ranges = hl.highlight_line(" ", &syntax_set).unwrap();
-        let default_style = ranges.first().map(|(style, _)| style.clone()).unwrap();
-        let mut comment = default_style.background;
-
-        for item in &theme.scopes {
-            for selector in &item.scope.selectors {
-                if let Some(scope) = selector.extract_single_scope() {
-                    if scope.to_string().contains("comment") {
-                        let style = item.style;
-                        if let Some(fg) = style.foreground {
-                            comment = fg;
-                        }
-                        if let Some(fg) = style.background {
-                            comment = fg;
-                        }
-                    }
-                }
-            }
-        }
-
         Self {
-            theme: theme.clone(),
             syntax_set: syntax_set.clone(),
             syntax: syntax.clone(),
             state_cache: HashMap::new(),
             style_cache: HashMap::new(),
             highlight_start: 0,
-            comment: comment,
         }
     }
 
-    pub fn highlight_lines(&mut self, buffer: &Buffer, start_row: u32, row_count: u32) {
+    pub fn highlight_lines(
+        &mut self,
+        buffer: &Buffer,
+        start_row: u32,
+        row_count: u32,
+        theme: &Theme,
+    ) {
         self.style_cache.clear();
         let mut cached_highlighter: Option<HighlightLines> = None;
 
@@ -135,7 +100,7 @@ impl Highlights {
                 start = ln;
                 self.highlight_start = ln;
                 cached_highlighter = Some(HighlightLines::from_state(
-                    &self.theme,
+                    theme,
                     value.highlight_state.clone(),
                     value.parser_state.clone(),
                 ));
@@ -144,7 +109,7 @@ impl Highlights {
 
         let mut highlighter = match cached_highlighter {
             Some(chl) => chl,
-            None => HighlightLines::new(&self.syntax, &self.theme),
+            None => HighlightLines::new(&self.syntax, theme),
         };
 
         // Syntect parsing is stateful across lines. Parse from the beginning so
@@ -178,7 +143,7 @@ impl Highlights {
                         parser_state: ps.clone(),
                     },
                 );
-                highlighter = HighlightLines::from_state(&self.theme, hs, ps);
+                highlighter = HighlightLines::from_state(theme, hs, ps);
             }
         }
     }
@@ -197,10 +162,6 @@ impl Highlights {
 
     pub fn invalidate_state(&mut self, start_row: u32) {
         self.state_cache.retain(|&row, _| row < start_row as usize);
-    }
-
-    pub fn theme_settings(&self) -> &ThemeSettings {
-        return &self.theme.settings;
     }
 }
 

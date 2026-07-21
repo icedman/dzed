@@ -105,7 +105,9 @@ impl Document {
     pub fn apply_action(&mut self, action: &Action) {
         let mut next_action = Action::NoOp;
         match action {
-            Action::ChangeMotion { .. } => next_action = Action::SetInsertMode,
+            Action::ChangeCurrentLine { .. } | Action::ChangeMotion { .. } => {
+                next_action = Action::SetInsertMode
+            }
             _ => {}
         }
         if self.mode == Mode::VisualBlock {
@@ -120,6 +122,10 @@ impl Document {
             Action::SetInsertMode => {
                 self.enter_mode(Mode::Insert);
                 return;
+            }
+            Action::SetInsertModeMotion { motion } => {
+                self.enter_mode(Mode::Insert);
+                next_action = (**motion).clone();
             }
             Action::MoveUp { select, count } => {
                 self.selections.move_up(*select, *count, &self.buffer)
@@ -220,7 +226,7 @@ impl Document {
                     }
                 }
             }
-            Action::DeleteCurrentLine { count } => {
+            Action::ChangeCurrentLine { count } | Action::DeleteCurrentLine { count } => {
                 self.delete_current_line(*count);
             }
             Action::ChangeMotion { count, motion } | Action::DeleteMotion { count, motion } => {
@@ -280,6 +286,7 @@ impl Document {
             Action::Undo { count } => self.undo(*count),
             Action::Redo { count } => self.redo(*count),
             Action::SelectIn { kind } => self.select_in(kind),
+            Action::SelectAround { kind } => self.select_in(kind),
             Action::ClearCursors => self.selections.clear_selections(&self.buffer),
             &Action::Indent | &Action::Unindent => {}
             Action::NoOp => {

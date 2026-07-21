@@ -2,7 +2,7 @@ use crate::actions::Mode::{Command, VisualBlock, VisualLine};
 use crate::actions::{Action, Mode, SelectInKind};
 use crate::document::BufferText;
 use crate::document::Document;
-use crate::editor::{Editor, EditorBuffer, EditorTheme};
+use crate::editor::{Editor, EditorBuffer};
 use crossterm::event::{Event, KeyCode, KeyModifiers, MouseEventKind};
 
 pub enum HandleEvent {
@@ -16,6 +16,8 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
     // Mouse events: currently no-op placeholders
     let mut scroll_up = false;
     let mut scroll_down = false;
+
+    // event to Action
     if let Event::Mouse(mouse_event) = &event {
         match mouse_event.kind {
             MouseEventKind::ScrollUp => {
@@ -129,6 +131,15 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                 Action::NoOp
             }
             (KeyCode::Char('i'), _) if editor.mode == Mode::Normal => Action::SetInsertMode,
+            (KeyCode::Char('I'), _) if editor.mode == Mode::Normal => Action::SetInsertModeMotion {
+                motion: Box::new(Action::MoveToStartOfLine { select }),
+            },
+            (KeyCode::Char('a'), _) if editor.mode == Mode::Normal => Action::SetInsertModeMotion {
+                motion: Box::new(Action::MoveRight { select, count }),
+            },
+            (KeyCode::Char('A'), _) if editor.mode == Mode::Normal => Action::SetInsertModeMotion {
+                motion: Box::new(Action::MoveToEndOfLine { select }),
+            },
             (KeyCode::Char('V'), _) if editor.mode == Mode::Normal => Action::SetVisualLineMode,
             (KeyCode::Char('v'), KeyModifiers::CONTROL) if editor.mode == Mode::Normal => {
                 Action::SetVisualBlockMode
@@ -204,6 +215,9 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
 
                 let action = match cmd_without_count.as_str() {
                     "iw" => Some(Action::SelectIn {
+                        kind: SelectInKind::Word,
+                    }),
+                    "aw" => Some(Action::SelectAround {
                         kind: SelectInKind::Word,
                     }),
                     "gg" => Some(Action::MoveToStartOfDocument { select }),
@@ -291,6 +305,10 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                             count: 1,
                         }),
                     }),
+                    "D" => Some(Action::DeleteMotion {
+                        count,
+                        motion: Box::new(Action::MoveToEndOfLine { select: true }),
+                    }),
                     s if s.starts_with("df") && s.len() == 3 => {
                         let ch = s.chars().nth(2).unwrap();
                         Some(Action::DeleteMotion {
@@ -313,6 +331,7 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                             }),
                         })
                     }
+                    "cc" => Some(Action::ChangeCurrentLine { count }),
                     "cw" => Some(Action::ChangeMotion {
                         count,
                         motion: Box::new(Action::MoveToNextWord {
@@ -395,6 +414,10 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                             count: 1,
                         }),
                     }),
+                    "C" => Some(Action::ChangeMotion {
+                        count,
+                        motion: Box::new(Action::MoveToEndOfLine { select: true }),
+                    }),
                     s if s.starts_with("cf") && s.len() == 3 => {
                         let ch = s.chars().nth(2).unwrap();
                         Some(Action::ChangeMotion {
@@ -473,7 +496,9 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
             _ => Action::NoOp,
         };
 
+        //----------------------------
         // handle Action here
+        //----------------------------
         match current_mode {
             Mode::Normal => {
                 if normal_action != Action::NoOp {
@@ -628,6 +653,8 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                         let command_parts: Vec<&str> =
                             command_text.trim().split_whitespace().collect();
 
+                        // refactor to generate Action
+
                         if !command_parts.is_empty() {
                             let mut exit = false;
                             let save_command = true;
@@ -637,22 +664,13 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                                 }
                                 "bn" => {
                                     editor.buffer_manager.switch_next();
-                                    editor.theme = EditorTheme::from_highlights(
-                                        &editor.buffer_manager.active().hl,
-                                    );
                                 }
                                 "bp" => {
                                     editor.buffer_manager.switch_prev();
-                                    editor.theme = EditorTheme::from_highlights(
-                                        &editor.buffer_manager.active().hl,
-                                    );
                                 }
                                 "e" if command_parts.len() > 1 => {
                                     if let Ok(new_buffer) = EditorBuffer::new(command_parts[1]) {
                                         editor.buffer_manager.add_buffer(new_buffer);
-                                        editor.theme = EditorTheme::from_highlights(
-                                            &editor.buffer_manager.active().hl,
-                                        );
                                     }
                                 }
                                 "set" if command_parts.len() > 1 => match command_parts[1] {
@@ -666,6 +684,10 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                                     }
                                     _ => {}
                                 },
+                                "theme" if command_parts.len() > 1 => {
+                                    editor.theme.load_theme(command_parts[1]);
+                                    editor.syntax = true;
+                                }
                                 _ if command_parts[0].starts_with("syn")
                                     && command_parts.len() > 1 =>
                                 {
