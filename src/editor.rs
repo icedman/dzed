@@ -4,6 +4,8 @@ use crate::document::Document;
 use crate::highlight::Highlights;
 use crate::theme::Theme;
 use onig::Regex;
+use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
 
 pub struct EditorBuffer {
     pub file_path: String,
@@ -11,6 +13,10 @@ pub struct EditorBuffer {
     pub display_map: DisplayMap,
     pub hl: Highlights,
     pub dirty_hl: bool,
+    pub latest_hl_task_id: Arc<AtomicU64>,
+    pub latest_wrap_task_id: Arc<AtomicU64>,
+    pub current_hl_task_id: u64,
+    pub current_wrap_task_id: u64,
 }
 
 impl EditorBuffer {
@@ -24,6 +30,10 @@ impl EditorBuffer {
             display_map,
             hl,
             dirty_hl: true,
+            latest_hl_task_id: Arc::new(AtomicU64::new(0)),
+            latest_wrap_task_id: Arc::new(AtomicU64::new(0)),
+            current_hl_task_id: 0,
+            current_wrap_task_id: 0,
         })
     }
 }
@@ -90,6 +100,7 @@ pub struct Editor {
     pub wrap: bool,
     pub syntax: bool,
     pub show_line_numbers: bool,
+    pub bg_worker: crate::background::BackgroundWorker,
 }
 
 impl Editor {
@@ -105,6 +116,7 @@ impl Editor {
 
         let cmd = Document::new("")?;
         let theme = Theme::new("base16-ocean.dark");
+        let bg_worker = crate::background::BackgroundWorker::new();
 
         Ok(Self {
             buffer_manager,
@@ -123,6 +135,7 @@ impl Editor {
             wrap: false,
             syntax: false,
             show_line_numbers: false,
+            bg_worker,
         })
     }
 }

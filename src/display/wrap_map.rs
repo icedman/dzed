@@ -178,6 +178,10 @@ impl WrapMap {
         self.snapshot.clone()
     }
 
+    pub fn set_snapshot(&mut self, snapshot: WrapSnapshot) {
+        self.snapshot = snapshot;
+    }
+
     pub fn set_wrap_width(&mut self, wrap_width: Option<u32>) {
         if self.wrap_width != wrap_width {
             self.wrap_width = wrap_width;

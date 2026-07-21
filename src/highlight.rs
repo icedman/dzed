@@ -7,7 +7,7 @@ use syntect::{
     highlighting::{HighlightState, Style, Theme, ThemeSet},
     parsing::{ParseState, SyntaxReference, SyntaxSet},
 };
-use text::{Buffer, ToOffset};
+use text::{Buffer, BufferSnapshot, ToOffset};
 
 const START_OFFSET: u32 = 128;
 const CACHE_INTERVAL: u32 = 32;
@@ -28,12 +28,14 @@ fn find_entry<T>(state_cache: &HashMap<usize, T>, target: usize) -> Option<(&usi
     nearest_key.map(|key| (key, state_cache.get(key).unwrap()))
 }
 
+#[derive(Clone)]
 pub struct StateCache {
     pub line_number: u32,
     pub highlight_state: HighlightState,
     pub parser_state: ParseState,
 }
 
+#[derive(Clone)]
 pub struct StyleCache {
     pub styles: Vec<(Style, u32, u32)>,
 }
@@ -46,7 +48,7 @@ pub struct Highlights {
     highlight_start: u32,
 }
 
-fn row_text(buffer: &Buffer, row: u32) -> String {
+fn row_text(buffer: &BufferSnapshot, row: u32) -> String {
     let start = Point::new(row, 0).to_offset(buffer);
     let end = Point::new(row, buffer.line_len(row)).to_offset(buffer);
     buffer.as_rope().chunks_in_range(start..end).collect()
@@ -77,7 +79,7 @@ impl Highlights {
 
     pub fn highlight_lines(
         &mut self,
-        buffer: &Buffer,
+        buffer: &BufferSnapshot,
         start_row: u32,
         row_count: u32,
         theme: &Theme,
@@ -166,6 +168,23 @@ impl Highlights {
         self.state_cache.retain(|&row, _| row < start_row as usize);
         self.style_cache.retain(|&row, _| row < start_row);
     }
+
+    pub fn get_style_cache(&self) -> &HashMap<u32, StyleCache> {
+        &self.style_cache
+    }
+
+    pub fn get_state_cache(&self) -> &HashMap<usize, StateCache> {
+        &self.state_cache
+    }
+
+    pub fn merge_caches(
+        &mut self,
+        style_cache: HashMap<u32, StyleCache>,
+        state_cache: HashMap<usize, StateCache>,
+    ) {
+        self.style_cache.extend(style_cache);
+        self.state_cache.extend(state_cache);
+    }
 }
 
 #[cfg(test)]
@@ -185,7 +204,7 @@ mod tests {
         let theme_set = syntect::highlighting::ThemeSet::load_defaults();
         let theme = &theme_set.themes["base16-ocean.dark"];
 
-        highlights.highlight_lines(&buffer, 2, 2, theme);
+        highlights.highlight_lines(&buffer.snapshot(), 2, 2, theme);
 
         assert!(highlights.render_row(0).is_none());
         assert!(highlights.render_row(1).is_none());
@@ -202,7 +221,7 @@ mod tests {
         let theme_set = syntect::highlighting::ThemeSet::load_defaults();
         let theme = &theme_set.themes["base16-ocean.dark"];
 
-        highlights.highlight_lines(&buffer, 0, 1, theme);
+        highlights.highlight_lines(&buffer.snapshot(), 0, 1, theme);
 
         let styles = &highlights.render_row(0).unwrap().styles;
         assert_eq!(styles.first().unwrap().1, 0);
@@ -216,10 +235,10 @@ mod tests {
         let theme_set = syntect::highlighting::ThemeSet::load_defaults();
         let theme = &theme_set.themes["base16-ocean.dark"];
 
-        highlights.highlight_lines(&buffer, 0, 2, theme);
+        highlights.highlight_lines(&buffer.snapshot(), 0, 2, theme);
         assert!(highlights.contains_rows(0, 2));
 
-        highlights.highlight_lines(&buffer, 2, 2, theme);
+        highlights.highlight_lines(&buffer.snapshot(), 2, 2, theme);
         assert!(!highlights.contains_rows(0, 2));
         assert!(highlights.contains_rows(2, 4));
     }

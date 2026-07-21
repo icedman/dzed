@@ -1,4 +1,5 @@
 mod actions;
+mod background;
 mod display;
 mod document;
 mod editor;
@@ -73,6 +74,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut should_sync = true;
     let mut prev_screen_rows = 0;
     let mut prev_screen_cols = 0;
+    let mut last_cursor_style = None;
 
     loop {
         // get screen dimensions
@@ -86,6 +88,50 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         }
         prev_screen_rows = screen_rows;
         prev_screen_cols = screen_cols;
+
+        // Drain any incoming background worker results
+        while let Some(result) = editor.bg_worker.try_recv() {
+            match result {
+                background::BackgroundResult::HighlightComplete {
+                    file_path,
+                    style_cache,
+                    task_id,
+                } => {
+                    if let Some(buf) = editor
+                        .buffer_manager
+                        .buffers
+                        .iter_mut()
+                        .find(|b| b.file_path == file_path)
+                    {
+                        if task_id >= background::TaskId(buf.current_hl_task_id) {
+                            buf.current_hl_task_id = task_id.0;
+                            buf.hl
+                                .merge_caches(style_cache, std::collections::HashMap::new());
+                            should_redraw = true;
+                        }
+                    }
+                }
+                background::BackgroundResult::WrapComplete {
+                    file_path,
+                    wrap_snapshot,
+                    task_id,
+                } => {
+                    if let Some(buf) = editor
+                        .buffer_manager
+                        .buffers
+                        .iter_mut()
+                        .find(|b| b.file_path == file_path)
+                    {
+                        if task_id >= background::TaskId(buf.current_wrap_task_id) {
+                            buf.current_wrap_task_id = task_id.0;
+                            buf.display_map.apply_wrap_snapshot(wrap_snapshot);
+                            should_redraw = true;
+                            should_sync = true;
+                        }
+                    }
+                }
+            }
+        }
 
         let active_buffer = editor.buffer_manager.active_mut();
         editor.mode = active_buffer.doc.current_mode();
@@ -124,6 +170,40 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 .selections()
                 .rows_in_selection(active_buffer.doc.buffer());
             active_buffer.hl.invalidate_state(start);
+
+            // Spawn background highlight task
+            let hl_task_id = active_buffer
+                .latest_hl_task_id
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+                + 1;
+            editor
+                .bg_worker
+                .spawn_task(background::BackgroundTask::Highlight {
+                    file_path: active_buffer.file_path.clone(),
+                    snapshot: active_buffer.doc.buffer().snapshot().clone(),
+                    start_row: start,
+                    row_count: active_buffer.doc.buffer().row_count() - start,
+                    theme: std::sync::Arc::new(editor.theme.theme.clone()),
+                    task_id: background::TaskId(hl_task_id),
+                    latest_task_id: active_buffer.latest_hl_task_id.clone(),
+                });
+
+            // Spawn background wrap task
+            let wrap_width = editor.wrap.then_some(wrap_cols as u32);
+            let wrap_task_id = active_buffer
+                .latest_wrap_task_id
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+                + 1;
+            editor
+                .bg_worker
+                .spawn_task(background::BackgroundTask::Wrap {
+                    file_path: active_buffer.file_path.clone(),
+                    snapshot: active_buffer.doc.buffer().snapshot().clone(),
+                    wrap_width,
+                    task_id: background::TaskId(wrap_task_id),
+                    latest_task_id: active_buffer.latest_wrap_task_id.clone(),
+                });
+
             should_sync = false;
         }
 
@@ -174,7 +254,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 {
                     profiler.profile("hl.highlight_lines", || {
                         active_buffer.hl.highlight_lines(
-                            active_buffer.doc.buffer(),
+                            &active_buffer.doc.buffer().snapshot(),
                             start_buffer_row,
                             end_buffer_row_exclusive - start_buffer_row,
                             &editor.theme.theme,
@@ -434,6 +514,20 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 }
             }
 
+            let needed_style = if editor.mode == Mode::Command {
+                crossterm::cursor::SetCursorStyle::BlinkingBar
+            } else {
+                match editor.mode {
+                    Mode::Insert => crossterm::cursor::SetCursorStyle::BlinkingBar,
+                    _ => crossterm::cursor::SetCursorStyle::BlinkingBlock,
+                }
+            };
+
+            if last_cursor_style != Some(needed_style) {
+                execute!(stdout, needed_style).unwrap();
+                last_cursor_style = Some(needed_style);
+            }
+
             if editor.mode == Mode::Command {
                 let cmd_text = editor
                     .cmd
@@ -443,7 +537,6 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 execute!(
                     stdout,
                     MoveTo(cmd_col + 1, screen_rows as u16),
-                    crossterm::cursor::SetCursorStyle::BlinkingBar,
                     crossterm::cursor::Show
                 )
                 .unwrap();
@@ -454,10 +547,6 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                         display_snapshot.margin_left as u16 + cursor_screen_col as u16,
                         display_snapshot.margin_top as u16 + cursor_screen_row as u16
                     ),
-                    match editor.mode {
-                        Mode::Insert => crossterm::cursor::SetCursorStyle::BlinkingBar,
-                        _ => crossterm::cursor::SetCursorStyle::BlinkingBlock,
-                    },
                     crossterm::cursor::Show
                 )
                 .unwrap();

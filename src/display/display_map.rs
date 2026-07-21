@@ -68,6 +68,10 @@ impl DisplayMap {
         self.wrap_map.set_wrap_width(width);
     }
 
+    pub fn apply_wrap_snapshot(&mut self, snapshot: WrapSnapshot) {
+        self.wrap_map.set_snapshot(snapshot);
+    }
+
     pub fn sync(&mut self, buffer: BufferSnapshot) {
         self.wrap_map.sync(buffer);
     }
