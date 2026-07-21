@@ -9,8 +9,8 @@ use syntect::{
 };
 use text::{Buffer, ToOffset};
 
-const START_OFFSET: u32 = 240;
-const CACHE_INTERVAL: u32 = 80;
+const START_OFFSET: u32 = 128;
+const CACHE_INTERVAL: u32 = 32;
 
 fn find_entry<T>(state_cache: &HashMap<usize, T>, target: usize) -> Option<(&usize, &T)> {
     let mut nearest_key = None;
@@ -130,7 +130,9 @@ impl Highlights {
                 styles.push((style, start_column, column));
             }
 
-            self.style_cache.insert(row, StyleCache { styles });
+            if row >= start_row {
+                self.style_cache.insert(row, StyleCache { styles });
+            }
 
             // state cache
             if row % CACHE_INTERVAL == 0 {
@@ -162,6 +164,7 @@ impl Highlights {
 
     pub fn invalidate_state(&mut self, start_row: u32) {
         self.state_cache.retain(|&row, _| row < start_row as usize);
+        self.style_cache.retain(|&row, _| row < start_row);
     }
 }
 
@@ -178,9 +181,11 @@ mod tests {
     #[test]
     fn highlights_requested_rows_with_multiline_context() {
         let buffer = buffer("fn main() {\n/* comment\nstill comment */\nlet value = 1;\n}");
-        let mut highlights = Highlights::new("test.rs", "base16-ocean.dark");
+        let mut highlights = Highlights::new("test.rs");
+        let theme_set = syntect::highlighting::ThemeSet::load_defaults();
+        let theme = &theme_set.themes["base16-ocean.dark"];
 
-        highlights.highlight_lines(&buffer, 2, 2);
+        highlights.highlight_lines(&buffer, 2, 2, theme);
 
         assert!(highlights.render_row(0).is_none());
         assert!(highlights.render_row(1).is_none());
@@ -193,9 +198,11 @@ mod tests {
     #[test]
     fn style_ranges_use_buffer_byte_columns() {
         let buffer = buffer("let café = 1;");
-        let mut highlights = Highlights::new("test.rs", "base16-ocean.dark");
+        let mut highlights = Highlights::new("test.rs");
+        let theme_set = syntect::highlighting::ThemeSet::load_defaults();
+        let theme = &theme_set.themes["base16-ocean.dark"];
 
-        highlights.highlight_lines(&buffer, 0, 1);
+        highlights.highlight_lines(&buffer, 0, 1, theme);
 
         let styles = &highlights.render_row(0).unwrap().styles;
         assert_eq!(styles.first().unwrap().1, 0);
@@ -205,12 +212,14 @@ mod tests {
     #[test]
     fn replaces_cache_when_viewport_changes() {
         let buffer = buffer("one\ntwo\nthree\nfour");
-        let mut highlights = Highlights::new("test.rs", "base16-ocean.dark");
+        let mut highlights = Highlights::new("test.rs");
+        let theme_set = syntect::highlighting::ThemeSet::load_defaults();
+        let theme = &theme_set.themes["base16-ocean.dark"];
 
-        highlights.highlight_lines(&buffer, 0, 2);
+        highlights.highlight_lines(&buffer, 0, 2, theme);
         assert!(highlights.contains_rows(0, 2));
 
-        highlights.highlight_lines(&buffer, 2, 2);
+        highlights.highlight_lines(&buffer, 2, 2, theme);
         assert!(!highlights.contains_rows(0, 2));
         assert!(highlights.contains_rows(2, 4));
     }
