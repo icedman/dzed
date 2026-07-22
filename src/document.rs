@@ -6,7 +6,7 @@ use clock::ReplicaId;
 use rope::Point;
 use std::{cmp::Ordering, io};
 use sum_tree::Bias;
-use text::{Anchor, Buffer, BufferId, BufferSnapshot, Selection, ToOffset, ToPoint};
+use text::{Anchor, Buffer, BufferId, BufferSnapshot, Selection, SelectionGoal, ToOffset, ToPoint};
 
 pub trait BufferText {
     fn row_text(&self, row: u32) -> String;
@@ -225,10 +225,8 @@ impl Document {
                 self.selections.move_to_line(*select, *line, &self.buffer)
             }
             Action::InsertText(text) => {
-                let len = text.chars().count() as u32;
                 self.delete_text(0);
                 self.insert_text(text);
-                self.selections.move_right(false, len, &self.buffer);
             }
             Action::DeleteText { count } => {
                 self.delete_text(*count);
@@ -302,7 +300,6 @@ impl Document {
             Action::InsertNewLine => {
                 self.delete_text(0);
                 self.insert_text(&self.new_line().to_string());
-                self.selections.move_right(false, 1, &self.buffer);
             }
             Action::InsertNewLineMotion { count, motion } => {
                 let mut motion = (**motion).clone();
@@ -311,11 +308,11 @@ impl Document {
                     self.insert_text(&self.new_line().to_string());
                     motion = Action::NoOp;
                 }
+                self.selections.move_left(false, 1, &self.buffer);
             }
             Action::InsertTab => {
                 for _ in 0..4 {
                     self.insert_text(" ");
-                    self.selections.move_right(false, 1, &self.buffer);
                 }
             }
             Action::Undo { count } => self.undo(*count),
@@ -338,6 +335,19 @@ impl Document {
         for cursor in cursors.iter() {
             let start = self.buffer.offset_for_anchor(&cursor.head());
             self.buffer.edit([(start..start, text)]);
+
+            let new_offset = self.buffer.clip_offset(start + text.len(), Bias::Left);
+            let new_head = self.buffer.anchor_at(new_offset, Bias::Left);
+            self.selections.update(
+                &self.buffer,
+                &Selection {
+                    id: cursor.id,
+                    start: new_head,
+                    end: new_head,
+                    reversed: false,
+                    goal: SelectionGoal::None,
+                },
+            );
         }
     }
 
@@ -460,5 +470,75 @@ impl Document {
 
     pub fn has_selection(&self) -> bool {
         self.selections.has_selection(&self.buffer)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn consecutive_insert_text_actions_leave_cursor_after_inserted_text() {
+        let mut document = Document::new("").unwrap();
+        document.enter_mode(Mode::Insert);
+        document.apply_action(&Action::InsertText("abc".into()));
+        document.apply_action(&Action::MoveLeft {
+            select: false,
+            count: 2,
+        });
+
+        document.apply_action(&Action::InsertText("x".into()));
+        document.apply_action(&Action::InsertText("y".into()));
+
+        assert_eq!(document.buffer().row_text(0), "axybc");
+        assert_eq!(
+            document
+                .selection()
+                .head()
+                .to_point(document.buffer())
+                .column,
+            3
+        );
+    }
+
+    #[test]
+    fn newline_and_tab_insertions_do_not_advance_twice() {
+        let mut newline_document = Document::new("").unwrap();
+        newline_document.enter_mode(Mode::Insert);
+        newline_document.apply_action(&Action::InsertText("abc".into()));
+        newline_document.apply_action(&Action::MoveLeft {
+            select: false,
+            count: 2,
+        });
+        newline_document.apply_action(&Action::InsertNewLine);
+
+        assert_eq!(newline_document.buffer().row_text(0), "a");
+        assert_eq!(newline_document.buffer().row_text(1), "bc");
+        assert_eq!(
+            newline_document
+                .selection()
+                .head()
+                .to_point(newline_document.buffer()),
+            Point::new(1, 0)
+        );
+
+        let mut tab_document = Document::new("").unwrap();
+        tab_document.enter_mode(Mode::Insert);
+        tab_document.apply_action(&Action::InsertText("abc".into()));
+        tab_document.apply_action(&Action::MoveLeft {
+            select: false,
+            count: 2,
+        });
+        tab_document.apply_action(&Action::InsertTab);
+
+        assert_eq!(tab_document.buffer().row_text(0), "a    bc");
+        assert_eq!(
+            tab_document
+                .selection()
+                .head()
+                .to_point(tab_document.buffer())
+                .column,
+            5
+        );
     }
 }
