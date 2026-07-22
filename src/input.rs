@@ -3,7 +3,7 @@ use crate::actions::{Action, Mode};
 use crate::document::BufferText;
 use crate::document::Document;
 use crate::editor::{Editor, EditorBuffer};
-use crate::keymap::{KeyCombo, Keymap};
+use crate::keymap::KeyCombo;
 use crossterm::event::{Event, KeyCode, KeyModifiers, MouseEventKind};
 
 pub fn apply_context(action: Action, select: bool, count: u32) -> Action {

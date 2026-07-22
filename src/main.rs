@@ -13,8 +13,6 @@ mod theme;
 mod treesitter;
 mod ui;
 
-use crate::search::{TextSearch, compile};
-use crate::theme::{ColorAdjust, ToCrossTerm};
 
 use std::{
     io::{Write, stdout},
@@ -31,7 +29,6 @@ use crossterm::{
 use text::ToPoint;
 
 use actions::Mode;
-use document::BufferText;
 use editor::Editor;
 use input::{HandleEvent, handle_event};
 

@@ -1,4 +1,4 @@
-use crate::actions::{Action, Mode, SelectInKind};
+use crate::actions::{Action, SelectInKind};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::collections::HashMap;
 
@@ -73,7 +73,7 @@ impl KeyCombo {
 impl From<&KeyEvent> for KeyCombo {
     fn from(event: &KeyEvent) -> Self {
         let mut code = event.code;
-        let mut modifiers = event.modifiers;
+        let modifiers = event.modifiers;
         // Normalize
         if modifiers.contains(KeyModifiers::SHIFT) {
             if let KeyCode::Char(c) = code {

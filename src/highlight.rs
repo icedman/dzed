@@ -2,12 +2,11 @@ use std::{collections::HashMap, path::Path};
 
 use rope::Point;
 use syntect::{
-    LoadingError,
     easy::HighlightLines,
-    highlighting::{HighlightState, Style, Theme, ThemeSet},
+    highlighting::{HighlightState, Style, Theme},
     parsing::{ParseState, SyntaxReference, SyntaxSet},
 };
-use text::{Buffer, BufferSnapshot, ToOffset};
+use text::{BufferSnapshot, ToOffset};
 
 const ENABLE_STATE_CACHE: bool = true;
 const CACHE_INTERVAL: u32 = 32;

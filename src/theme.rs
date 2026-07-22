@@ -2,7 +2,7 @@ use crossterm;
 use std::path::Path;
 use syntect::{
     easy::HighlightLines,
-    highlighting::{Style, ThemeSet, ThemeSettings},
+    highlighting::ThemeSet,
     parsing::SyntaxSet,
 };
 

@@ -1,4 +1,3 @@
-use crate::actions::Mode::Insert;
 use crate::actions::{Action, Mode, SelectInKind};
 use crate::clipboard::ClipboardKind;
 use crate::editor::Editor;
@@ -108,7 +107,7 @@ impl Document {
         }
     }
 
-    pub fn select_in(&mut self, kind: &SelectInKind) {
+    pub fn select_in(&mut self, _kind: &SelectInKind) {
         self.selections.move_to_word(false, 1, &self.buffer);
         self.selections.move_to_word_end(true, 1, &self.buffer);
     }
@@ -338,7 +337,7 @@ impl Document {
                 };
 
                 if is_textobject {
-                    for idx in 0..*count {
+                    for _idx in 0..*count {
                         self.apply_action(&motion, editor);
                         self.delete_text_object();
                     }

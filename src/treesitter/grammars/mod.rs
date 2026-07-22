@@ -13,10 +13,11 @@ pub enum Grammar {
     Rust,
     TypeScript,
     Tsx,
+    Zig,
 }
 
 impl Grammar {
-    pub const ALL: [Self; 11] = [
+    pub const ALL: [Self; 12] = [
         Self::Bash,
         Self::C,
         Self::Css,
@@ -28,6 +29,7 @@ impl Grammar {
         Self::Rust,
         Self::TypeScript,
         Self::Tsx,
+        Self::Zig,
     ];
 
     pub fn from_path(path: &str) -> Option<Self> {
@@ -62,6 +64,7 @@ impl Grammar {
             "rs" => Some(Self::Rust),
             "ts" | "mts" | "cts" => Some(Self::TypeScript),
             "tsx" => Some(Self::Tsx),
+            "zig" => Some(Self::Zig),
             _ => None,
         }
     }
@@ -79,6 +82,7 @@ impl Grammar {
             Self::Rust => "Rust",
             Self::TypeScript => "TypeScript",
             Self::Tsx => "TSX",
+            Self::Zig => "Zig",
         }
     }
 
@@ -95,6 +99,7 @@ impl Grammar {
             Self::Rust => tree_sitter_rust::LANGUAGE.into(),
             Self::TypeScript => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
             Self::Tsx => tree_sitter_typescript::LANGUAGE_TSX.into(),
+            Self::Zig => tree_sitter_zig::LANGUAGE.into(),
         }
     }
 }

@@ -1,4 +1,3 @@
-use onig::Regex;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Mode {

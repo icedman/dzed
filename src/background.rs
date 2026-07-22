@@ -7,7 +7,7 @@ use syntect::highlighting::Theme;
 use text::BufferSnapshot;
 
 use crate::display::wrap_map::{WrapMap, WrapSnapshot};
-use crate::highlight::{Highlights, StateCache, StyleCache};
+use crate::highlight::{Highlights, StyleCache};
 use crate::treesitter::grammars::Grammar;
 use crate::treesitter::{SyntaxTree, TreeSitterParser};
 

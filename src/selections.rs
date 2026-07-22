@@ -2,7 +2,7 @@ use crate::document::BufferText;
 use crate::search::{TextSearch, compile};
 use onig::Regex;
 use rope::Point;
-use std::{cmp::Ordering, ops::Range};
+use std::cmp::Ordering;
 use sum_tree::Bias;
 use text::{Anchor, Buffer, Selection, SelectionGoal, ToOffset, ToPoint};
 
@@ -363,7 +363,7 @@ impl Motions for Selection<Anchor> {
         use crate::search::TextSearch;
         let mut point = self.head().to_point(buffer);
         let text = buffer.row_text(point.row);
-        let previous_column = point.column;
+        let _previous_column = point.column;
         if let Some(word) = text.as_str().find_word(point.column as usize) {
             point.column = word.0 as u32;
         } else {
@@ -771,7 +771,7 @@ impl SelectionCollection {
         sel
     }
 
-    pub fn update(&mut self, buffer: &Buffer, selection: &Selection<Anchor>) {
+    pub fn update(&mut self, _buffer: &Buffer, selection: &Selection<Anchor>) {
         if let Some(selected) = self.selections.iter_mut().find(|s| s.id == selection.id) {
             *selected = selection.clone();
         }

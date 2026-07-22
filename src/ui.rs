@@ -1,5 +1,5 @@
 use crate::actions::Mode;
-use crate::document::{BufferText, Document};
+use crate::document::BufferText;
 use crate::editor::Editor;
 use crate::search::{TextSearch, compile};
 use crate::theme::{ColorAdjust, ToCrossTerm};
