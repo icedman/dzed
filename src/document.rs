@@ -107,10 +107,41 @@ impl Document {
     }
 
     pub fn select_in(&mut self, kind: &SelectInKind) {
-        // Select inside current word: start at word start, extend to word end
         self.selections
-            .move_to_previous_word(false, 1, &self.buffer);
-        self.selections.move_to_next_word_end(true, 1, &self.buffer);
+            .move_to_word(false, 1, &self.buffer);
+        self.selections.move_to_word_end(true, 1, &self.buffer);
+    }
+    
+    pub fn select_similar(&mut self) {
+        if !self.has_selection() {
+            self.select_in(&SelectInKind::Word);
+        } else {
+            let cursor = self.selection(); 
+            if let Some(next_match) = cursor.clone().move_to_next_match("mod", &self.buffer) {
+                let sel = self.add_selection();
+                self.selections.update(
+                    &self.buffer,
+                    &Selection {
+                        id: sel.id,
+                        start: cursor.head() ,
+                        end: cursor.tail(),
+                        reversed: false,
+                        goal: SelectionGoal::None,
+                    },
+                );
+                
+                self.selections.update(
+                    &self.buffer,
+                    &Selection {
+                        id: cursor.id,
+                        start: next_match.head() ,
+                        end: next_match.tail(),
+                        reversed: false,
+                        goal: SelectionGoal::None,
+                    },
+                );
+            }
+        }
     }
 
     pub fn apply_action(&mut self, action: &Action) {
@@ -319,6 +350,7 @@ impl Document {
             Action::Redo { count } => self.redo(*count),
             Action::SelectIn { kind } => self.select_in(kind),
             Action::SelectAround { kind } => self.select_in(kind),
+            Action::SelectSimilar => self.select_similar(),
             Action::ClearCursors => self.selections.clear_selections(&self.buffer),
             &Action::Indent | &Action::Unindent => {}
             Action::NoOp => {

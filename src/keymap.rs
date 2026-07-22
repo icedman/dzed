@@ -234,9 +234,7 @@ impl Default for Keymap {
         );
         normal_actions.insert(
             KeyCombo::new(KeyCode::Char('d'), KeyModifiers::CONTROL),
-            Action::SelectIn {
-                kind: SelectInKind::Word,
-            },
+            Action::SelectSimilar,
         );
 
         // 2. Motions
