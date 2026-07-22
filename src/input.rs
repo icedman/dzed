@@ -272,32 +272,58 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                 editor.pending_cmd.clear();
                 should_redraw = true;
             } else if let Some(action) = editor.keymap.get_normal_action(&combo) {
-                let is_mode_changing = matches!(
-                    action,
-                    Action::SetInsertMode
-                        | Action::SetInsertModeMotion { .. }
-                        | Action::SetVisualMode
-                        | Action::SetVisualLineMode
-                        | Action::SetVisualBlockMode
-                        | Action::SetCommandMode { .. }
-                );
-                if !(is_mode_changing && editor.mode != Mode::Normal) {
-                    let resolved = apply_context(action, select, count);
-                    normal_action = match resolved {
-                        Action::MoveToNextMatch { .. } if !editor.search_text.is_empty() => {
-                            Action::MoveToNextMatch {
-                                search: editor.search_text.clone(),
-                                pattern: editor.pattern,
-                            }
+                match action {
+                    Action::SetVisualMode => {
+                        normal_action = if current_mode == Mode::Visual {
+                            Action::SetNormalMode
+                        } else {
+                            Action::SetVisualMode
+                        };
+                    }
+                    Action::SetVisualLineMode => {
+                        normal_action = if current_mode == Mode::VisualLine {
+                            Action::SetNormalMode
+                        } else {
+                            Action::SetVisualLineMode
+                        };
+                    }
+                    Action::SetVisualBlockMode => {
+                        normal_action = if current_mode == Mode::VisualBlock {
+                            Action::SetNormalMode
+                        } else {
+                            Action::SetVisualBlockMode
+                        };
+                    }
+                    other_action => {
+                        let is_mode_changing = matches!(
+                            other_action,
+                            Action::SetInsertMode
+                                | Action::SetInsertModeMotion { .. }
+                                | Action::SetCommandMode { .. }
+                        );
+                        if !(is_mode_changing && current_mode != Mode::Normal) {
+                            let resolved = apply_context(other_action, select, count);
+                            normal_action = match resolved {
+                                Action::MoveToNextMatch { .. }
+                                    if !editor.search_text.is_empty() =>
+                                {
+                                    Action::MoveToNextMatch {
+                                        search: editor.search_text.clone(),
+                                        pattern: editor.pattern,
+                                    }
+                                }
+                                Action::MoveToPreviousMatch { .. }
+                                    if !editor.search_text.is_empty() =>
+                                {
+                                    Action::MoveToPreviousMatch {
+                                        search: editor.search_text.clone(),
+                                        pattern: editor.pattern,
+                                    }
+                                }
+                                _ => resolved,
+                            };
                         }
-                        Action::MoveToPreviousMatch { .. } if !editor.search_text.is_empty() => {
-                            Action::MoveToPreviousMatch {
-                                search: editor.search_text.clone(),
-                                pattern: editor.pattern,
-                            }
-                        }
-                        _ => resolved,
-                    };
+                    }
                 }
             }
 
@@ -346,12 +372,12 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
 
         // Resolve Insert & Command Mode Actions
         let insert_action = if let Some(action) = editor.keymap.get_insert_action(&combo) {
-            if editor.mode == Mode::Insert || editor.mode == Mode::Command {
+            if current_mode == Mode::Insert || current_mode == Mode::Command {
                 action
             } else {
                 Action::NoOp
             }
-        } else if editor.mode == Mode::Insert || editor.mode == Mode::Command {
+        } else if current_mode == Mode::Insert || current_mode == Mode::Command {
             if let KeyCode::Char(c) = combo.code {
                 Action::InsertText(c.to_string())
             } else {
@@ -403,14 +429,14 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                 }
             }
             Mode::Visual | Mode::VisualLine | Mode::VisualBlock => {
-                if normal_action != Action::NoOp {
-                    let active_buffer = editor.buffer_manager.active_mut();
-                    active_buffer.doc.apply_action(&normal_action);
-                    editor.pending_cmd.clear();
-                } else if move_action != Action::NoOp {
+                if move_action != Action::NoOp {
                     let active_buffer = editor.buffer_manager.active_mut();
                     active_buffer.doc.apply_action(&move_action);
                     active_buffer.doc.sync();
+                    editor.pending_cmd.clear();
+                } else if normal_action != Action::NoOp {
+                    let active_buffer = editor.buffer_manager.active_mut();
+                    active_buffer.doc.apply_action(&normal_action);
                     editor.pending_cmd.clear();
                 }
             }

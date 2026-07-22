@@ -79,9 +79,17 @@ impl Document {
         if self.mode == Mode::VisualBlock {
             self.selections.end_block();
         }
+        if self.mode == Mode::VisualLine {
+            self.selections.end_line();
+        }
+
         self.mode = mode;
+
         if self.mode == Mode::VisualBlock {
             self.selections.begin_block(&self.buffer);
+        }
+        if self.mode == Mode::VisualLine {
+            self.selections.begin_line(&self.buffer);
         }
     }
 
@@ -92,6 +100,9 @@ impl Document {
     pub fn sync(&mut self) {
         if self.mode == Mode::VisualBlock {
             self.selections.sync_block(&self.buffer);
+        }
+        if self.mode == Mode::VisualLine {
+            self.selections.sync_line(&self.buffer);
         }
     }
 

@@ -535,7 +535,7 @@ pub struct SelectionCollection {
     pub point: Point,
     pub search: String,
     pub regex: Option<Regex>,
-    pub block_anchor: Option<Selection<Anchor>>,
+    pub anchor: Option<Selection<Anchor>>,
 }
 
 impl SelectionCollection {
@@ -546,7 +546,7 @@ impl SelectionCollection {
             point: Point { row: 0, column: 0 },
             search: "".to_string().clone(),
             regex: None,
-            block_anchor: None,
+            anchor: None,
         };
     }
 
@@ -597,7 +597,7 @@ impl SelectionCollection {
 
     pub fn begin_block(&mut self, buffer: &Buffer) {
         if let Some(first) = self.first().cloned() {
-            self.block_anchor = Some(first);
+            self.anchor = Some(first);
             self.sync_block(buffer);
         }
     }
@@ -607,7 +607,7 @@ impl SelectionCollection {
             return;
         }
 
-        let Some(anchor_sel) = self.block_anchor.clone() else {
+        let Some(anchor_sel) = self.anchor.clone() else {
             return;
         };
         let first_sel = self.selections[0].clone();
@@ -712,13 +712,55 @@ impl SelectionCollection {
     }
 
     pub fn end_block(&mut self) {
-        // Keep only the first selection
-        if !self.selections.is_empty() {
-            // let first = self.selections[0].clone();
-            // self.selections.clear();
-            // self.selections.push(first);
+        self.anchor = None;
+    }
+
+    pub fn begin_line(&mut self, buffer: &Buffer) {
+        self.clear(buffer);
+        if let Some(first) = self.first().cloned() {
+            self.anchor = Some(first);
+            self.sync_line(buffer);
         }
-        self.block_anchor = None;
+    }
+
+    pub fn sync_line(&mut self, buffer: &Buffer) {
+        let Some(current) = self.first().cloned() else {
+            return;
+        };
+        let Some(anchor) = self.anchor.as_ref() else {
+            return;
+        };
+
+        let head = current.head().to_point(buffer);
+        let tail = anchor.head().to_point(buffer);
+        let upper_row = head.row.min(tail.row);
+        let lower_row = head.row.max(tail.row);
+
+        let upper = Point {
+            row: upper_row,
+            column: 0,
+        };
+        let lower = Point {
+            row: lower_row,
+            column: buffer.line_len(lower_row),
+        };
+        let upper_anchor = buffer.anchor_at(upper.to_offset(buffer), Bias::Left);
+        let lower_anchor = buffer.anchor_at(lower.to_offset(buffer), Bias::Left);
+
+        // Keep the endpoint on the moving cursor's row as the head.
+        let reversed = head.row < tail.row;
+        self.selections.truncate(1);
+        self.selections[0] = Selection {
+            id: current.id,
+            start: upper_anchor,
+            end: lower_anchor,
+            reversed,
+            goal: SelectionGoal::None,
+        };
+    }
+
+    pub fn end_line(&mut self) {
+        self.anchor = None;
     }
 
     pub fn clear(&mut self, buffer: &Buffer) {
