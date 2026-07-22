@@ -7,13 +7,12 @@ mod editor;
 mod highlight;
 mod input;
 mod keymap;
-mod profiler;
 mod search;
 mod selections;
 mod theme;
+mod treesitter;
 mod ui;
 
-use crate::profiler::Profiler;
 use crate::search::{TextSearch, compile};
 use crate::theme::{ColorAdjust, ToCrossTerm};
 
@@ -37,8 +36,6 @@ use editor::Editor;
 use input::{HandleEvent, handle_event};
 
 fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
-    let mut profiler = Profiler::new();
-
     let args: Vec<String> = std::env::args().collect();
     let file_paths = if args.len() > 1 {
         args[1..].to_vec()
@@ -64,7 +61,6 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         MoveTo(0, 0)
     )?;
 
-    let tab_size = 4;
     execute!(stdout, crossterm::cursor::Hide).unwrap();
 
     let mut should_redraw = true;
@@ -130,6 +126,23 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                         }
                     }
                 }
+                background::BackgroundResult::ParseComplete {
+                    file_path,
+                    syntax_tree,
+                    task_id,
+                } => {
+                    if let Some(buf) = editor
+                        .buffer_manager
+                        .buffers
+                        .iter_mut()
+                        .find(|b| b.file_path == file_path)
+                    {
+                        if task_id >= background::TaskId(buf.current_parse_task_id) {
+                            buf.current_parse_task_id = task_id.0;
+                            buf.syntax_tree = Some(syntax_tree);
+                        }
+                    }
+                }
             }
         }
 
@@ -158,11 +171,9 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             .set_wrap_width(editor.wrap.then_some(wrap_cols as u32));
 
         if should_sync {
-            profiler.profile("display_map.sync", || {
-                active_buffer
-                    .display_map
-                    .sync(active_buffer.doc.buffer().snapshot().clone());
-            });
+            active_buffer
+                .display_map
+                .sync(active_buffer.doc.buffer().snapshot().clone());
             active_buffer.dirty_hl = true;
 
             let (start, _) = active_buffer
@@ -204,6 +215,22 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                     latest_task_id: active_buffer.latest_wrap_task_id.clone(),
                 });
 
+            if let Some(grammar) = active_buffer.grammar {
+                let parse_task_id = active_buffer
+                    .latest_parse_task_id
+                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+                    + 1;
+                editor
+                    .bg_worker
+                    .spawn_task(background::BackgroundTask::Parse {
+                        file_path: active_buffer.file_path.clone(),
+                        snapshot: active_buffer.doc.buffer().snapshot().clone(),
+                        grammar,
+                        task_id: background::TaskId(parse_task_id),
+                        latest_task_id: active_buffer.latest_parse_task_id.clone(),
+                    });
+            }
+
             should_sync = false;
         }
 
@@ -244,7 +271,6 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 cursor_screen_row,
                 cursor_screen_col,
                 &mut last_cursor_style,
-                &mut profiler,
             )?;
             if editor.mode == Mode::Insert {
                 ticks = Duration::ZERO;

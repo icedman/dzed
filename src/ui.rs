@@ -1,7 +1,6 @@
 use crate::actions::Mode;
 use crate::document::{BufferText, Document};
 use crate::editor::Editor;
-use crate::profiler::Profiler;
 use crate::search::{TextSearch, compile};
 use crate::theme::{ColorAdjust, ToCrossTerm};
 use crossterm::{cursor::MoveTo, execute};
@@ -22,7 +21,6 @@ pub fn render_editor_content(
     screen_rows: i32,
     screen_cols: i32,
     visible_rows: i32,
-    profiler: &mut Profiler,
 ) -> std::io::Result<()> {
     let active_buffer = editor.buffer_manager.active_mut();
     let display_snapshot = active_buffer.display_map.snapshot();
@@ -42,14 +40,12 @@ pub fn render_editor_content(
                 .hl
                 .contains_rows(start_buffer_row, end_buffer_row_exclusive)
         {
-            profiler.profile("hl.highlight_lines", || {
-                active_buffer.hl.highlight_lines(
-                    &active_buffer.doc.buffer().snapshot(),
-                    start_buffer_row,
-                    end_buffer_row_exclusive - start_buffer_row,
-                    &editor.theme.theme,
-                );
-            });
+            active_buffer.hl.highlight_lines(
+                &active_buffer.doc.buffer().snapshot(),
+                start_buffer_row,
+                end_buffer_row_exclusive - start_buffer_row,
+                &editor.theme.theme,
+            );
             active_buffer.dirty_hl = false;
         }
     }
@@ -92,19 +88,18 @@ pub fn render_editor_content(
         let text = display_snapshot.line_text(row) + " ";
 
         let mut matches = Vec::<(usize, usize, &str)>::new();
-        profiler.profile("search", || {
-            if editor.pattern {
-                if editor.search_text != editor.regex_string {
-                    editor.regex_string = editor.search_text.clone();
-                    editor.regex = compile(editor.regex_string.as_str());
-                }
-                if let Some(ref regex) = editor.regex {
-                    matches = text.as_str().find_pattern(&regex);
-                }
-            } else if !editor.search_text.is_empty() {
-                matches = text.as_str().find_string(&editor.search_text);
+        if editor.pattern {
+            if editor.search_text != editor.regex_string {
+                editor.regex_string = editor.search_text.clone();
+                editor.regex = compile(editor.regex_string.as_str());
             }
-        });
+            if let Some(ref regex) = editor.regex {
+                matches = text.as_str().find_pattern(&regex);
+            }
+        } else if !editor.search_text.is_empty() {
+            matches = text.as_str().find_string(&editor.search_text);
+        }
+
         // Convert byte-indexed matches into character-indexed ranges for rendering
         let match_ranges: Vec<(usize, usize)> = matches
             .iter()
@@ -264,10 +259,31 @@ pub fn render_status_bar(
     let active_idx = editor.buffer_manager.active_idx;
     let buffer_count = editor.buffer_manager.buffers.len();
     let active_buffer = editor.buffer_manager.active();
-    let row_len = active_buffer.doc.buffer().line_len(cursor_point.row as u32);
+    let buffer = active_buffer.doc.buffer();
+    let row_len = buffer.line_len(cursor_point.row as u32);
+    let selection = active_buffer.doc.selection();
+    let cursor_offset = buffer.offset_for_anchor(&selection.head());
+    let syntax_context = active_buffer
+        .syntax_tree
+        .as_ref()
+        .map(|syntax_tree| {
+            let node = syntax_tree
+                .named_node_at_byte(cursor_offset)
+                .map(|node| node.kind)
+                .unwrap_or_else(|| "?".to_string());
+            let scope = syntax_tree
+                .current_scope(buffer.snapshot(), cursor_offset)
+                .map(|scope| scope.name.unwrap_or(scope.kind))
+                .unwrap_or_else(|| "-".to_string());
+            format!(
+                "ts:{} node:{node} scope:{scope}",
+                syntax_tree.grammar().name()
+            )
+        })
+        .unwrap_or_else(|| "ts:- node:- scope:-".to_string());
 
     print!(
-        "[{}/{}] {} {} {},{} rl:{} {} {} [{}]",
+        "[{}/{}] {} {} {},{} rl:{} {} {} [{}] {}",
         active_idx + 1,
         buffer_count,
         active_buffer.file_path,
@@ -284,7 +300,8 @@ pub fn render_status_bar(
         row_len,
         active_buffer.hl.name(),
         editor.pending_cmd,
-        editor.search_text
+        editor.search_text,
+        syntax_context
     );
     Ok(())
 }
@@ -387,7 +404,6 @@ pub fn render(
     cursor_screen_row: i32,
     cursor_screen_col: i32,
     last_cursor_style: &mut Option<crossterm::cursor::SetCursorStyle>,
-    profiler: &mut Profiler,
 ) -> std::io::Result<()> {
     execute!(stdout, crossterm::cursor::Hide).unwrap();
 
@@ -399,7 +415,6 @@ pub fn render(
         screen_rows,
         screen_cols,
         visible_rows,
-        profiler,
     )?;
 
     // 2. Render status bar or command line depending on mode

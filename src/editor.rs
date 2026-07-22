@@ -15,8 +15,12 @@ pub struct EditorBuffer {
     pub dirty_hl: bool,
     pub latest_hl_task_id: Arc<AtomicU64>,
     pub latest_wrap_task_id: Arc<AtomicU64>,
+    pub latest_parse_task_id: Arc<AtomicU64>,
     pub current_hl_task_id: u64,
     pub current_wrap_task_id: u64,
+    pub current_parse_task_id: u64,
+    pub grammar: Option<crate::treesitter::grammars::Grammar>,
+    pub syntax_tree: Option<crate::treesitter::SyntaxTree>,
 }
 
 impl EditorBuffer {
@@ -24,6 +28,7 @@ impl EditorBuffer {
         let doc = Document::new(file_path)?;
         let hl = Highlights::new(file_path);
         let display_map = DisplayMap::new(doc.buffer().snapshot().clone(), None);
+        let grammar = crate::treesitter::grammars::Grammar::from_path(file_path);
         Ok(Self {
             file_path: file_path.to_string(),
             doc,
@@ -32,8 +37,12 @@ impl EditorBuffer {
             dirty_hl: true,
             latest_hl_task_id: Arc::new(AtomicU64::new(0)),
             latest_wrap_task_id: Arc::new(AtomicU64::new(0)),
+            latest_parse_task_id: Arc::new(AtomicU64::new(0)),
             current_hl_task_id: 0,
             current_wrap_task_id: 0,
+            current_parse_task_id: 0,
+            grammar,
+            syntax_tree: None,
         })
     }
 }

@@ -8,6 +8,8 @@ use text::BufferSnapshot;
 
 use crate::display::wrap_map::{WrapMap, WrapSnapshot};
 use crate::highlight::{Highlights, StateCache, StyleCache};
+use crate::treesitter::grammars::Grammar;
+use crate::treesitter::{SyntaxTree, TreeSitterParser};
 
 /// A unique task ID used to track task sequence and avoid applying stale/obsolete updates.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -33,6 +35,14 @@ pub enum BackgroundTask {
         task_id: TaskId,
         latest_task_id: Arc<AtomicU64>,
     },
+    /// Full Tree-sitter parse of an immutable buffer snapshot.
+    Parse {
+        file_path: String,
+        snapshot: BufferSnapshot,
+        grammar: Grammar,
+        task_id: TaskId,
+        latest_task_id: Arc<AtomicU64>,
+    },
 }
 
 /// The output results returned by the background thread worker.
@@ -47,6 +57,12 @@ pub enum BackgroundResult {
     WrapComplete {
         file_path: String,
         wrap_snapshot: WrapSnapshot,
+        task_id: TaskId,
+    },
+    /// Tree-sitter parse completed successfully.
+    ParseComplete {
+        file_path: String,
+        syntax_tree: SyntaxTree,
         task_id: TaskId,
     },
 }
@@ -129,6 +145,34 @@ impl BackgroundWorker {
                             task_id,
                         });
                     }
+                    BackgroundTask::Parse {
+                        file_path,
+                        snapshot,
+                        grammar,
+                        task_id,
+                        latest_task_id,
+                    } => {
+                        if latest_task_id.load(Ordering::SeqCst) > task_id.0 {
+                            continue;
+                        }
+
+                        let Ok(mut parser) = TreeSitterParser::new(grammar) else {
+                            continue;
+                        };
+                        let Ok(syntax_tree) = parser.parse(&snapshot, None) else {
+                            continue;
+                        };
+
+                        if latest_task_id.load(Ordering::SeqCst) > task_id.0 {
+                            continue;
+                        }
+
+                        let _ = worker_tx.send(BackgroundResult::ParseComplete {
+                            file_path,
+                            syntax_tree,
+                            task_id,
+                        });
+                    }
                 }
             }
         });
@@ -144,5 +188,46 @@ impl BackgroundWorker {
     /// Non-blockingly polls for completed background results.
     pub fn try_recv(&self) -> Option<BackgroundResult> {
         self.result_rx.try_recv().ok()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clock::ReplicaId;
+    use std::time::{Duration, Instant};
+    use text::{Buffer, BufferId};
+
+    #[test]
+    fn parses_buffer_snapshots_on_the_background_worker() {
+        let worker = BackgroundWorker::new();
+        let buffer = Buffer::new(ReplicaId::LOCAL, BufferId::new(1).unwrap(), "fn main() {}");
+        let latest_task_id = Arc::new(AtomicU64::new(1));
+
+        worker.spawn_task(BackgroundTask::Parse {
+            file_path: "main.rs".into(),
+            snapshot: buffer.snapshot().clone(),
+            grammar: Grammar::Rust,
+            task_id: TaskId(1),
+            latest_task_id,
+        });
+
+        let deadline = Instant::now() + Duration::from_secs(2);
+        loop {
+            if let Some(BackgroundResult::ParseComplete {
+                file_path,
+                syntax_tree,
+                task_id,
+            }) = worker.try_recv()
+            {
+                assert_eq!(file_path, "main.rs");
+                assert_eq!(task_id, TaskId(1));
+                assert_eq!(syntax_tree.root_kind(), "source_file");
+                break;
+            }
+
+            assert!(Instant::now() < deadline, "background parse timed out");
+            std::thread::sleep(Duration::from_millis(5));
+        }
     }
 }
