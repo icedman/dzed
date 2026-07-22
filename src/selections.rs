@@ -51,6 +51,12 @@ pub trait Motions {
 
     fn move_to_previous_match(&mut self, text: &str, buffer: &Buffer) -> Option<Selection<Anchor>>;
     fn move_to_next_match(&mut self, text: &str, buffer: &Buffer) -> Option<Selection<Anchor>>;
+    fn move_to_next_match_within(
+        &mut self,
+        search: &str,
+        buffer: &Buffer,
+        rows: u32,
+    ) -> Option<Selection<Anchor>>;
     fn move_to_previous_pattern_match(
         &mut self,
         search: &Regex,
@@ -588,6 +594,46 @@ impl Motions for Selection<Anchor> {
         return None;
     }
 
+    fn move_to_next_match_within(
+        &mut self,
+        search: &str,
+        buffer: &Buffer,
+        rows: u32,
+    ) -> Option<Selection<Anchor>> {
+        let mut cursor = self.clone();
+        if let Some(matched) = cursor.move_to_next_match(search, buffer) {
+            return Some(matched);
+        }
+
+        for _ in 0..rows {
+            let current_row = cursor.head().to_point(buffer).row;
+            if current_row + 1 >= buffer.row_count() {
+                cursor = cursor.move_to_start_of_document(false, buffer);
+            } else {
+                cursor = cursor.move_to_start_of_next_line(false, buffer);
+            }
+
+            let mut point = cursor.head().to_point(buffer);
+            let line_text = buffer.row_text(point.row);
+            let Some((column, _, _)) = line_text.find_string(search).into_iter().next() else {
+                continue;
+            };
+
+            point.column = column as u32;
+            point = buffer.clip_point(point, cursor.head().bias);
+            let new_head = buffer.anchor_at(point.to_offset(buffer), Bias::Left);
+            return Some(Selection {
+                id: cursor.id,
+                start: new_head,
+                end: new_head,
+                reversed: true,
+                goal: SelectionGoal::None,
+            });
+        }
+
+        None
+    }
+
     fn move_to_previous_pattern_match(
         &mut self,
         search: &Regex,
@@ -670,6 +716,19 @@ impl SelectionCollection {
 
     pub fn last(&self) -> Option<&Selection<Anchor>> {
         self.selections.last()
+    }
+
+    pub fn has_similar_cursor(&self, cursor: &Selection<Anchor>, buffer: &Buffer) -> bool {
+        let head = buffer.offset_for_anchor(&cursor.head());
+        let tail = buffer.offset_for_anchor(&cursor.tail());
+
+        self.selections.iter().any(|existing| {
+            let existing_head = buffer.offset_for_anchor(&existing.head());
+            let existing_tail = buffer.offset_for_anchor(&existing.tail());
+
+            (existing_head == head && existing_tail == tail)
+                || (existing_head == tail && existing_tail == head)
+        })
     }
 
     pub fn text(&self, buffer: &Buffer) -> String {
@@ -1291,6 +1350,17 @@ mod tests {
     }
 
     #[test]
+    fn similar_cursor_check_ignores_range_direction() {
+        let buffer = Buffer::new(ReplicaId::LOCAL, BufferId::new(1).unwrap(), "abcdef");
+        let mut selections = SelectionCollection::new();
+        selections.selections = vec![selection(&buffer, 0, 1, 3, false)];
+
+        assert!(selections.has_similar_cursor(&selection(&buffer, 1, 1, 3, false), &buffer));
+        assert!(selections.has_similar_cursor(&selection(&buffer, 1, 3, 1, false), &buffer));
+        assert!(!selections.has_similar_cursor(&selection(&buffer, 1, 2, 4, false), &buffer));
+    }
+
+    #[test]
     fn collection_text_joins_non_empty_selections() {
         let buffer = Buffer::new(ReplicaId::LOCAL, BufferId::new(1).unwrap(), "abcdef");
         let mut selections = SelectionCollection::new();
@@ -1300,5 +1370,26 @@ mod tests {
         ];
 
         assert_eq!(selections.text(&buffer), "ab\nde");
+    }
+
+    #[test]
+    fn next_match_within_searches_only_the_requested_following_rows() {
+        let buffer = Buffer::new(
+            ReplicaId::LOCAL,
+            BufferId::new(1).unwrap(),
+            "zero\none\ntarget",
+        );
+        let mut cursor = selection(&buffer, 0, 0, 0, false);
+
+        assert!(
+            cursor
+                .move_to_next_match_within("target", &buffer, 1)
+                .is_none()
+        );
+
+        let matched = cursor
+            .move_to_next_match_within("target", &buffer, 2)
+            .expect("match should be found two rows below");
+        assert_eq!(matched.head().to_point(&buffer), Point::new(2, 0));
     }
 }

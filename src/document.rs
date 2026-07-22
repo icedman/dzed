@@ -119,10 +119,29 @@ impl Document {
         } else {
             let cursor = self.selection();
             let selected_text = cursor.text(&self.buffer);
-            if let Some(mut next_match) = cursor
-                .clone()
-                .move_to_next_match(selected_text.as_str(), &self.buffer)
-            {
+            if let Some(mut next_match) = cursor.clone().move_to_next_match_within(
+                selected_text.as_str(),
+                &self.buffer,
+                self.buffer.row_count(),
+            ) {
+                for _ in 0..selected_text.len().saturating_sub(1) {
+                    next_match = next_match.move_right_once(true, &self.buffer);
+                }
+
+                let next_cursor = Selection {
+                    id: cursor.id,
+                    start: next_match.head(),
+                    end: next_match.tail(),
+                    reversed: false,
+                    goal: SelectionGoal::None,
+                };
+                if self
+                    .selections
+                    .has_similar_cursor(&next_cursor, &self.buffer)
+                {
+                    return;
+                }
+
                 let sel = self.add_selection();
                 self.selections.update(
                     &self.buffer,
@@ -134,21 +153,7 @@ impl Document {
                         goal: SelectionGoal::None,
                     },
                 );
-
-                for _ in 0..selected_text.len().saturating_sub(1) {
-                    next_match = next_match.move_right_once(true, &self.buffer);
-                }
-
-                self.selections.update(
-                    &self.buffer,
-                    &Selection {
-                        id: cursor.id,
-                        start: next_match.head(),
-                        end: next_match.tail(),
-                        reversed: false,
-                        goal: SelectionGoal::None,
-                    },
-                );
+                self.selections.update(&self.buffer, &next_cursor);
             }
         }
     }
