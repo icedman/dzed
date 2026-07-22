@@ -81,6 +81,18 @@ pub enum Action {
     MoveToEndOfLine {
         select: bool,
     },
+    MoveToStartOfPreviousLine {
+        select: bool,
+    },
+    MoveToEndOfPreviousLine {
+        select: bool,
+    },
+    MoveToStartOfNextLine {
+        select: bool,
+    },
+    MoveToEndOfNextLine {
+        select: bool,
+    },
     MoveToLine {
         select: bool,
         line: u32,
@@ -114,6 +126,10 @@ pub enum Action {
 
     InsertText(String),
     InsertNewLine,
+    InsertNewLineMotion {
+        count: u32,
+        motion: Box<Action>,
+    },
     InsertTab,
 
     DeleteText {

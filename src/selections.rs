@@ -22,6 +22,8 @@ pub trait Motions {
 
     fn move_left_once(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor>;
     fn move_right_once(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor>;
+    fn move_up_once(&self, anchor: bool, column: u32, buffer: &Buffer) -> Selection<Anchor>;
+    fn move_down_once(&self, anchor: bool, column: u32, buffer: &Buffer) -> Selection<Anchor>;
 
     fn move_to_start_of_line(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor>;
     fn move_to_start_of_line_non_space(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor>;
@@ -29,6 +31,10 @@ pub trait Motions {
     fn move_to_line(&self, anchor: bool, line: u32, buffer: &Buffer) -> Selection<Anchor>;
     fn move_to_previous_line(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor>;
     fn move_to_next_line(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor>;
+    fn move_to_start_of_previous_line(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor>;
+    fn move_to_end_of_previous_line(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor>;
+    fn move_to_start_of_next_line(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor>;
+    fn move_to_end_of_next_line(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor>;
 
     fn find_character(
         &self,
@@ -217,6 +223,41 @@ impl Motions for Selection<Anchor> {
         }
     }
 
+    fn move_up_once(&self, anchor: bool, column: u32, buffer: &Buffer) -> Selection<Anchor> {
+        let mut point = self.head().to_point(buffer);
+        point.row = point.row.saturating_sub(1);
+        point.column = column.min(buffer.line_len(point.row));
+        point = buffer.clip_point(point, self.head().bias);
+        let new_head = buffer.anchor_at(point.to_offset(buffer), Bias::Left);
+
+        Selection {
+            id: self.id,
+            start: new_head,
+            end: if anchor { self.tail() } else { new_head },
+            reversed: true,
+            goal: SelectionGoal::None,
+        }
+    }
+
+    fn move_down_once(&self, anchor: bool, column: u32, buffer: &Buffer) -> Selection<Anchor> {
+        let mut point = self.head().to_point(buffer);
+        point.row = point
+            .row
+            .saturating_add(1)
+            .min(buffer.row_count().saturating_sub(1));
+        point.column = column.min(buffer.line_len(point.row));
+        point = buffer.clip_point(point, self.head().bias);
+        let new_head = buffer.anchor_at(point.to_offset(buffer), Bias::Left);
+
+        Selection {
+            id: self.id,
+            start: new_head,
+            end: if anchor { self.tail() } else { new_head },
+            reversed: true,
+            goal: SelectionGoal::None,
+        }
+    }
+
     fn move_to_previous_line(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor> {
         let cursor = self.move_to_start_of_line(anchor, buffer);
         cursor.move_left_once(anchor, buffer)
@@ -225,6 +266,24 @@ impl Motions for Selection<Anchor> {
     fn move_to_next_line(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor> {
         let cursor = self.move_to_end_of_line(anchor, buffer);
         cursor.move_right_once(anchor, buffer)
+    }
+
+    fn move_to_start_of_previous_line(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor> {
+        let cursor = self.move_to_previous_line(anchor, buffer);
+        cursor.move_to_start_of_line(anchor, buffer)
+    }
+
+    fn move_to_end_of_previous_line(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor> {
+        self.move_to_previous_line(anchor, buffer)
+    }
+
+    fn move_to_start_of_next_line(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor> {
+        self.move_to_next_line(anchor, buffer)
+    }
+
+    fn move_to_end_of_next_line(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor> {
+        let cursor = self.move_to_next_line(anchor, buffer);
+        cursor.move_to_end_of_line(anchor, buffer)
     }
 
     fn find_character(
@@ -866,23 +925,8 @@ impl SelectionCollection {
         for _ in 0..count {
             let cursors = self.selections.clone();
             for cursor in cursors.iter() {
-                let mut point = cursor.head().to_point(&buffer);
-                point.row = point.row.saturating_sub(1);
-                if self.point.column < buffer.line_len(point.row) {
-                    point.column = self.point.column;
-                }
-                point = buffer.clip_point(point, cursor.head().bias);
-                let offset = point.to_offset(&buffer);
-                let new_head = buffer.anchor_at(offset, Bias::Left);
-                self.update(buffer, &{
-                    Selection {
-                        id: cursor.id,
-                        start: new_head,
-                        end: if anchor { cursor.tail() } else { new_head },
-                        reversed: true,
-                        goal: SelectionGoal::None,
-                    }
-                });
+                let next = cursor.move_up_once(anchor, self.point.column, buffer);
+                self.update(buffer, &next);
             }
         }
     }
@@ -891,23 +935,8 @@ impl SelectionCollection {
         for _ in 0..count {
             let cursors = self.selections.clone();
             for cursor in cursors.iter() {
-                let mut point = cursor.head().to_point(&buffer);
-                point.row += 1;
-                if self.point.column < buffer.line_len(point.row) {
-                    point.column = self.point.column;
-                }
-                point = buffer.clip_point(point, cursor.head().bias);
-                let offset = point.to_offset(&buffer);
-                let new_head = buffer.anchor_at(offset, Bias::Left);
-                self.update(buffer, &{
-                    Selection {
-                        id: cursor.id,
-                        start: new_head,
-                        end: if anchor { cursor.tail() } else { new_head },
-                        reversed: true,
-                        goal: SelectionGoal::None,
-                    }
-                });
+                let next = cursor.move_down_once(anchor, self.point.column, buffer);
+                self.update(buffer, &next);
             }
         }
     }
@@ -926,6 +955,40 @@ impl SelectionCollection {
             let next = cursor
                 .clone()
                 .move_to_start_of_line_non_space(anchor, buffer);
+            self.update(buffer, &next);
+        }
+    }
+
+    pub fn move_to_start_of_previous_line(&mut self, anchor: bool, buffer: &Buffer) {
+        let cursors = self.selections.clone();
+        for cursor in cursors.iter() {
+            let next = cursor
+                .clone()
+                .move_to_start_of_previous_line(anchor, buffer);
+            self.update(buffer, &next);
+        }
+    }
+
+    pub fn move_to_end_of_previous_line(&mut self, anchor: bool, buffer: &Buffer) {
+        let cursors = self.selections.clone();
+        for cursor in cursors.iter() {
+            let next = cursor.clone().move_to_end_of_previous_line(anchor, buffer);
+            self.update(buffer, &next);
+        }
+    }
+
+    pub fn move_to_start_of_next_line(&mut self, anchor: bool, buffer: &Buffer) {
+        let cursors = self.selections.clone();
+        for cursor in cursors.iter() {
+            let next = cursor.clone().move_to_start_of_next_line(anchor, buffer);
+            self.update(buffer, &next);
+        }
+    }
+
+    pub fn move_to_end_of_next_line(&mut self, anchor: bool, buffer: &Buffer) {
+        let cursors = self.selections.clone();
+        for cursor in cursors.iter() {
+            let next = cursor.clone().move_to_end_of_next_line(anchor, buffer);
             self.update(buffer, &next);
         }
     }

@@ -116,9 +116,10 @@ impl Document {
     pub fn apply_action(&mut self, action: &Action) {
         let mut next_action = Action::NoOp;
         match action {
-            Action::ChangeCurrentLine { .. } | Action::ChangeMotion { .. } => {
-                next_action = Action::SetInsertMode
-            }
+            Action::InsertNewLineMotion { .. }
+            | Action::Change
+            | Action::ChangeCurrentLine { .. }
+            | Action::ChangeMotion { .. } => next_action = Action::SetInsertMode,
             _ => {}
         }
         if self.mode == Mode::VisualBlock {
@@ -208,6 +209,18 @@ impl Document {
             Action::MoveToEndOfLine { select } => {
                 self.selections.move_to_end_of_line(*select, &self.buffer)
             }
+            Action::MoveToStartOfPreviousLine { select } => self
+                .selections
+                .move_to_start_of_previous_line(*select, &self.buffer),
+            Action::MoveToEndOfPreviousLine { select } => self
+                .selections
+                .move_to_end_of_previous_line(*select, &self.buffer),
+            Action::MoveToStartOfNextLine { select } => self
+                .selections
+                .move_to_start_of_next_line(*select, &self.buffer),
+            Action::MoveToEndOfNextLine { select } => self
+                .selections
+                .move_to_end_of_next_line(*select, &self.buffer),
             Action::MoveToLine { select, line } => {
                 self.selections.move_to_line(*select, *line, &self.buffer)
             }
@@ -277,16 +290,27 @@ impl Document {
                         _ => {}
                     }
 
-                    for idx in 0..*count {
+                    for _ in 0..*count {
                         self.apply_action(&motion);
                         self.delete_text(0);
                     }
                 }
             }
+            Action::Change => {
+                self.delete_text(0);
+            }
             Action::InsertNewLine => {
                 self.delete_text(0);
                 self.insert_text(&self.new_line().to_string());
                 self.selections.move_right(false, 1, &self.buffer);
+            }
+            Action::InsertNewLineMotion { count, motion } => {
+                let mut motion = (**motion).clone();
+                for _ in 0..*count {
+                    self.apply_action(&motion);
+                    self.insert_text(&self.new_line().to_string());
+                    motion = Action::NoOp;
+                }
             }
             Action::InsertTab => {
                 for _ in 0..4 {

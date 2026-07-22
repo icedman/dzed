@@ -607,11 +607,26 @@ impl Default for Keymap {
                 }),
             },
         );
+        pending_commands.insert("c".to_string(), Action::Change {});
         pending_commands.insert(
             "C".to_string(),
             Action::ChangeMotion {
                 count: 1,
                 motion: Box::new(Action::MoveToEndOfLine { select: true }),
+            },
+        );
+        pending_commands.insert(
+            "o".to_string(),
+            Action::InsertNewLineMotion {
+                count: 1,
+                motion: Box::new(Action::MoveToStartOfNextLine { select: false }),
+            },
+        );
+        pending_commands.insert(
+            "O".to_string(),
+            Action::InsertNewLineMotion {
+                count: 1,
+                motion: Box::new(Action::MoveToStartOfLine { select: false }),
             },
         );
         pending_commands.insert("x".to_string(), Action::Delete { count: 1 });
