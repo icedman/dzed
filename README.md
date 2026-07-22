@@ -1,45 +1,128 @@
-# DZED (Demaked Zed)
+# DZed (Demaked Zed)
 
-DZED is a proof-of-concept terminal text editor built by bringing Zed's core crates (`text`, `sum_tree`, `rope`, etc.) to the terminal. It combines the advanced text manipulation logic of Zed with a lightweight `crossterm` interface and `syntect` for syntax highlighting.
+DZed is an experimental terminal text editor inspired by **Zed's editing architecture** and **Vim's modal editing model**.
 
-![Screen Shot](https://raw.githubusercontent.com/icedman/dzed/refs/heads/main/screenshots/Screenshot%20from%202026-02-02%2021-56-19.png)
+The goal is not to reproduce either editor exactly. DZed explores what a fast, compact, Vim-oriented terminal editor can look like when built on top of Zed's core text infrastructure, including its rope, CRDT buffer, anchors, sum trees, and incremental display mapping.
 
-## Core Features
+DZed is currently a proof of concept and an active learning project rather than a production-ready editor.
 
-- **Zed-Powered Logic**: Uses Zed's high-performance CRDT-based buffer and sum-tree indexing.
-- **Vim Emulation**: Robust Vim-style modal editing.
-- **Soft Wrapping**: Full support for logical-to-screen coordinate mapping (WrapMap/DisplayMap).
-- **Syntax Highlighting**: Fast rendering using `syntect`.
-- **Bracketed Paste**: Efficiently handle large pastes from the clipboard.
-- **Modern Terminal UI**: Mode-specific cursors (Bar in Insert, Block in Normal) and status bar.
+![DZed screenshot](https://raw.githubusercontent.com/icedman/dzed/refs/heads/main/screenshots/Screenshot%20from%202026-02-02%2021-56-19.png)
 
-## Implemented Actions
+## Project Goals
 
-### Navigation
-- **Basic**: `h`, `j`, `k`, `l` (Left, Down, Up, Right)
-- **Word**: `w`, `b` (Start of word), `e`, `ge` (End of word)
-- **Line**: `0`, `$`, `^` (Start, End, first non-blank)
-- **Document**: `gg`, `G` (Start, End of file)
-- **Paragraph**: `{`, `}` (Previous, Next empty line)
-- **Jump**: `:{N}` jump to specific line number.
-- **Count Support**: Most motions support numeric prefixes (e.g., `5w`, `10j`).
+- Bring Zed's high-performance text and buffer primitives to a terminal interface.
+- Build a Vim-inspired modal editing experience without depending on Vim itself.
+- Experiment with selections, multiple cursors, text objects, display maps, and asynchronous editor services.
+- Keep the codebase small enough to understand, modify, and use as a platform for editor experiments.
+- Gradually improve Vim compatibility while retaining the flexibility to adopt ideas from Zed and other modern editors.
 
-### Editing
-- **Modes**: Normal, Insert, Visual, Visual Line, Command.
-- **Operators**: `d{motion}` (e.g., `dw`, `df)`, `d$`) for flexible deletion.
-- **Shorthands**: `x` (delete char), `dd` (delete line).
-- **History**: `u` (Undo), `Ctrl-r` (Redo) with count support.
-- **Formatting**: `>` and `<` for indentation.
+## Features So Far
+
+### Zed-Based Text Engine
+
+- CRDT-backed text buffers and stable anchors.
+- Rope-based text storage and editing.
+- Sum-tree indexing through Zed's core crates.
+- Incremental buffer snapshots used by rendering, wrapping, and highlighting.
+- Multiple open buffers with buffer switching.
+
+### Vim-Inspired Modal Editing
+
+- Normal, Insert, Command, Visual, Visual Line, and Visual Block modes.
+- Vim-style motions across characters, words, lines, paragraphs, and documents.
+- Motion counts and composed operator-motion commands.
+- Character search motions and repeatable multi-key command sequences.
+- Insert, append, open-line, change, delete, undo, and redo operations.
+- Mode-aware cursor behavior and selection extension.
+
+### Selections and Text Objects
+
+- Characterwise, linewise, and blockwise visual selections.
+- Selection synchronization for Visual Line and Visual Block modes.
+- Word-based text objects, including inside and around selections.
+- Motion-based delete, change, and yank operations.
+- Multiple cursors and selection of similar text occurrences.
+- Orientation-independent selection range handling.
+- Text extraction from individual selections and combined multi-selections.
+
+### Clipboard and Yank/Paste
+
+- Internal editor clipboard owned by the `Editor`.
+- Characterwise, linewise, and blockwise clipboard metadata.
+- Motion-based and linewise yank support.
+- Characterwise and linewise paste behavior.
+- Paste counts and cursor restoration after yank operations.
+
+### Display and Terminal UI
+
+- Terminal interface built with `crossterm`.
+- Soft wrapping through custom `WrapMap` and `DisplayMap` layers.
+- Logical buffer-point to display-point conversion.
+- Scrolling that follows the active cursor.
+- Optional line-number gutter.
+- Syntax highlighting powered by `syntect`.
+- Search-match and selection highlighting.
+- Dedicated buffer, status-bar, command-line, and cursor renderers.
+- Mode-specific terminal cursor styles.
+- Bracketed paste and mouse-capture support.
+
+### Search and Commands
+
+- Plain-text and regular-expression search.
+- Forward and backward match navigation.
+- Search and command history.
+- Bounded cross-row match searches used by multi-cursor selection.
+- Basic command-line operations for buffers, themes, wrapping, syntax highlighting, line numbers, and line navigation.
+
+### Background Work
+
+- Asynchronous syntax-highlighting tasks.
+- Asynchronous wrapping tasks.
+- Task identifiers prevent stale background results from replacing newer editor state.
+
+### Extensible Input Architecture
+
+- Key-event handling is separated from keymap definitions.
+- Normal, Insert, and pending multi-key command maps are represented independently.
+- Runtime key-binding APIs provide a foundation for future configurable keymaps.
+- Actions are resolved separately from document mutation and rendering.
 
 ## Getting Started
 
-```sh
-# Build the project
-cargo build
+### Build
 
-# Run the editor
-./target/debug/test_zed <path_to_file>
+```sh
+cargo build -p test_zed
 ```
 
+### Run
+
+```sh
+cargo run -p test_zed -- <path-to-file>
+```
+
+Multiple paths may be supplied to open more than one buffer.
+
+### Test
+
+```sh
+cargo test -p test_zed
+```
+
+## Project Status
+
+DZed is under active development. Editing behavior, internal APIs, and file organization may change frequently. Important areas still being developed include broader Vim parity, richer text objects, complete clipboard semantics, persistence and save commands, configurable keymaps, and more robust terminal interaction.
+
+## AI Disclaimer
+
+This project has been built largely through AI-assisted development using Gemini and GPT models. I wrote the initial prototype while studying Zed's core components—particularly its sum tree, rope, text, and editor implementations. AI has since become an integral part of implementation, refactoring, debugging, and experimentation.
+
 ## Contributing
-This is a proof-of-concept. Contributions that further integrate Zed's crates or improve Vim parity are welcome.
+
+Contributions are welcome, especially those that improve Vim-style editing, deepen integration with Zed's crates, add tests for editor behavior, or simplify the architecture without hiding how it works.
+
+## Support Me
+
+[![Buy Me A Coffee](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://www.buymeacoffee.com/icedman)
+
+If you find the project useful and would like to support continued development, contributions help cover development and AI-assisted tooling costs.
