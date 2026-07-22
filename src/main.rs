@@ -131,16 +131,16 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                     syntax_tree,
                     task_id,
                 } => {
-                    if let Some(buf) = editor
-                        .buffer_manager
-                        .buffers
-                        .iter_mut()
-                        .find(|b| b.file_path == file_path)
+                    if editor.tree_sitter
+                        && let Some(buf) = editor
+                            .buffer_manager
+                            .buffers
+                            .iter_mut()
+                            .find(|b| b.file_path == file_path)
+                        && task_id >= background::TaskId(buf.current_parse_task_id)
                     {
-                        if task_id >= background::TaskId(buf.current_parse_task_id) {
-                            buf.current_parse_task_id = task_id.0;
-                            buf.syntax_tree = Some(syntax_tree);
-                        }
+                        buf.current_parse_task_id = task_id.0;
+                        buf.syntax_tree = Some(syntax_tree);
                     }
                 }
             }
@@ -215,7 +215,9 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                     latest_task_id: active_buffer.latest_wrap_task_id.clone(),
                 });
 
-            if let Some(grammar) = active_buffer.grammar {
+            if editor.tree_sitter
+                && let Some(grammar) = active_buffer.grammar
+            {
                 let parse_task_id = active_buffer
                     .latest_parse_task_id
                     .fetch_add(1, std::sync::atomic::Ordering::SeqCst)

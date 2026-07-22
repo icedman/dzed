@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fmt;
 use std::ops::Range;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use text::BufferSnapshot;
 use tree_sitter::{
@@ -9,6 +9,236 @@ use tree_sitter::{
 };
 
 use super::grammars::Grammar;
+
+/// Named declaration-like nodes that form meaningful editor scopes.
+pub const SCOPE_KINDS: &[&str] = &[
+    // Rust
+    "function_item",
+    "impl_item",
+    "trait_item",
+    "mod_item",
+    "struct_item",
+    "enum_item",
+    "union_item",
+    "type_item",
+    "const_item",
+    "static_item",
+    "macro_definition",
+    "macro_invocation",
+    "closure_expression",
+    // Bash
+    "function_definition",
+    // C
+    "struct_specifier",
+    "union_specifier",
+    "enum_specifier",
+    "type_definition",
+    // Go
+    "function_declaration",
+    "method_declaration",
+    "type_declaration",
+    "type_spec",
+    "struct_type",
+    "interface_type",
+    "func_literal",
+    // Python
+    "class_definition",
+    "lambda",
+    // JavaScript and TypeScript
+    "generator_function_declaration",
+    "function_expression",
+    "generator_function",
+    "method_definition",
+    "abstract_method_signature",
+    "method_signature",
+    "class_declaration",
+    "abstract_class_declaration",
+    "class",
+    "interface_declaration",
+    "type_alias_declaration",
+    "enum_declaration",
+    "namespace_declaration",
+    "module_declaration",
+    "internal_module",
+    "ambient_declaration",
+    "arrow_function",
+    // HTML and CSS
+    "element",
+    "script_element",
+    "style_element",
+    "rule_set",
+    "media_statement",
+    "supports_statement",
+    "keyframes_statement",
+    "keyframe_block",
+];
+
+pub const FUNCTION_KINDS: &[&str] = &[
+    "function_item",
+    "function_definition",
+    "function_declaration",
+    "generator_function_declaration",
+    "function_expression",
+    "generator_function",
+    "method_declaration",
+    "method_definition",
+    "abstract_method_signature",
+    "method_signature",
+    "func_literal",
+    "closure_expression",
+    "arrow_function",
+];
+
+pub const CLASS_KINDS: &[&str] = &[
+    "class_definition",
+    "class_declaration",
+    "abstract_class_declaration",
+    "class",
+    "interface_declaration",
+    "struct_item",
+    "enum_item",
+    "union_item",
+    "trait_item",
+    "impl_item",
+    "struct_specifier",
+    "union_specifier",
+    "enum_specifier",
+    "type_declaration",
+    "struct_type",
+    "interface_type",
+];
+
+pub const ARGUMENT_CONTAINER_KINDS: &[&str] = &[
+    "arguments",
+    "argument_list",
+    "parameters",
+    "parameter_list",
+    "formal_parameters",
+    "type_arguments",
+    "type_parameters",
+];
+
+/// Control-flow and container nodes useful for structural block navigation.
+pub const BLOCK_KINDS: &[&str] = &[
+    // Generic roots and blocks
+    "source_file",
+    "program",
+    "module",
+    "document",
+    "stylesheet",
+    "translation_unit",
+    "block",
+    "statement_block",
+    "compound_statement",
+    "declaration_list",
+    "field_declaration_list",
+    "class_body",
+    // Rust
+    "async_block",
+    "unsafe_block",
+    "match_expression",
+    "match_arm",
+    "if_expression",
+    "while_expression",
+    "loop_expression",
+    "for_expression",
+    "token_tree",
+    "enum_variant_list",
+    // Bash
+    "compound_statement",
+    "subshell",
+    "if_statement",
+    "elif_clause",
+    "else_clause",
+    "for_statement",
+    "c_style_for_statement",
+    "while_statement",
+    "until_statement",
+    "case_statement",
+    "case_item",
+    "pipeline",
+    "command_substitution",
+    "process_substitution",
+    // C and C-like control flow
+    "if_statement",
+    "switch_statement",
+    "case_statement",
+    "for_statement",
+    "for_in_statement",
+    "for_of_statement",
+    "while_statement",
+    "do_statement",
+    "labeled_statement",
+    // Go
+    "expression_switch_statement",
+    "type_switch_statement",
+    "select_statement",
+    "communication_case",
+    "expression_case",
+    "default_case",
+    "composite_literal",
+    "literal_value",
+    // Python
+    "elif_clause",
+    "else_clause",
+    "try_statement",
+    "except_clause",
+    "finally_clause",
+    "with_statement",
+    "match_statement",
+    "case_clause",
+    // JavaScript and TypeScript
+    "switch_body",
+    "switch_case",
+    "switch_default",
+    "try_statement",
+    "catch_clause",
+    "finally_clause",
+    "object",
+    "object_pattern",
+    "object_type",
+    "interface_body",
+    "enum_body",
+    "namespace_body",
+    "module",
+    "export_clause",
+    "named_imports",
+    "named_exports",
+    // HTML and CSS
+    "element",
+    "script_element",
+    "style_element",
+    "rule_set",
+    "media_statement",
+    "supports_statement",
+    "keyframes_statement",
+    "keyframe_block",
+    // JSON and expression containers
+    "object",
+    "array",
+    "pair",
+    "list",
+    "dictionary",
+    "set",
+    "tuple",
+    "array_expression",
+    "array_pattern",
+    "tuple_expression",
+    "tuple_type",
+    "parenthesized_expression",
+    "parenthesized_type",
+    "arguments",
+    "argument_list",
+    "parameters",
+    "parameter_list",
+    "formal_parameters",
+    "jsx_element",
+    "jsx_fragment",
+];
+
+/// Anonymous delimiter tokens recognized as structural boundaries.
+pub const OPEN_DELIMITERS: &[&str] = &["{", "(", "[", "<"];
+pub const CLOSE_DELIMITERS: &[&str] = &["}", ")", "]", ">"];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SyntaxNode {
@@ -37,6 +267,9 @@ pub struct SyntaxTree {
     grammar: Grammar,
     tree: Tree,
     scope_cache: Arc<Mutex<HashMap<usize, Vec<SyntaxNode>>>>,
+    block_cache: Arc<OnceLock<Vec<SyntaxNode>>>,
+    node_cache: Arc<OnceLock<Vec<SyntaxNode>>>,
+    argument_cache: Arc<OnceLock<Vec<SyntaxNode>>>,
 }
 
 impl SyntaxTree {
@@ -105,31 +338,133 @@ impl SyntaxTree {
         path
     }
 
-    pub fn current_scope(&self, source: &BufferSnapshot, byte: usize) -> Option<ScopeInfo> {
-        const SCOPE_KINDS: &[&str] = &[
-            // Rust
-            "function_item",
-            "impl_item",
-            "trait_item",
-            "mod_item",
-            "struct_item",
-            "enum_item",
-            "closure_expression",
-            // Bash, C, Go, Python, JavaScript, and TypeScript
-            "function_definition",
-            "function_declaration",
-            "method_declaration",
-            "method_definition",
-            "class_definition",
-            "class_declaration",
-            "interface_declaration",
-            "type_alias_declaration",
-            "arrow_function",
-            // HTML and CSS containers
-            "element",
-            "rule_set",
-        ];
+    pub fn block_path_at_byte(&self, byte: usize) -> Vec<SyntaxNode> {
+        let Some(mut node) = self.descendant_at_byte(byte, true) else {
+            return Vec::new();
+        };
+        let mut path = Vec::new();
+        loop {
+            if Self::is_block_node(node) {
+                path.push(Self::node_info(node));
+            }
+            let Some(parent) = node.parent() else {
+                break;
+            };
+            node = parent;
+        }
+        path.reverse();
+        path
+    }
 
+    pub fn enclosing_block_at_byte(&self, byte: usize) -> Option<SyntaxNode> {
+        let mut node = self.descendant_at_byte(byte, true)?;
+        loop {
+            if Self::is_block_node(node) {
+                return Some(Self::node_info(node));
+            }
+            node = node.parent()?;
+        }
+    }
+
+    pub fn next_block_after_byte(&self, byte: usize) -> Option<SyntaxNode> {
+        self.blocks()
+            .iter()
+            .find(|node| node.byte_range.start > byte)
+            .cloned()
+    }
+
+    pub fn previous_block_before_byte(&self, byte: usize) -> Option<SyntaxNode> {
+        self.blocks()
+            .iter()
+            .rev()
+            .find(|node| node.byte_range.end <= byte)
+            .cloned()
+    }
+
+    pub fn next_function_after_byte(&self, byte: usize) -> Option<SyntaxNode> {
+        self.next_node_by_kinds(byte, FUNCTION_KINDS)
+    }
+
+    pub fn previous_function_before_byte(&self, byte: usize) -> Option<SyntaxNode> {
+        self.previous_node_by_kinds(byte, FUNCTION_KINDS)
+    }
+
+    pub fn next_class_after_byte(&self, byte: usize) -> Option<SyntaxNode> {
+        self.next_node_by_kinds(byte, CLASS_KINDS)
+    }
+
+    pub fn previous_class_before_byte(&self, byte: usize) -> Option<SyntaxNode> {
+        self.previous_node_by_kinds(byte, CLASS_KINDS)
+    }
+
+    pub fn next_argument_after_byte(&self, byte: usize) -> Option<SyntaxNode> {
+        self.arguments()
+            .iter()
+            .find(|node| node.byte_range.start > byte)
+            .cloned()
+    }
+
+    pub fn previous_argument_before_byte(&self, byte: usize) -> Option<SyntaxNode> {
+        self.arguments()
+            .iter()
+            .rev()
+            .find(|node| node.byte_range.end <= byte)
+            .cloned()
+    }
+
+    pub fn delimiter_boundaries_at_byte(&self, byte: usize) -> Option<(SyntaxNode, SyntaxNode)> {
+        let mut node = self.descendant_at_byte(byte, false)?;
+        loop {
+            if let Some(boundaries) = Self::delimiter_boundaries(node) {
+                return Some((Self::node_info(boundaries.0), Self::node_info(boundaries.1)));
+            }
+            node = node.parent()?;
+        }
+    }
+
+    pub fn blocks(&self) -> &[SyntaxNode] {
+        self.block_cache.get_or_init(|| {
+            let mut blocks = Vec::new();
+            let mut cursor = self.tree.walk();
+
+            loop {
+                let node = cursor.node();
+                if node.is_named() && Self::is_block_node(node) {
+                    blocks.push(Self::node_info(node));
+                }
+
+                if cursor.goto_first_child() {
+                    continue;
+                }
+
+                loop {
+                    if cursor.goto_next_sibling() {
+                        break;
+                    }
+                    if !cursor.goto_parent() {
+                        blocks.sort_by_key(|node| (node.byte_range.start, node.byte_range.end));
+                        return blocks;
+                    }
+                }
+            }
+        })
+    }
+
+    pub fn named_nodes(&self) -> &[SyntaxNode] {
+        self.node_cache
+            .get_or_init(|| self.collect_named_nodes(|_| true))
+    }
+
+    pub fn arguments(&self) -> &[SyntaxNode] {
+        self.argument_cache.get_or_init(|| {
+            self.collect_named_nodes(|node| {
+                node.parent()
+                    .is_some_and(|parent| ARGUMENT_CONTAINER_KINDS.contains(&parent.kind()))
+            })
+        })
+    }
+
+    pub fn current_scope(&self, source: &BufferSnapshot, byte: usize) -> Option<ScopeInfo> {
         let mut node = self.descendant_at_byte(byte, true)?;
         loop {
             if SCOPE_KINDS.contains(&node.kind()) {
@@ -173,6 +508,45 @@ impl SyntaxTree {
         Ok(captures)
     }
 
+    fn next_node_by_kinds(&self, byte: usize, kinds: &[&str]) -> Option<SyntaxNode> {
+        self.named_nodes()
+            .iter()
+            .find(|node| node.byte_range.start > byte && kinds.contains(&node.kind.as_str()))
+            .cloned()
+    }
+
+    fn previous_node_by_kinds(&self, byte: usize, kinds: &[&str]) -> Option<SyntaxNode> {
+        self.named_nodes()
+            .iter()
+            .rev()
+            .find(|node| node.byte_range.end <= byte && kinds.contains(&node.kind.as_str()))
+            .cloned()
+    }
+
+    fn collect_named_nodes(&self, predicate: impl Fn(Node<'_>) -> bool) -> Vec<SyntaxNode> {
+        let mut nodes = Vec::new();
+        let mut cursor = self.tree.walk();
+
+        loop {
+            let node = cursor.node();
+            if node.is_named() && predicate(node) {
+                nodes.push(Self::node_info(node));
+            }
+            if cursor.goto_first_child() {
+                continue;
+            }
+            loop {
+                if cursor.goto_next_sibling() {
+                    break;
+                }
+                if !cursor.goto_parent() {
+                    nodes.sort_by_key(|node| (node.byte_range.start, node.byte_range.end));
+                    return nodes;
+                }
+            }
+        }
+    }
+
     fn descendant_at_byte(&self, byte: usize, named: bool) -> Option<Node<'_>> {
         let root = self.tree.root_node();
         if root.end_byte() == 0 {
@@ -185,6 +559,28 @@ impl SyntaxTree {
         } else {
             root.descendant_for_byte_range(start, end)
         }
+    }
+
+    pub fn is_scope_kind(kind: &str) -> bool {
+        SCOPE_KINDS.contains(&kind)
+    }
+
+    pub fn is_block_kind(kind: &str) -> bool {
+        SCOPE_KINDS.contains(&kind) || BLOCK_KINDS.contains(&kind)
+    }
+
+    fn is_block_node(node: Node<'_>) -> bool {
+        Self::is_block_kind(node.kind()) || Self::delimiter_boundaries(node).is_some()
+    }
+
+    fn delimiter_boundaries(node: Node<'_>) -> Option<(Node<'_>, Node<'_>)> {
+        let first = node.child(0)?;
+        let last_index = u32::try_from(node.child_count().checked_sub(1)?).ok()?;
+        let last = node.child(last_index)?;
+        let opening_index = OPEN_DELIMITERS
+            .iter()
+            .position(|kind| *kind == first.kind())?;
+        (last.kind() == CLOSE_DELIMITERS[opening_index]).then_some((first, last))
     }
 
     fn node_info(node: Node<'_>) -> SyntaxNode {
@@ -274,6 +670,9 @@ impl TreeSitterParser {
             grammar: self.grammar,
             tree,
             scope_cache: Arc::new(Mutex::new(HashMap::new())),
+            block_cache: Arc::new(OnceLock::new()),
+            node_cache: Arc::new(OnceLock::new()),
+            argument_cache: Arc::new(OnceLock::new()),
         })
     }
 }
@@ -321,5 +720,22 @@ mod tests {
         assert_eq!(captures.len(), 1);
         assert_eq!(captures[0].name, "function.name");
         assert_eq!(captures[0].node.kind, "identifier");
+
+        let enclosing_block = syntax
+            .enclosing_block_at_byte(value_offset)
+            .expect("value should be inside a block");
+        assert_eq!(enclosing_block.kind, "block");
+        assert!(enclosing_block.byte_range.contains(&value_offset));
+
+        let block_path = syntax.block_path_at_byte(value_offset);
+        assert_eq!(block_path.last().unwrap().kind, "block");
+        assert!(!syntax.blocks().is_empty());
+        assert!(syntax.next_block_after_byte(0).is_some());
+
+        let boundaries = syntax
+            .delimiter_boundaries_at_byte(value_offset)
+            .expect("function body should have brace boundaries");
+        assert_eq!(boundaries.0.kind, "{");
+        assert_eq!(boundaries.1.kind, "}");
     }
 }

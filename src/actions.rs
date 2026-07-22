@@ -123,6 +123,24 @@ pub enum Action {
         search: String,
         pattern: bool,
     },
+    MoveToNextFunction {
+        count: u32,
+    },
+    MoveToPreviousFunction {
+        count: u32,
+    },
+    MoveToNextClass {
+        count: u32,
+    },
+    MoveToPreviousClass {
+        count: u32,
+    },
+    MoveToNextArgument {
+        count: u32,
+    },
+    MoveToPreviousArgument {
+        count: u32,
+    },
 
     InsertText(String),
     InsertNewLine,

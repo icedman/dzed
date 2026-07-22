@@ -108,6 +108,7 @@ pub struct Editor {
 
     pub wrap: bool,
     pub syntax: bool,
+    pub tree_sitter: bool,
     pub show_line_numbers: bool,
     pub bg_worker: crate::background::BackgroundWorker,
     pub clipboard: std::cell::RefCell<crate::clipboard::Clipboard>,
@@ -115,13 +116,26 @@ pub struct Editor {
 }
 
 impl Editor {
+    pub fn set_tree_sitter_enabled(&mut self, enabled: bool) {
+        self.tree_sitter = enabled;
+        if !enabled {
+            for buffer in &mut self.buffer_manager.buffers {
+                buffer
+                    .latest_parse_task_id
+                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                buffer.syntax_tree = None;
+            }
+        }
+    }
+
     pub fn apply_active_action(&mut self, action: &crate::actions::Action) {
         let active_idx = self.buffer_manager.active_idx;
-        let mut active_buffer = self.buffer_manager.buffers.remove(active_idx);
-        active_buffer.doc.apply_action(action, self);
-        self.buffer_manager
-            .buffers
-            .insert(active_idx, active_buffer);
+        let mut document = std::mem::replace(
+            &mut self.buffer_manager.buffers[active_idx].doc,
+            Document::new("").unwrap(),
+        );
+        document.apply_action(action, self);
+        self.buffer_manager.buffers[active_idx].doc = document;
     }
 
     pub fn apply_command_action(&mut self, action: &crate::actions::Action) {
@@ -161,6 +175,7 @@ impl Editor {
             theme,
             wrap: false,
             syntax: true,
+            tree_sitter: true,
             show_line_numbers: false,
             bg_worker,
             clipboard: std::cell::RefCell::new(crate::clipboard::Clipboard::new()),

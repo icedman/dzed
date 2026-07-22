@@ -263,9 +263,10 @@ pub fn render_status_bar(
     let row_len = buffer.line_len(cursor_point.row as u32);
     let selection = active_buffer.doc.selection();
     let cursor_offset = buffer.offset_for_anchor(&selection.head());
-    let syntax_context = active_buffer
-        .syntax_tree
-        .as_ref()
+    let syntax_context = editor
+        .tree_sitter
+        .then_some(active_buffer.syntax_tree.as_ref())
+        .flatten()
         .map(|syntax_tree| {
             let node = syntax_tree
                 .named_node_at_byte(cursor_offset)
@@ -280,7 +281,13 @@ pub fn render_status_bar(
                 syntax_tree.grammar().name()
             )
         })
-        .unwrap_or_else(|| "ts:- node:- scope:-".to_string());
+        .unwrap_or_else(|| {
+            if editor.tree_sitter {
+                "ts:- node:- scope:-".to_string()
+            } else {
+                "ts:off".to_string()
+            }
+        });
 
     print!(
         "[{}/{}] {} {} {},{} rl:{} {} {} [{}] {}",

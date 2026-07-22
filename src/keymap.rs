@@ -354,6 +354,18 @@ impl Default for Keymap {
             "G".to_string(),
             Action::MoveToEndOfDocument { select: false },
         );
+        pending_commands.insert("]f".to_string(), Action::MoveToNextFunction { count: 1 });
+        pending_commands.insert(
+            "[f".to_string(),
+            Action::MoveToPreviousFunction { count: 1 },
+        );
+        pending_commands.insert("]c".to_string(), Action::MoveToNextClass { count: 1 });
+        pending_commands.insert("[c".to_string(), Action::MoveToPreviousClass { count: 1 });
+        pending_commands.insert("]a".to_string(), Action::MoveToNextArgument { count: 1 });
+        pending_commands.insert(
+            "[a".to_string(),
+            Action::MoveToPreviousArgument { count: 1 },
+        );
         pending_commands.insert("yy".to_string(), Action::YankCurrentLine { count: 1 });
         pending_commands.insert(
             "yw".to_string(),

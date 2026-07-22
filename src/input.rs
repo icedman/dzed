@@ -54,6 +54,12 @@ pub fn apply_context(action: Action, select: bool, count: u32) -> Action {
         },
         Action::YankCurrentLine { .. } => Action::YankCurrentLine { count },
         Action::Paste { .. } => Action::Paste { count },
+        Action::MoveToNextFunction { .. } => Action::MoveToNextFunction { count },
+        Action::MoveToPreviousFunction { .. } => Action::MoveToPreviousFunction { count },
+        Action::MoveToNextClass { .. } => Action::MoveToNextClass { count },
+        Action::MoveToPreviousClass { .. } => Action::MoveToPreviousClass { count },
+        Action::MoveToNextArgument { .. } => Action::MoveToNextArgument { count },
+        Action::MoveToPreviousArgument { .. } => Action::MoveToPreviousArgument { count },
         Action::Undo { .. } => Action::Undo { count },
         Action::Redo { .. } => Action::Redo { count },
         Action::SetInsertModeMotion { motion } => Action::SetInsertModeMotion {
@@ -272,10 +278,17 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
             || current_mode == Mode::VisualLine
             || current_mode == Mode::VisualBlock
         {
+            let pending_sequence = editor
+                .pending_cmd
+                .chars()
+                .any(|character| !character.is_ascii_digit());
+
             if combo.code == KeyCode::Esc {
                 editor.pending_cmd.clear();
                 should_redraw = true;
-            } else if let Some(action) = editor.keymap.get_normal_action(&combo) {
+            } else if !pending_sequence
+                && let Some(action) = editor.keymap.get_normal_action(&combo)
+            {
                 match action {
                     Action::SetVisualMode => {
                         normal_action = if current_mode == Mode::Visual {
@@ -563,6 +576,13 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                                 "set" if command_parts.len() > 1 => match command_parts[1] {
                                     "wrap" => editor.wrap = true,
                                     "nowrap" => editor.wrap = false,
+                                    "treesitter" | "ts" => {
+                                        editor.set_tree_sitter_enabled(true);
+                                        should_sync = true;
+                                    }
+                                    "notreesitter" | "nots" => {
+                                        editor.set_tree_sitter_enabled(false);
+                                    }
                                     _ if command_parts[1].starts_with("nu") => {
                                         editor.show_line_numbers = true;
                                     }
@@ -650,4 +670,34 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
     }
 
     HandleEvent::NoRedraw
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::KeyEvent;
+
+    #[test]
+    fn pending_sequences_take_priority_over_single_key_actions() {
+        let mut editor = Editor::new(Vec::new()).unwrap();
+
+        handle_event(
+            &mut editor,
+            Event::Key(KeyEvent::new(KeyCode::Char(']'), KeyModifiers::empty())),
+            20,
+        );
+        assert_eq!(editor.pending_cmd, "]");
+
+        handle_event(
+            &mut editor,
+            Event::Key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::empty())),
+            20,
+        );
+
+        assert!(editor.pending_cmd.is_empty());
+        assert_eq!(
+            editor.buffer_manager.active().doc.current_mode(),
+            Mode::Normal
+        );
+    }
 }
