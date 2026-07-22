@@ -54,12 +54,16 @@ pub fn apply_context(action: Action, select: bool, count: u32) -> Action {
         },
         Action::YankCurrentLine { .. } => Action::YankCurrentLine { count },
         Action::Paste { .. } => Action::Paste { count },
-        Action::MoveToNextFunction { .. } => Action::MoveToNextFunction { count },
-        Action::MoveToPreviousFunction { .. } => Action::MoveToPreviousFunction { count },
-        Action::MoveToNextClass { .. } => Action::MoveToNextClass { count },
-        Action::MoveToPreviousClass { .. } => Action::MoveToPreviousClass { count },
-        Action::MoveToNextArgument { .. } => Action::MoveToNextArgument { count },
-        Action::MoveToPreviousArgument { .. } => Action::MoveToPreviousArgument { count },
+        Action::MoveToNextFunction { .. } => Action::MoveToNextFunction { select, count },
+        Action::MoveToPreviousFunction { .. } => Action::MoveToPreviousFunction { select, count },
+        Action::MoveToNextBlock { .. } => Action::MoveToNextBlock { select, count },
+        Action::MoveToPreviousBlock { .. } => Action::MoveToPreviousBlock { select, count },
+        Action::MoveToBlockStart { .. } => Action::MoveToBlockStart { select, count },
+        Action::MoveToBlockEnd { .. } => Action::MoveToBlockEnd { select, count },
+        Action::MoveToNextClass { .. } => Action::MoveToNextClass { select, count },
+        Action::MoveToPreviousClass { .. } => Action::MoveToPreviousClass { select, count },
+        Action::MoveToNextArgument { .. } => Action::MoveToNextArgument { select, count },
+        Action::MoveToPreviousArgument { .. } => Action::MoveToPreviousArgument { select, count },
         Action::Undo { .. } => Action::Undo { count },
         Action::Redo { .. } => Action::Redo { count },
         Action::SetInsertModeMotion { motion } => Action::SetInsertModeMotion {
@@ -228,6 +232,27 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                     | Action::MoveToStartOfLineNonSpace { .. }
                     | Action::MoveToPreviousParagraph { .. }
                     | Action::MoveToNextParagraph { .. }
+                    | Action::MoveToPreviousWord { .. }
+                    | Action::MoveToNextWord { .. }
+                    | Action::MoveToPreviousWordEnd { .. }
+                    | Action::MoveToNextWordEnd { .. }
+                    | Action::MoveToStartOfDocument { .. }
+                    | Action::MoveToEndOfDocument { .. }
+                    | Action::MoveToLine { .. }
+                    | Action::MoveToPreviousCharacter { .. }
+                    | Action::MoveToNextCharacter { .. }
+                    | Action::MoveToPreviousMatch { .. }
+                    | Action::MoveToNextMatch { .. }
+                    | Action::MoveToNextFunction { .. }
+                    | Action::MoveToPreviousFunction { .. }
+                    | Action::MoveToNextClass { .. }
+                    | Action::MoveToPreviousClass { .. }
+                    | Action::MoveToNextArgument { .. }
+                    | Action::MoveToPreviousArgument { .. }
+                    | Action::MoveToNextBlock { .. }
+                    | Action::MoveToPreviousBlock { .. }
+                    | Action::MoveToBlockStart { .. }
+                    | Action::MoveToBlockEnd { .. }
             );
             let is_char_motion = matches!(combo.code, KeyCode::Char(_));
             let is_insert_or_command = editor.mode == Mode::Insert || editor.mode == Mode::Command;
@@ -289,56 +314,92 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
             } else if !pending_sequence
                 && let Some(action) = editor.keymap.get_normal_action(&combo)
             {
-                match action {
-                    Action::SetVisualMode => {
-                        normal_action = if current_mode == Mode::Visual {
-                            Action::SetNormalMode
-                        } else {
-                            Action::SetVisualMode
-                        };
-                    }
-                    Action::SetVisualLineMode => {
-                        normal_action = if current_mode == Mode::VisualLine {
-                            Action::SetNormalMode
-                        } else {
-                            Action::SetVisualLineMode
-                        };
-                    }
-                    Action::SetVisualBlockMode => {
-                        normal_action = if current_mode == Mode::VisualBlock {
-                            Action::SetNormalMode
-                        } else {
-                            Action::SetVisualBlockMode
-                        };
-                    }
-                    other_action => {
-                        let is_mode_changing = matches!(
-                            other_action,
-                            Action::SetInsertMode
-                                | Action::SetInsertModeMotion { .. }
-                                | Action::SetCommandMode { .. }
-                        );
-                        if !(is_mode_changing && current_mode != Mode::Normal) {
-                            let resolved = apply_context(other_action, select, count);
-                            normal_action = match resolved {
-                                Action::MoveToNextMatch { .. }
-                                    if !editor.search_text.is_empty() =>
-                                {
-                                    Action::MoveToNextMatch {
-                                        search: editor.search_text.clone(),
-                                        pattern: editor.pattern,
-                                    }
-                                }
-                                Action::MoveToPreviousMatch { .. }
-                                    if !editor.search_text.is_empty() =>
-                                {
-                                    Action::MoveToPreviousMatch {
-                                        search: editor.search_text.clone(),
-                                        pattern: editor.pattern,
-                                    }
-                                }
-                                _ => resolved,
+                let is_motion = matches!(
+                    action,
+                    Action::MoveLeft { .. }
+                        | Action::MoveRight { .. }
+                        | Action::MoveUp { .. }
+                        | Action::MoveDown { .. }
+                        | Action::MoveToStartOfLine { .. }
+                        | Action::MoveToEndOfLine { .. }
+                        | Action::MoveToStartOfLineNonSpace { .. }
+                        | Action::MoveToPreviousParagraph { .. }
+                        | Action::MoveToNextParagraph { .. }
+                        | Action::MoveToPreviousWord { .. }
+                        | Action::MoveToNextWord { .. }
+                        | Action::MoveToPreviousWordEnd { .. }
+                        | Action::MoveToNextWordEnd { .. }
+                        | Action::MoveToStartOfDocument { .. }
+                        | Action::MoveToEndOfDocument { .. }
+                        | Action::MoveToLine { .. }
+                        | Action::MoveToPreviousCharacter { .. }
+                        | Action::MoveToNextCharacter { .. }
+                        | Action::MoveToPreviousMatch { .. }
+                        | Action::MoveToNextMatch { .. }
+                        | Action::MoveToNextFunction { .. }
+                        | Action::MoveToPreviousFunction { .. }
+                        | Action::MoveToNextClass { .. }
+                        | Action::MoveToPreviousClass { .. }
+                        | Action::MoveToNextArgument { .. }
+                        | Action::MoveToPreviousArgument { .. }
+                        | Action::MoveToNextBlock { .. }
+                        | Action::MoveToPreviousBlock { .. }
+                        | Action::MoveToBlockStart { .. }
+                        | Action::MoveToBlockEnd { .. }
+                );
+
+                if !is_motion {
+                    match action {
+                        Action::SetVisualMode => {
+                            normal_action = if current_mode == Mode::Visual {
+                                Action::SetNormalMode
+                            } else {
+                                Action::SetVisualMode
                             };
+                        }
+                        Action::SetVisualLineMode => {
+                            normal_action = if current_mode == Mode::VisualLine {
+                                Action::SetNormalMode
+                            } else {
+                                Action::SetVisualLineMode
+                            };
+                        }
+                        Action::SetVisualBlockMode => {
+                            normal_action = if current_mode == Mode::VisualBlock {
+                                Action::SetNormalMode
+                            } else {
+                                Action::SetVisualBlockMode
+                            };
+                        }
+                        other_action => {
+                            let is_mode_changing = matches!(
+                                other_action,
+                                Action::SetInsertMode
+                                    | Action::SetInsertModeMotion { .. }
+                                    | Action::SetCommandMode { .. }
+                            );
+                            if !(is_mode_changing && current_mode != Mode::Normal) {
+                                let resolved = apply_context(other_action, select, count);
+                                normal_action = match resolved {
+                                    Action::MoveToNextMatch { .. }
+                                        if !editor.search_text.is_empty() =>
+                                    {
+                                        Action::MoveToNextMatch {
+                                            search: editor.search_text.clone(),
+                                            pattern: editor.pattern,
+                                        }
+                                    }
+                                    Action::MoveToPreviousMatch { .. }
+                                        if !editor.search_text.is_empty() =>
+                                    {
+                                        Action::MoveToPreviousMatch {
+                                            search: editor.search_text.clone(),
+                                            pattern: editor.pattern,
+                                        }
+                                    }
+                                    _ => resolved,
+                                };
+                            }
                         }
                     }
                 }
@@ -403,6 +464,10 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
         } else {
             Action::NoOp
         };
+
+        if normal_action != Action::NoOp {
+            move_action = Action::NoOp;
+        }
 
         //----------------------------
         // handle Action here
@@ -676,6 +741,7 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
 mod tests {
     use super::*;
     use crossterm::event::KeyEvent;
+    use text::ToPoint;
 
     #[test]
     fn pending_sequences_take_priority_over_single_key_actions() {
@@ -699,5 +765,64 @@ mod tests {
             editor.buffer_manager.active().doc.current_mode(),
             Mode::Normal
         );
+    }
+
+    #[test]
+    fn pending_sequences_take_priority_over_single_key_actions_in_visual_mode() {
+        let mut editor = Editor::new(Vec::new()).unwrap();
+        editor
+            .buffer_manager
+            .active_mut()
+            .doc
+            .enter_mode(Mode::Visual);
+
+        handle_event(
+            &mut editor,
+            Event::Key(KeyEvent::new(KeyCode::Char(']'), KeyModifiers::empty())),
+            20,
+        );
+        assert_eq!(editor.pending_cmd, "]");
+
+        handle_event(
+            &mut editor,
+            Event::Key(KeyEvent::new(KeyCode::Char('{'), KeyModifiers::empty())),
+            20,
+        );
+
+        assert!(editor.pending_cmd.is_empty());
+    }
+
+    #[test]
+    fn test_pageup_pagedown_movement_amount() {
+        let mut editor = Editor::new(Vec::new()).unwrap();
+        editor.apply_active_action(&Action::InsertText(
+            "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10"
+                .into(),
+        ));
+
+        let start_point = editor
+            .buffer_manager
+            .active()
+            .doc
+            .selection()
+            .head()
+            .to_point(editor.buffer_manager.active().doc.buffer());
+        assert_eq!(start_point.row, 9); // cursor starts at line 10 (row 9)
+
+        handle_event(
+            &mut editor,
+            Event::Key(KeyEvent::new(KeyCode::PageUp, KeyModifiers::empty())),
+            10, // visible_rows
+        );
+
+        let end_point = editor
+            .buffer_manager
+            .active()
+            .doc
+            .selection()
+            .head()
+            .to_point(editor.buffer_manager.active().doc.buffer());
+        // visible_rows >> 1 = 5. So row should be 9 - 5 = 4.
+        assert_eq!(end_point.row, 4);
     }
 }

@@ -193,7 +193,7 @@ impl Highlights {
 mod tests {
     use super::*;
     use clock::ReplicaId;
-    use text::BufferId;
+    use text::{Buffer, BufferId};
 
     fn buffer(text: &str) -> Buffer {
         Buffer::new(ReplicaId::LOCAL, BufferId::new(1).unwrap(), text.to_owned())

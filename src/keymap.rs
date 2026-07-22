@@ -340,6 +340,12 @@ impl Default for Keymap {
                 kind: SelectInKind::Word,
             },
         );
+        pending_commands.insert("i{".to_string(), Action::SelectInPair { kind: '{' });
+        pending_commands.insert("i}".to_string(), Action::SelectInPair { kind: '{' });
+        pending_commands.insert("i[".to_string(), Action::SelectInPair { kind: '[' });
+        pending_commands.insert("i]".to_string(), Action::SelectInPair { kind: '[' });
+        pending_commands.insert("i(".to_string(), Action::SelectInPair { kind: '(' });
+        pending_commands.insert("i)".to_string(), Action::SelectInPair { kind: '(' });
         pending_commands.insert(
             "aw".to_string(),
             Action::SelectAround {
@@ -354,17 +360,75 @@ impl Default for Keymap {
             "G".to_string(),
             Action::MoveToEndOfDocument { select: false },
         );
-        pending_commands.insert("]f".to_string(), Action::MoveToNextFunction { count: 1 });
+        pending_commands.insert(
+            "]f".to_string(),
+            Action::MoveToNextFunction {
+                select: false,
+                count: 1,
+            },
+        );
         pending_commands.insert(
             "[f".to_string(),
-            Action::MoveToPreviousFunction { count: 1 },
+            Action::MoveToPreviousFunction {
+                select: false,
+                count: 1,
+            },
         );
-        pending_commands.insert("]c".to_string(), Action::MoveToNextClass { count: 1 });
-        pending_commands.insert("[c".to_string(), Action::MoveToPreviousClass { count: 1 });
-        pending_commands.insert("]a".to_string(), Action::MoveToNextArgument { count: 1 });
+        pending_commands.insert(
+            "]n".to_string(),
+            Action::MoveToNextBlock {
+                select: false,
+                count: 1,
+            },
+        );
+        pending_commands.insert(
+            "[n".to_string(),
+            Action::MoveToPreviousBlock {
+                select: false,
+                count: 1,
+            },
+        );
+        pending_commands.insert(
+            "[[".to_string(),
+            Action::MoveToBlockStart {
+                select: false,
+                count: 1,
+            },
+        );
+        pending_commands.insert(
+            "]]".to_string(),
+            Action::MoveToBlockEnd {
+                select: false,
+                count: 1,
+            },
+        );
+        pending_commands.insert(
+            "]c".to_string(),
+            Action::MoveToNextClass {
+                select: false,
+                count: 1,
+            },
+        );
+        pending_commands.insert(
+            "[c".to_string(),
+            Action::MoveToPreviousClass {
+                select: false,
+                count: 1,
+            },
+        );
+        pending_commands.insert(
+            "]a".to_string(),
+            Action::MoveToNextArgument {
+                select: false,
+                count: 1,
+            },
+        );
         pending_commands.insert(
             "[a".to_string(),
-            Action::MoveToPreviousArgument { count: 1 },
+            Action::MoveToPreviousArgument {
+                select: false,
+                count: 1,
+            },
         );
         pending_commands.insert("yy".to_string(), Action::YankCurrentLine { count: 1 });
         pending_commands.insert(

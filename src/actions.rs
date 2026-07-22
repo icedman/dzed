@@ -1,4 +1,3 @@
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum Mode {
     Normal,
@@ -13,9 +12,6 @@ pub enum Mode {
 pub enum SelectInKind {
     Word,
     Paragraph,
-    Curly,
-    Parenthesis,
-    Square,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -123,21 +119,43 @@ pub enum Action {
         pattern: bool,
     },
     MoveToNextFunction {
+        select: bool,
         count: u32,
     },
     MoveToPreviousFunction {
+        select: bool,
+        count: u32,
+    },
+    MoveToNextBlock {
+        select: bool,
+        count: u32,
+    },
+    MoveToPreviousBlock {
+        select: bool,
+        count: u32,
+    },
+    MoveToBlockStart {
+        select: bool,
+        count: u32,
+    },
+    MoveToBlockEnd {
+        select: bool,
         count: u32,
     },
     MoveToNextClass {
+        select: bool,
         count: u32,
     },
     MoveToPreviousClass {
+        select: bool,
         count: u32,
     },
     MoveToNextArgument {
+        select: bool,
         count: u32,
     },
     MoveToPreviousArgument {
+        select: bool,
         count: u32,
     },
 
@@ -200,6 +218,12 @@ pub enum Action {
     },
     SelectAround {
         kind: SelectInKind,
+    },
+    SelectInPair {
+        kind: char,
+    },
+    SelectAroundPair {
+        kind: char,
     },
     SelectSimilar,
 

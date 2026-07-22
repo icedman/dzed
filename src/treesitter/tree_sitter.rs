@@ -381,6 +381,32 @@ impl SyntaxTree {
             .cloned()
     }
 
+    pub fn block_start_at_byte(&self, byte: usize) -> Option<SyntaxNode> {
+        let mut node = self.descendant_at_byte(byte, true)?;
+        loop {
+            if Self::is_block_node(node) {
+                let info = Self::node_info(node);
+                if info.byte_range.start < byte {
+                    return Some(info);
+                }
+            }
+            node = node.parent()?;
+        }
+    }
+
+    pub fn block_end_at_byte(&self, byte: usize) -> Option<SyntaxNode> {
+        let mut node = self.descendant_at_byte(byte, true)?;
+        loop {
+            if Self::is_block_node(node) {
+                let info = Self::node_info(node);
+                if info.byte_range.end > byte + 1 {
+                    return Some(info);
+                }
+            }
+            node = node.parent()?;
+        }
+    }
+
     pub fn next_function_after_byte(&self, byte: usize) -> Option<SyntaxNode> {
         self.next_node_by_kinds(byte, FUNCTION_KINDS)
     }

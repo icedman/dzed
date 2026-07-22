@@ -67,6 +67,26 @@ pub trait Motions {
         search: &Regex,
         buffer: &Buffer,
     ) -> Option<Selection<Anchor>>;
+
+    fn move_to_syntax_target<F>(
+        &self,
+        anchor: bool,
+        syntax_tree: &crate::treesitter::SyntaxTree,
+        buffer: &Buffer,
+        target: F,
+    ) -> Option<Selection<Anchor>>
+    where
+        F: Fn(&crate::treesitter::SyntaxTree, usize) -> Option<crate::treesitter::SyntaxNode>;
+
+    fn move_to_syntax_target_end<F>(
+        &self,
+        anchor: bool,
+        syntax_tree: &crate::treesitter::SyntaxTree,
+        buffer: &Buffer,
+        target: F,
+    ) -> Option<Selection<Anchor>>
+    where
+        F: Fn(&crate::treesitter::SyntaxTree, usize) -> Option<crate::treesitter::SyntaxNode>;
 }
 
 impl Motions for Selection<Anchor> {
@@ -686,6 +706,54 @@ impl Motions for Selection<Anchor> {
             });
         }
         return None;
+    }
+
+    fn move_to_syntax_target<F>(
+        &self,
+        anchor: bool,
+        syntax_tree: &crate::treesitter::SyntaxTree,
+        buffer: &Buffer,
+        target: F,
+    ) -> Option<Selection<Anchor>>
+    where
+        F: Fn(&crate::treesitter::SyntaxTree, usize) -> Option<crate::treesitter::SyntaxNode>,
+    {
+        let byte = buffer.offset_for_anchor(&self.head());
+        let Some(node) = target(syntax_tree, byte) else {
+            return None;
+        };
+        let head = buffer.anchor_at(node.byte_range.start, Bias::Left);
+        Some(Selection {
+            id: self.id,
+            start: head,
+            end: if anchor { self.tail() } else { head },
+            reversed: false,
+            goal: SelectionGoal::None,
+        })
+    }
+
+    fn move_to_syntax_target_end<F>(
+        &self,
+        anchor: bool,
+        syntax_tree: &crate::treesitter::SyntaxTree,
+        buffer: &Buffer,
+        target: F,
+    ) -> Option<Selection<Anchor>>
+    where
+        F: Fn(&crate::treesitter::SyntaxTree, usize) -> Option<crate::treesitter::SyntaxNode>,
+    {
+        let byte = buffer.offset_for_anchor(&self.head());
+        let Some(node) = target(syntax_tree, byte) else {
+            return None;
+        };
+        let head = buffer.anchor_at(node.byte_range.end.saturating_sub(1), Bias::Right);
+        Some(Selection {
+            id: self.id,
+            start: head,
+            end: if anchor { self.tail() } else { head },
+            reversed: false,
+            goal: SelectionGoal::None,
+        })
     }
 }
 
@@ -1313,6 +1381,62 @@ impl SelectionCollection {
                         cur = cur.move_to_next_line(false, buffer);
                     }
                 }
+            }
+        }
+    }
+
+    pub fn move_to_syntax_target<F>(
+        &mut self,
+        anchor: bool,
+        count: u32,
+        syntax_tree: &crate::treesitter::SyntaxTree,
+        buffer: &Buffer,
+        target: F,
+    ) where
+        F: Fn(&crate::treesitter::SyntaxTree, usize) -> Option<crate::treesitter::SyntaxNode>,
+    {
+        for _ in 0..count {
+            let cursors = self.selections.clone();
+            let mut moved = false;
+            for cursor in cursors.iter() {
+                if let Some(next) =
+                    cursor.move_to_syntax_target(anchor, syntax_tree, buffer, &target)
+                {
+                    self.point = next.head().to_point(buffer);
+                    self.update(buffer, &next);
+                    moved = true;
+                }
+            }
+            if !moved {
+                break;
+            }
+        }
+    }
+
+    pub fn move_to_syntax_target_end<F>(
+        &mut self,
+        anchor: bool,
+        count: u32,
+        syntax_tree: &crate::treesitter::SyntaxTree,
+        buffer: &Buffer,
+        target: F,
+    ) where
+        F: Fn(&crate::treesitter::SyntaxTree, usize) -> Option<crate::treesitter::SyntaxNode>,
+    {
+        for _ in 0..count {
+            let cursors = self.selections.clone();
+            let mut moved = false;
+            for cursor in cursors.iter() {
+                if let Some(next) =
+                    cursor.move_to_syntax_target_end(anchor, syntax_tree, buffer, &target)
+                {
+                    self.point = next.head().to_point(buffer);
+                    self.update(buffer, &next);
+                    moved = true;
+                }
+            }
+            if !moved {
+                break;
             }
         }
     }

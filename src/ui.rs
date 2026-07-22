@@ -394,9 +394,7 @@ pub fn update_cursor_position(
         .unwrap();
     }
 
-    if editor.mode == Mode::Insert {
-        execute!(stdout, crossterm::cursor::Show).unwrap();
-    }
+    execute!(stdout, crossterm::cursor::Show).unwrap();
     Ok(())
 }
 
