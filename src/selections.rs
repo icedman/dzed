@@ -46,6 +46,8 @@ pub trait Motions {
     ) -> Selection<Anchor>;
 
     // Word motions
+    fn move_to_word(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor>;
+    fn move_to_word_end(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor>;
     fn move_to_previous_word(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor>;
     fn move_to_next_word(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor>;
     fn move_to_next_word_end(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor>;
@@ -116,6 +118,7 @@ impl Motions for Selection<Anchor> {
         let mut offset = buffer.offset_for_anchor(&buffer.anchor_at(&point, Bias::Left));
         offset = buffer.clip_offset(offset, Bias::Left);
         let new_head = buffer.anchor_at(offset, Bias::Left);
+
         Selection {
             id: self.id,
             start: new_head,
@@ -338,6 +341,48 @@ impl Motions for Selection<Anchor> {
         }
         // not found: return original selection unchanged
         self.clone()
+    }
+
+    fn move_to_word(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor> {
+        use crate::search::TextSearch;
+        let mut point = self.head().to_point(buffer);
+        let text = buffer.row_text(point.row);
+        let previous_column = point.column;
+        if let Some(word) = text.as_str().find_word(point.column as usize) {
+            point.column = word.0 as u32;
+        } else {
+            point.column = 0;
+        }
+        let offset = point.to_offset(buffer);
+        let new_head = buffer.anchor_at(offset, Bias::Left);
+        Selection {
+            id: self.id,
+            start: new_head,
+            end: if anchor { self.tail() } else { new_head },
+            reversed: true,
+            goal: SelectionGoal::None,
+        }
+    }
+
+    fn move_to_word_end(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor> {
+        use crate::search::TextSearch;
+        let mut point = self.head().to_point(buffer);
+        let text = buffer.row_text(point.row);
+        if let Some(word) = text.as_str().find_word(point.column as usize) {
+            point.column = (word.1 - 1) as u32;
+        } else {
+            point.column = buffer.line_len(point.row);
+        }
+        let mut offset = point.to_offset(buffer);
+        offset = buffer.clip_offset(offset, Bias::Left);
+        let new_head = buffer.anchor_at(offset, Bias::Left);
+        Selection {
+            id: self.id,
+            end: new_head,
+            start: if anchor { self.tail() } else { new_head },
+            reversed: false,
+            goal: SelectionGoal::None,
+        }
     }
 
     fn move_to_previous_word(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor> {
@@ -1043,6 +1088,26 @@ impl SelectionCollection {
                 buffer,
                 &cursor.clone().move_to_end_of_document(anchor, buffer),
             );
+        }
+    }
+
+    pub fn move_to_word(&mut self, anchor: bool, count: u32, buffer: &Buffer) {
+        for _ in 0..count {
+            let cursors = self.selections.clone();
+            for cursor in cursors.iter() {
+                let next = cursor.clone().move_to_word(anchor, buffer);
+                self.update(buffer, &next);
+            }
+        }
+    }
+
+    pub fn move_to_word_end(&mut self, anchor: bool, count: u32, buffer: &Buffer) {
+        for _ in 0..count {
+            let cursors = self.selections.clone();
+            for cursor in cursors.iter() {
+                let next = cursor.clone().move_to_word_end(anchor, buffer);
+                self.update(buffer, &next);
+            }
         }
     }
 

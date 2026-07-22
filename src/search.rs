@@ -14,6 +14,7 @@ pub trait TextSearch {
     fn find_string(&self, text: &str) -> Vec<(usize, usize, &str)>;
     fn find_pattern(&self, regex: &Regex) -> Vec<(usize, usize, &str)>;
     fn find_words(&self) -> Vec<(usize, usize, &str)>;
+    fn find_word(&self, position: usize) -> Option<(usize, usize, &str)>;
     fn find_next_word(&self, position: usize) -> Option<(usize, usize, &str)>;
     fn find_previous_word(&self, position: usize) -> Option<(usize, usize, &str)>;
     fn find_next_word_end(&self, position: usize) -> Option<(usize, usize, &str)>;
@@ -96,6 +97,12 @@ impl TextSearch for str {
         }
 
         words
+    }
+    
+    fn find_word(&self, position: usize) -> Option<(usize, usize, &str)> {
+        self.find_words()
+            .into_iter()
+            .find(|(start, len, _)| *start <= position && position < *start + *len)
     }
 
     fn find_next_word(&self, position: usize) -> Option<(usize, usize, &str)> {

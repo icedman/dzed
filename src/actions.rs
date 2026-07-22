@@ -170,6 +170,7 @@ pub enum Action {
     SelectAround {
         kind: SelectInKind,
     },
+    SelectSimilar,
 
     ClearCursors,
 

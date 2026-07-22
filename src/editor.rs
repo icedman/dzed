@@ -117,7 +117,8 @@ impl Editor {
         }
 
         let cmd = Document::new("")?;
-        let theme = Theme::new("base16-ocean.dark");
+        // let theme = Theme::new("base16-ocean.dark");
+        let theme = Theme::new("test/themes/Dracula.tmTheme");
         let bg_worker = crate::background::BackgroundWorker::new();
 
         Ok(Self {
@@ -135,7 +136,7 @@ impl Editor {
             mode: Mode::Normal,
             theme,
             wrap: false,
-            syntax: false,
+            syntax: true,
             show_line_numbers: false,
             bg_worker,
             clipboard: crate::clipboard::Clipboard::new(),
