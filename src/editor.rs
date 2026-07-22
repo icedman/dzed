@@ -101,6 +101,7 @@ pub struct Editor {
     pub syntax: bool,
     pub show_line_numbers: bool,
     pub bg_worker: crate::background::BackgroundWorker,
+    pub clipboard: crate::clipboard::Clipboard,
     pub keymap: crate::keymap::Keymap,
 }
 
@@ -137,6 +138,7 @@ impl Editor {
             syntax: false,
             show_line_numbers: false,
             bg_worker,
+            clipboard: crate::clipboard::Clipboard::new(),
             keymap: crate::keymap::Keymap::default(),
         })
     }

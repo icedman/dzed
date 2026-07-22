@@ -1,5 +1,6 @@
 mod actions;
 mod background;
+mod clipboard;
 mod display;
 mod document;
 mod editor;
