@@ -48,6 +48,12 @@ pub fn apply_context(action: Action, select: bool, count: u32) -> Action {
             motion: Box::new(apply_context(*motion, true, 1)),
         },
         Action::ChangeCurrentLine { .. } => Action::ChangeCurrentLine { count },
+        Action::YankMotion { motion, .. } => Action::YankMotion {
+            count,
+            motion: Box::new(apply_context(*motion, true, 1)),
+        },
+        Action::YankCurrentLine { .. } => Action::YankCurrentLine { count },
+        Action::Paste { .. } => Action::Paste { count },
         Action::Undo { .. } => Action::Undo { count },
         Action::Redo { .. } => Action::Redo { count },
         Action::SetInsertModeMotion { motion } => Action::SetInsertModeMotion {
@@ -145,10 +151,7 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
     // Bracketed paste
     if let Event::Paste(content) = &event {
         if editor.mode == Mode::Insert {
-            let active_buffer = editor.buffer_manager.active_mut();
-            active_buffer
-                .doc
-                .apply_action(&Action::InsertText(content.clone()));
+            editor.apply_active_action(&Action::InsertText(content.clone()));
             return HandleEvent::RedrawAndSync;
         }
         return HandleEvent::NoRedraw;
@@ -172,16 +175,17 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                 should_redraw = true;
                 let active_buffer = editor.buffer_manager.active_mut();
 
+                let clear_cursors =
+                    current_mode != Mode::Normal && active_buffer.doc.has_selection();
                 if current_mode == Mode::Normal {
                     active_buffer.doc.clear_selections();
-                } else {
-                    if active_buffer.doc.has_selection() {
-                        active_buffer.doc.apply_action(&Action::ClearCursors);
-                    }
                 }
 
                 active_buffer.doc.enter_mode(Mode::Normal);
                 current_mode = Mode::Normal;
+                if clear_cursors {
+                    editor.apply_active_action(&Action::ClearCursors);
+                }
             }
             (KeyCode::Char('q'), KeyModifiers::CONTROL) => return HandleEvent::Exit,
             _ => {}
@@ -418,36 +422,31 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                             active_buffer.doc.enter_mode(Command);
                         }
                         _ => {
-                            active_buffer.doc.apply_action(&normal_action);
+                            editor.apply_active_action(&normal_action);
                             editor.pending_cmd.clear();
                         }
                     }
                 } else if move_action != Action::NoOp {
-                    let active_buffer = editor.buffer_manager.active_mut();
-                    active_buffer.doc.apply_action(&move_action);
+                    editor.apply_active_action(&move_action);
                     editor.pending_cmd.clear();
                 }
             }
             Mode::Visual | Mode::VisualLine | Mode::VisualBlock => {
                 if move_action != Action::NoOp {
-                    let active_buffer = editor.buffer_manager.active_mut();
-                    active_buffer.doc.apply_action(&move_action);
-                    active_buffer.doc.sync();
+                    editor.apply_active_action(&move_action);
+                    editor.buffer_manager.active_mut().doc.sync();
                     editor.pending_cmd.clear();
                 } else if normal_action != Action::NoOp {
-                    let active_buffer = editor.buffer_manager.active_mut();
-                    active_buffer.doc.apply_action(&normal_action);
+                    editor.apply_active_action(&normal_action);
                     editor.pending_cmd.clear();
                 }
             }
             Mode::Insert => {
                 editor.pending_cmd.clear();
                 if insert_action != Action::NoOp {
-                    let active_buffer = editor.buffer_manager.active_mut();
-                    active_buffer.doc.apply_action(&insert_action);
+                    editor.apply_active_action(&insert_action);
                 } else if move_action != Action::NoOp {
-                    let active_buffer = editor.buffer_manager.active_mut();
-                    active_buffer.doc.apply_action(&move_action);
+                    editor.apply_active_action(&move_action);
                 }
             }
             Mode::Command => {
@@ -460,9 +459,9 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                                     .command_history
                                     .len()
                                     .saturating_sub(editor.history_idx + 1);
-                                if let Some(h_cmd) = editor.command_history.get(h_idx) {
+                                if let Some(h_cmd) = editor.command_history.get(h_idx).cloned() {
                                     editor.cmd = Document::new("").unwrap();
-                                    editor.cmd.apply_action(&Action::InsertText(h_cmd.clone()));
+                                    editor.apply_command_action(&Action::InsertText(h_cmd));
                                 }
                                 if editor.history_idx < editor.command_history.len() {
                                     editor.history_idx += 1;
@@ -479,8 +478,8 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                                     .command_history
                                     .len()
                                     .saturating_sub(editor.history_idx);
-                                if let Some(h_cmd) = editor.command_history.get(h_idx) {
-                                    editor.cmd.apply_action(&Action::InsertText(h_cmd.clone()));
+                                if let Some(h_cmd) = editor.command_history.get(h_idx).cloned() {
+                                    editor.apply_command_action(&Action::InsertText(h_cmd));
                                 }
                             }
                         }
@@ -497,9 +496,9 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                                     .search_history
                                     .len()
                                     .saturating_sub(editor.history_idx + 1);
-                                if let Some(h_cmd) = editor.search_history.get(h_idx) {
+                                if let Some(h_cmd) = editor.search_history.get(h_idx).cloned() {
                                     editor.cmd = Document::new("").unwrap();
-                                    editor.cmd.apply_action(&Action::InsertText(h_cmd.clone()));
+                                    editor.apply_command_action(&Action::InsertText(h_cmd));
                                 }
                                 if editor.history_idx < editor.search_history.len() {
                                     editor.history_idx += 1;
@@ -516,8 +515,8 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                                     .search_history
                                     .len()
                                     .saturating_sub(editor.history_idx);
-                                if let Some(h_cmd) = editor.search_history.get(h_idx) {
-                                    editor.cmd.apply_action(&Action::InsertText(h_cmd.clone()));
+                                if let Some(h_cmd) = editor.search_history.get(h_idx).cloned() {
+                                    editor.apply_command_action(&Action::InsertText(h_cmd));
                                 }
                             }
                         }
@@ -534,8 +533,7 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                             editor.search_text = command_text.clone();
                             editor.search_history.push(command_text);
 
-                            let active_buffer = editor.buffer_manager.active_mut();
-                            active_buffer.doc.apply_action(&Action::MoveToNextMatch {
+                            editor.apply_active_action(&Action::MoveToNextMatch {
                                 search: editor.search_text.clone(),
                                 pattern: editor.pattern,
                             });
@@ -591,8 +589,7 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                                 }
                                 cmd if cmd.parse::<u32>().is_ok() => {
                                     let line_number = cmd.parse::<u32>().unwrap();
-                                    let active_buffer = editor.buffer_manager.active_mut();
-                                    active_buffer.doc.apply_action(&Action::MoveToLine {
+                                    editor.apply_active_action(&Action::MoveToLine {
                                         select: false,
                                         line: line_number,
                                     });
@@ -618,13 +615,13 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                     }
                     should_redraw = true;
                 } else if insert_action != Action::NoOp {
-                    editor.cmd.apply_action(&insert_action);
+                    editor.apply_command_action(&insert_action);
                     update_search = true;
                 } else if let (KeyCode::Backspace, _) = (key_event.code, key_event.modifiers) {
-                    editor.cmd.apply_action(&Action::Backspace);
+                    editor.apply_command_action(&Action::Backspace { count: 1 });
                     update_search = true;
                 } else if let (KeyCode::Left, _) = (key_event.code, key_event.modifiers) {
-                    editor.cmd.apply_action(&Action::Backspace);
+                    editor.apply_command_action(&Action::Backspace { count: 1 });
                 }
 
                 if current_mode == Mode::Command && update_search && editor.search {

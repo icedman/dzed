@@ -135,7 +135,9 @@ pub enum Action {
     DeleteText {
         count: usize,
     },
-    Backspace,
+    Backspace {
+        count: u32,
+    },
     Delete {
         count: u32,
     },
@@ -154,6 +156,18 @@ pub enum Action {
     ChangeCurrentLine {
         count: u32,
     },
+
+    YankMotion {
+        count: u32,
+        motion: Box<Action>,
+    },
+    YankCurrentLine {
+        count: u32,
+    },
+    Paste {
+        count: u32,
+    },
+
     Indent,
     Unindent,
 

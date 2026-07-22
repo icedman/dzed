@@ -6,17 +6,9 @@ use std::{cmp::Ordering, ops::Range};
 use sum_tree::Bias;
 use text::{Anchor, Buffer, Selection, SelectionGoal, ToOffset, ToPoint};
 
-pub fn offset_to_column(text: &String, offset: usize) -> u32 {
-    let mut cc = 0;
-    for (i, c) in text.chars().enumerate() {
-        if cc == offset {
-            return i as u32;
-        }
-        cc += c.len_utf8();
-    }
-    0
-}
 pub trait Motions {
+    fn text(&self, buffer: &Buffer) -> String;
+
     fn move_to_start_of_document(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor>;
     fn move_to_end_of_document(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor>;
 
@@ -72,6 +64,24 @@ pub trait Motions {
 }
 
 impl Motions for Selection<Anchor> {
+    fn text(&self, buffer: &Buffer) -> String {
+        let head = self.head();
+        let tail = self.tail();
+        if head.cmp(&tail, buffer) == Ordering::Equal {
+            return String::new();
+        }
+
+        let (start, end) = if head.cmp(&tail, buffer) == Ordering::Less {
+            (head.bias_left(buffer), tail.bias_right(buffer))
+        } else {
+            (tail.bias_left(buffer), head.bias_right(buffer))
+        };
+        let start = buffer.offset_for_anchor(&start);
+        let end = buffer.clip_offset(buffer.offset_for_anchor(&end) + 1, Bias::Right);
+
+        buffer.as_rope().chunks_in_range(start..end).collect()
+    }
+
     fn move_to_start_of_document(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor> {
         let point = Point { row: 0, column: 0 };
         let offset = point.to_offset(&buffer);
@@ -662,6 +672,15 @@ impl SelectionCollection {
         self.selections.last()
     }
 
+    pub fn text(&self, buffer: &Buffer) -> String {
+        self.selections
+            .iter()
+            .map(|selection| selection.text(buffer))
+            .filter(|text| !text.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
     pub fn rows_in_selection(&self, buffer: &Buffer) -> (u32, u32) {
         let mut start: u32 = buffer.row_count();
         let mut end: u32 = 0;
@@ -1237,5 +1256,49 @@ impl SelectionCollection {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clock::ReplicaId;
+    use text::BufferId;
+
+    fn selection(
+        buffer: &Buffer,
+        id: usize,
+        start: usize,
+        end: usize,
+        reversed: bool,
+    ) -> Selection<Anchor> {
+        Selection {
+            id,
+            start: buffer.anchor_at(start, Bias::Left),
+            end: buffer.anchor_at(end, Bias::Left),
+            reversed,
+            goal: SelectionGoal::None,
+        }
+    }
+
+    #[test]
+    fn selection_text_normalizes_direction_and_uses_inclusive_endpoints() {
+        let buffer = Buffer::new(ReplicaId::LOCAL, BufferId::new(1).unwrap(), "abcdef");
+
+        assert_eq!(selection(&buffer, 0, 1, 2, false).text(&buffer), "bc");
+        assert_eq!(selection(&buffer, 0, 1, 2, true).text(&buffer), "bc");
+        assert_eq!(selection(&buffer, 0, 2, 2, false).text(&buffer), "");
+    }
+
+    #[test]
+    fn collection_text_joins_non_empty_selections() {
+        let buffer = Buffer::new(ReplicaId::LOCAL, BufferId::new(1).unwrap(), "abcdef");
+        let mut selections = SelectionCollection::new();
+        selections.selections = vec![
+            selection(&buffer, 0, 0, 1, false),
+            selection(&buffer, 1, 3, 4, false),
+        ];
+
+        assert_eq!(selections.text(&buffer), "ab\nde");
     }
 }

@@ -98,7 +98,7 @@ impl TextSearch for str {
 
         words
     }
-    
+
     fn find_word(&self, position: usize) -> Option<(usize, usize, &str)> {
         self.find_words()
             .into_iter()

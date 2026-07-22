@@ -101,11 +101,26 @@ pub struct Editor {
     pub syntax: bool,
     pub show_line_numbers: bool,
     pub bg_worker: crate::background::BackgroundWorker,
-    pub clipboard: crate::clipboard::Clipboard,
+    pub clipboard: std::cell::RefCell<crate::clipboard::Clipboard>,
     pub keymap: crate::keymap::Keymap,
 }
 
 impl Editor {
+    pub fn apply_active_action(&mut self, action: &crate::actions::Action) {
+        let active_idx = self.buffer_manager.active_idx;
+        let mut active_buffer = self.buffer_manager.buffers.remove(active_idx);
+        active_buffer.doc.apply_action(action, self);
+        self.buffer_manager
+            .buffers
+            .insert(active_idx, active_buffer);
+    }
+
+    pub fn apply_command_action(&mut self, action: &crate::actions::Action) {
+        let mut command = std::mem::replace(&mut self.cmd, Document::new("").unwrap());
+        command.apply_action(action, self);
+        self.cmd = command;
+    }
+
     pub fn new(file_paths: Vec<String>) -> Result<Self, Box<dyn std::error::Error>> {
         let mut buffer_manager = BufferManager::new();
         for path in file_paths {
@@ -139,7 +154,7 @@ impl Editor {
             syntax: true,
             show_line_numbers: false,
             bg_worker,
-            clipboard: crate::clipboard::Clipboard::new(),
+            clipboard: std::cell::RefCell::new(crate::clipboard::Clipboard::new()),
             keymap: crate::keymap::Keymap::default(),
         })
     }

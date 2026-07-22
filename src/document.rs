@@ -1,5 +1,7 @@
 use crate::actions::Mode::Insert;
 use crate::actions::{Action, Mode, SelectInKind};
+use crate::clipboard::ClipboardKind;
+use crate::editor::Editor;
 use crate::selections::{Motions, SelectionCollection};
 
 use clock::ReplicaId;
@@ -107,34 +109,41 @@ impl Document {
     }
 
     pub fn select_in(&mut self, kind: &SelectInKind) {
-        self.selections
-            .move_to_word(false, 1, &self.buffer);
+        self.selections.move_to_word(false, 1, &self.buffer);
         self.selections.move_to_word_end(true, 1, &self.buffer);
     }
-    
+
     pub fn select_similar(&mut self) {
         if !self.has_selection() {
             self.select_in(&SelectInKind::Word);
         } else {
-            let cursor = self.selection(); 
-            if let Some(next_match) = cursor.clone().move_to_next_match("mod", &self.buffer) {
+            let cursor = self.selection();
+            let selected_text = cursor.text(&self.buffer);
+            if let Some(mut next_match) = cursor
+                .clone()
+                .move_to_next_match(selected_text.as_str(), &self.buffer)
+            {
                 let sel = self.add_selection();
                 self.selections.update(
                     &self.buffer,
                     &Selection {
                         id: sel.id,
-                        start: cursor.head() ,
+                        start: cursor.head(),
                         end: cursor.tail(),
                         reversed: false,
                         goal: SelectionGoal::None,
                     },
                 );
-                
+
+                for _ in 0..selected_text.len().saturating_sub(1) {
+                    next_match = next_match.move_right_once(true, &self.buffer);
+                }
+
                 self.selections.update(
                     &self.buffer,
                     &Selection {
                         id: cursor.id,
-                        start: next_match.head() ,
+                        start: next_match.head(),
                         end: next_match.tail(),
                         reversed: false,
                         goal: SelectionGoal::None,
@@ -144,7 +153,7 @@ impl Document {
         }
     }
 
-    pub fn apply_action(&mut self, action: &Action) {
+    pub fn apply_action(&mut self, action: &Action, editor: &Editor) {
         let mut next_action = Action::NoOp;
         match action {
             Action::InsertNewLineMotion { .. }
@@ -262,12 +271,14 @@ impl Document {
             Action::DeleteText { count } => {
                 self.delete_text(*count);
             }
-            Action::Backspace => {
+            Action::Backspace { count } => {
                 if self.delete_text(0) {
                     //
                 } else {
-                    self.selections.move_left(false, 1, &self.buffer);
-                    self.delete_text(1);
+                    for _ in 0..*count {
+                        self.selections.move_left(false, 1, &self.buffer);
+                        self.delete_text(1);
+                    }
                 }
             }
             Action::Delete { count } => {
@@ -293,7 +304,7 @@ impl Document {
 
                 if is_textobject {
                     for idx in 0..*count {
-                        self.apply_action(&motion);
+                        self.apply_action(&motion, editor);
                         self.delete_text_object();
                     }
                 } else {
@@ -320,7 +331,7 @@ impl Document {
                     }
 
                     for _ in 0..*count {
-                        self.apply_action(&motion);
+                        self.apply_action(&motion, editor);
                         self.delete_text(0);
                     }
                 }
@@ -335,7 +346,7 @@ impl Document {
             Action::InsertNewLineMotion { count, motion } => {
                 let mut motion = (**motion).clone();
                 for _ in 0..*count {
-                    self.apply_action(&motion);
+                    self.apply_action(&motion, editor);
                     self.insert_text(&self.new_line().to_string());
                     motion = Action::NoOp;
                 }
@@ -345,6 +356,15 @@ impl Document {
                 for _ in 0..4 {
                     self.insert_text(" ");
                 }
+            }
+            Action::YankMotion { count, motion } => {
+                self.yank_motion(*count, motion, editor);
+            }
+            Action::YankCurrentLine { count } => {
+                self.yank_current_line(*count, editor);
+            }
+            Action::Paste { count } => {
+                self.paste(*count, editor);
             }
             Action::Undo { count } => self.undo(*count),
             Action::Redo { count } => self.redo(*count),
@@ -359,7 +379,79 @@ impl Document {
             _ => {}
         }
 
-        self.apply_action(&next_action);
+        self.apply_action(&next_action, editor);
+    }
+
+    fn yank_motion(&mut self, count: u32, motion: &Action, editor: &Editor) {
+        let selections = self.selections.selections.clone();
+        let point = self.selections.point;
+        let anchor = self.selections.anchor.clone();
+
+        for _ in 0..count {
+            self.apply_action(motion, editor);
+        }
+        let text = self.selections.text(&self.buffer);
+        editor.clipboard.borrow_mut().set_text(text);
+
+        self.selections.selections = selections;
+        self.selections.point = point;
+        self.selections.anchor = anchor;
+    }
+
+    fn yank_current_line(&mut self, count: u32, editor: &Editor) {
+        let selections = self.selections.selections.clone();
+        let point = self.selections.point;
+        let anchor = self.selections.anchor.clone();
+
+        self.selections.move_to_start_of_line(false, &self.buffer);
+        if count > 1 {
+            self.selections
+                .move_down(true, count.saturating_sub(1), &self.buffer);
+        }
+        self.selections.move_to_end_of_line(true, &self.buffer);
+
+        let mut text = self.selections.text(&self.buffer);
+        if !text.ends_with('\n') {
+            text.push('\n');
+        }
+        editor.clipboard.borrow_mut().set_lines(text);
+
+        self.selections.selections = selections;
+        self.selections.point = point;
+        self.selections.anchor = anchor;
+    }
+
+    fn paste(&mut self, count: u32, editor: &Editor) {
+        let clipboard = editor.clipboard.borrow();
+        if clipboard.is_empty() || count == 0 {
+            return;
+        }
+        let text = clipboard.text().to_string();
+        let kind = clipboard.kind();
+        drop(clipboard);
+
+        match kind {
+            ClipboardKind::Character | ClipboardKind::Block => {
+                self.selections.move_right(false, 1, &self.buffer);
+                for _ in 0..count {
+                    self.insert_text(&text);
+                }
+            }
+            ClipboardKind::Line => {
+                let cursor_row = self.selection().head().to_point(&self.buffer).row;
+                let has_next_line = cursor_row + 1 < self.buffer.row_count();
+                if has_next_line {
+                    self.selections
+                        .move_to_start_of_next_line(false, &self.buffer);
+                } else {
+                    self.selections.move_to_end_of_line(false, &self.buffer);
+                    self.insert_text(&self.new_line().to_string());
+                }
+                for _ in 0..count {
+                    self.insert_text(&text);
+                }
+            }
+        }
     }
 
     fn insert_text(&mut self, text: &str) {
@@ -511,17 +603,21 @@ mod tests {
 
     #[test]
     fn consecutive_insert_text_actions_leave_cursor_after_inserted_text() {
-        let mut document = Document::new("").unwrap();
-        document.enter_mode(Mode::Insert);
-        document.apply_action(&Action::InsertText("abc".into()));
-        document.apply_action(&Action::MoveLeft {
+        let mut editor = Editor::new(Vec::new()).unwrap();
+        editor
+            .buffer_manager
+            .active_mut()
+            .doc
+            .enter_mode(Mode::Insert);
+        editor.apply_active_action(&Action::InsertText("abc".into()));
+        editor.apply_active_action(&Action::MoveLeft {
             select: false,
             count: 2,
         });
+        editor.apply_active_action(&Action::InsertText("x".into()));
+        editor.apply_active_action(&Action::InsertText("y".into()));
 
-        document.apply_action(&Action::InsertText("x".into()));
-        document.apply_action(&Action::InsertText("y".into()));
-
+        let document = &editor.buffer_manager.active().doc;
         assert_eq!(document.buffer().row_text(0), "axybc");
         assert_eq!(
             document
@@ -535,15 +631,20 @@ mod tests {
 
     #[test]
     fn newline_and_tab_insertions_do_not_advance_twice() {
-        let mut newline_document = Document::new("").unwrap();
-        newline_document.enter_mode(Mode::Insert);
-        newline_document.apply_action(&Action::InsertText("abc".into()));
-        newline_document.apply_action(&Action::MoveLeft {
+        let mut newline_editor = Editor::new(Vec::new()).unwrap();
+        newline_editor
+            .buffer_manager
+            .active_mut()
+            .doc
+            .enter_mode(Mode::Insert);
+        newline_editor.apply_active_action(&Action::InsertText("abc".into()));
+        newline_editor.apply_active_action(&Action::MoveLeft {
             select: false,
             count: 2,
         });
-        newline_document.apply_action(&Action::InsertNewLine);
+        newline_editor.apply_active_action(&Action::InsertNewLine);
 
+        let newline_document = &newline_editor.buffer_manager.active().doc;
         assert_eq!(newline_document.buffer().row_text(0), "a");
         assert_eq!(newline_document.buffer().row_text(1), "bc");
         assert_eq!(
@@ -554,15 +655,20 @@ mod tests {
             Point::new(1, 0)
         );
 
-        let mut tab_document = Document::new("").unwrap();
-        tab_document.enter_mode(Mode::Insert);
-        tab_document.apply_action(&Action::InsertText("abc".into()));
-        tab_document.apply_action(&Action::MoveLeft {
+        let mut tab_editor = Editor::new(Vec::new()).unwrap();
+        tab_editor
+            .buffer_manager
+            .active_mut()
+            .doc
+            .enter_mode(Mode::Insert);
+        tab_editor.apply_active_action(&Action::InsertText("abc".into()));
+        tab_editor.apply_active_action(&Action::MoveLeft {
             select: false,
             count: 2,
         });
-        tab_document.apply_action(&Action::InsertTab);
+        tab_editor.apply_active_action(&Action::InsertTab);
 
+        let tab_document = &tab_editor.buffer_manager.active().doc;
         assert_eq!(tab_document.buffer().row_text(0), "a    bc");
         assert_eq!(
             tab_document
@@ -572,5 +678,61 @@ mod tests {
                 .column,
             5
         );
+    }
+
+    #[test]
+    fn yank_motion_copies_selection_and_paste_inserts_after_cursor() {
+        let mut editor = Editor::new(Vec::new()).unwrap();
+        editor.apply_active_action(&Action::InsertText("abcde".into()));
+        editor.apply_active_action(&Action::MoveLeft {
+            select: false,
+            count: 4,
+        });
+
+        editor.apply_active_action(&Action::YankMotion {
+            count: 1,
+            motion: Box::new(Action::MoveRight {
+                select: true,
+                count: 1,
+            }),
+        });
+
+        assert_eq!(editor.clipboard.borrow().text(), "bc");
+        assert_eq!(
+            editor
+                .buffer_manager
+                .active()
+                .doc
+                .selection()
+                .head()
+                .to_point(editor.buffer_manager.active().doc.buffer())
+                .column,
+            1
+        );
+
+        editor.apply_active_action(&Action::Paste { count: 1 });
+        assert_eq!(
+            editor.buffer_manager.active().doc.buffer().row_text(0),
+            "abbccde"
+        );
+    }
+
+    #[test]
+    fn yank_current_line_and_paste_create_a_line_below() {
+        let mut editor = Editor::new(Vec::new()).unwrap();
+        editor.apply_active_action(&Action::InsertText("abc".into()));
+        editor.apply_active_action(&Action::MoveLeft {
+            select: false,
+            count: 1,
+        });
+
+        editor.apply_active_action(&Action::YankCurrentLine { count: 1 });
+        assert_eq!(editor.clipboard.borrow().text(), "abc\n");
+        assert_eq!(editor.clipboard.borrow().kind(), ClipboardKind::Line);
+
+        editor.apply_active_action(&Action::Paste { count: 1 });
+        let document = &editor.buffer_manager.active().doc;
+        assert_eq!(document.buffer().row_text(0), "abc");
+        assert_eq!(document.buffer().row_text(1), "abc");
     }
 }

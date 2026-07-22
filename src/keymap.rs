@@ -330,7 +330,7 @@ impl Default for Keymap {
         );
         insert_actions.insert(
             KeyCombo::new(KeyCode::Backspace, KeyModifiers::empty()),
-            Action::Backspace,
+            Action::Backspace { count: 1 },
         );
 
         // 4. Pending sequence commands
@@ -354,6 +354,137 @@ impl Default for Keymap {
             "G".to_string(),
             Action::MoveToEndOfDocument { select: false },
         );
+        pending_commands.insert("yy".to_string(), Action::YankCurrentLine { count: 1 });
+        pending_commands.insert(
+            "yw".to_string(),
+            Action::YankMotion {
+                count: 1,
+                motion: Box::new(Action::MoveToNextWord {
+                    select: true,
+                    count: 1,
+                }),
+            },
+        );
+        pending_commands.insert(
+            "yb".to_string(),
+            Action::YankMotion {
+                count: 1,
+                motion: Box::new(Action::MoveToPreviousWord {
+                    select: true,
+                    count: 1,
+                }),
+            },
+        );
+        pending_commands.insert(
+            "ye".to_string(),
+            Action::YankMotion {
+                count: 1,
+                motion: Box::new(Action::MoveToNextWordEnd {
+                    select: true,
+                    count: 1,
+                }),
+            },
+        );
+        pending_commands.insert(
+            "yge".to_string(),
+            Action::YankMotion {
+                count: 1,
+                motion: Box::new(Action::MoveToPreviousWordEnd {
+                    select: true,
+                    count: 1,
+                }),
+            },
+        );
+        pending_commands.insert(
+            "yj".to_string(),
+            Action::YankMotion {
+                count: 1,
+                motion: Box::new(Action::MoveDown {
+                    select: true,
+                    count: 1,
+                }),
+            },
+        );
+        pending_commands.insert(
+            "yk".to_string(),
+            Action::YankMotion {
+                count: 1,
+                motion: Box::new(Action::MoveUp {
+                    select: true,
+                    count: 1,
+                }),
+            },
+        );
+        pending_commands.insert(
+            "yh".to_string(),
+            Action::YankMotion {
+                count: 1,
+                motion: Box::new(Action::MoveLeft {
+                    select: true,
+                    count: 1,
+                }),
+            },
+        );
+        pending_commands.insert(
+            "yl".to_string(),
+            Action::YankMotion {
+                count: 1,
+                motion: Box::new(Action::MoveRight {
+                    select: true,
+                    count: 1,
+                }),
+            },
+        );
+        pending_commands.insert(
+            "y0".to_string(),
+            Action::YankMotion {
+                count: 1,
+                motion: Box::new(Action::MoveToStartOfLine { select: true }),
+            },
+        );
+        pending_commands.insert(
+            "y$".to_string(),
+            Action::YankMotion {
+                count: 1,
+                motion: Box::new(Action::MoveToEndOfLine { select: true }),
+            },
+        );
+        pending_commands.insert(
+            "y^".to_string(),
+            Action::YankMotion {
+                count: 1,
+                motion: Box::new(Action::MoveToStartOfLineNonSpace { select: true }),
+            },
+        );
+        pending_commands.insert(
+            "y{".to_string(),
+            Action::YankMotion {
+                count: 1,
+                motion: Box::new(Action::MoveToPreviousParagraph {
+                    select: true,
+                    count: 1,
+                }),
+            },
+        );
+        pending_commands.insert(
+            "y}".to_string(),
+            Action::YankMotion {
+                count: 1,
+                motion: Box::new(Action::MoveToNextParagraph {
+                    select: true,
+                    count: 1,
+                }),
+            },
+        );
+        pending_commands.insert(
+            "Y".to_string(),
+            Action::YankMotion {
+                count: 1,
+                motion: Box::new(Action::MoveToEndOfLine { select: true }),
+            },
+        );
+        pending_commands.insert("p".to_string(), Action::Paste { count: 1 });
+
         pending_commands.insert("dd".to_string(), Action::DeleteCurrentLine { count: 1 });
         pending_commands.insert(
             "dw".to_string(),
