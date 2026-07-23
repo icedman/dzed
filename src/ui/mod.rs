@@ -23,7 +23,6 @@ pub struct Ui {
     pub last_parent_rect: Option<layout::Rect>,
     pub last_cursor_style: Option<crossterm::cursor::SetCursorStyle>,
     pub dirty: bool,
-    pub last_cursor_style: Option<crossterm::cursor::SetCursorStyle>,
 }
 
 impl Ui {
