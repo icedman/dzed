@@ -8,6 +8,7 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 
 pub struct EditorBuffer {
+    pub id: usize,
     pub file_path: String,
     pub doc: Document,
     pub display_map: DisplayMap,
@@ -24,12 +25,13 @@ pub struct EditorBuffer {
 }
 
 impl EditorBuffer {
-    pub fn new(file_path: &str) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(id: usize, file_path: &str) -> Result<Self, Box<dyn std::error::Error>> {
         let doc = Document::new(file_path)?;
         let hl = Highlights::new(file_path);
         let display_map = DisplayMap::new(doc.buffer().snapshot().clone(), None);
         let grammar = crate::treesitter::grammars::Grammar::from_path(file_path);
         Ok(Self {
+            id,
             file_path: file_path.to_string(),
             doc,
             display_map,
@@ -86,6 +88,20 @@ impl BufferManager {
             } else {
                 self.active_idx -= 1;
             }
+        }
+    }
+
+    pub fn get_by_id(&self, id: usize) -> Option<&EditorBuffer> {
+        self.buffers.iter().find(|b| b.id == id)
+    }
+
+    pub fn get_by_id_mut(&mut self, id: usize) -> Option<&mut EditorBuffer> {
+        self.buffers.iter_mut().find(|b| b.id == id)
+    }
+
+    pub fn switch_by_id(&mut self, id: usize) {
+        if let Some(idx) = self.buffers.iter().position(|b| b.id == id) {
+            self.active_idx = idx;
         }
     }
 }
@@ -146,12 +162,14 @@ impl Editor {
 
     pub fn new(file_paths: Vec<String>) -> Result<Self, Box<dyn std::error::Error>> {
         let mut buffer_manager = BufferManager::new();
+        let mut next_id = 0;
         for path in file_paths {
-            buffer_manager.add_buffer(EditorBuffer::new(&path)?);
+            buffer_manager.add_buffer(EditorBuffer::new(next_id, &path)?);
+            next_id += 1;
         }
 
         if buffer_manager.buffers.is_empty() {
-            buffer_manager.add_buffer(EditorBuffer::new("")?);
+            buffer_manager.add_buffer(EditorBuffer::new(next_id, "")?);
         }
 
         let cmd = Document::new("")?;

@@ -634,7 +634,8 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                                     editor.buffer_manager.switch_prev();
                                 }
                                 "e" if command_parts.len() > 1 => {
-                                    if let Ok(new_buffer) = EditorBuffer::new(command_parts[1]) {
+                                    let next_id = editor.buffer_manager.buffers.iter().map(|b| b.id).max().unwrap_or(0) + 1;
+                                    if let Ok(new_buffer) = EditorBuffer::new(next_id, command_parts[1]) {
                                         editor.buffer_manager.add_buffer(new_buffer);
                                     }
                                 }

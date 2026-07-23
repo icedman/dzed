@@ -13,7 +13,6 @@ mod theme;
 mod treesitter;
 mod ui;
 
-
 use std::{
     io::{Write, stdout},
     time::{Duration, Instant},
@@ -154,7 +153,11 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             height: screen_rows as u16,
         };
         let computed_layouts = ui.layout.compute_layout(parent_rect);
-        let editor_rect = computed_layouts.iter().find(|(id, _)| *id == 0).map(|(_, rect)| *rect).unwrap_or(parent_rect);
+        let editor_rect = computed_layouts
+            .iter()
+            .find(|(id, _)| *id == 0)
+            .map(|(_, rect)| *rect)
+            .unwrap_or(parent_rect);
         let editor_inner_width = editor_rect.width.saturating_sub(2);
         let editor_inner_height = editor_rect.height.saturating_sub(2);
 
@@ -251,9 +254,11 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             .display_map
             .snapshot()
             .point_to_display_point(cursor_point);
-        active_buffer
-            .display_map
-            .scroll_to_cursor(display_cursor, editor_inner_height as i32, editor_inner_width as i32);
+        active_buffer.display_map.scroll_to_cursor(
+            display_cursor,
+            editor_inner_height as i32,
+            editor_inner_width as i32,
+        );
 
         let visible_rows = editor_inner_height as i32;
 
@@ -282,7 +287,9 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         //------------------
         if event::poll(Duration::from_millis(50))? {
             let event = event::read()?;
-            match handle_event(&mut editor, event, visible_rows) {
+            let event_res = ui.handle_event(&event, &mut editor)
+                .unwrap_or_else(|| handle_event(&mut editor, event, visible_rows));
+            match event_res {
                 HandleEvent::Exit => break,
                 HandleEvent::Redraw => should_redraw = true,
                 HandleEvent::RedrawAndSync => {
