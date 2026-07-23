@@ -22,6 +22,7 @@ pub struct Ui {
     pub cached_layouts: Vec<(usize, layout::Rect)>,
     pub last_parent_rect: Option<layout::Rect>,
     pub dirty: bool,
+    pub last_cursor_style: Option<crossterm::cursor::SetCursorStyle>,
 }
 
 impl Ui {
@@ -66,6 +67,7 @@ impl Ui {
             cached_layouts: Vec::new(),
             last_parent_rect: None,
             dirty: true,
+            last_cursor_style: None,
         }
     }
 
@@ -97,7 +99,6 @@ impl Ui {
         editor: &mut Editor,
         screen_width: u16,
         screen_height: u16,
-        last_cursor_style: &mut Option<crossterm::cursor::SetCursorStyle>,
     ) -> std::io::Result<()> {
         execute!(stdout, crossterm::cursor::Hide)?;
 
@@ -149,7 +150,7 @@ impl Ui {
                 0 | 1 => {
                     if let Some(win) = self.windows.get_mut(&win_id) {
                         win.is_focused = Some(win_id) == self.focused_window_id;
-                        win.draw(stdout, rect, editor, last_cursor_style)?;
+                        win.draw(stdout, rect, editor)?;
                     }
                 }
                 2 => {
@@ -158,7 +159,7 @@ impl Ui {
                     } else {
                         if let Some(win) = self.windows.get_mut(&win_id) {
                             win.is_focused = Some(win_id) == self.focused_window_id;
-                            win.draw(stdout, rect, editor, last_cursor_style)?;
+                            win.draw(stdout, rect, editor)?;
                         }
                     }
                 }
@@ -190,7 +191,7 @@ impl Ui {
             editor_gutter_width,
             cursor_screen_col,
             cursor_screen_row,
-            last_cursor_style,
+            &mut self.last_cursor_style,
         )?;
 
         stdout.flush()?;

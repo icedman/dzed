@@ -22,7 +22,6 @@ impl View for TabsView {
         mut w: &mut dyn Write,
         rect: Rect,
         editor: &mut Editor,
-        _last_cursor_style: &mut Option<crossterm::cursor::SetCursorStyle>,
     ) -> std::io::Result<()> {
         draw_tabs_impl(&mut w, rect, editor)
     }

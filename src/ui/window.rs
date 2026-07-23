@@ -37,7 +37,6 @@ impl Window {
         w: &mut W,
         rect: Rect,
         editor: &mut crate::editor::Editor,
-        last_cursor_style: &mut Option<crossterm::cursor::SetCursorStyle>,
     ) -> std::io::Result<()> {
         if rect.width == 0 || rect.height == 0 {
             return Ok(());
@@ -122,7 +121,7 @@ impl Window {
             } else {
                 rect
             };
-            view.draw(w, inner_rect, editor, last_cursor_style)?;
+            view.draw(w, inner_rect, editor)?;
         }
 
         Ok(())
