@@ -229,6 +229,12 @@ pub enum Action {
 
     ClearCursors,
 
+    PreviousBuffer,
+    NextBuffer,
+    SetBuffer {
+        index: u32
+    },
+
     NoOp, // unmapped key
 }
 

@@ -499,6 +499,14 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                             editor.pattern = pattern;
                             active_buffer.doc.enter_mode(Command);
                         }
+                        Action::NextBuffer => {
+                            should_redraw = true;
+                            editor.buffer_manager.switch_next();
+                        }
+                        Action::PreviousBuffer => {
+                            should_redraw = true;
+                            editor.buffer_manager.switch_prev();
+                        }
                         _ => {
                             editor.apply_active_action(&normal_action);
                             editor.pending_cmd.clear();
@@ -606,6 +614,7 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                 if let (KeyCode::Enter, _) = (key_event.code, key_event.modifiers) {
                     let command_text = editor.cmd.buffer().row_text(0);
 
+                    // TODO resolve into action
                     if editor.search {
                         if !command_text.is_empty() {
                             editor.search_text = command_text.clone();
@@ -667,7 +676,6 @@ pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> Han
                                     match command_parts[1] {
                                         "on" => {
                                             editor.syntax = true;
-                                            editor.buffer_manager.active_mut().dirty_hl = true;
                                         }
                                         "off" => editor.syntax = false,
                                         _ => {}

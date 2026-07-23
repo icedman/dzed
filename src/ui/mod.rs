@@ -21,6 +21,7 @@ pub struct Ui {
     pub focused_window_id: Option<usize>,
     pub cached_layouts: Vec<(usize, layout::Rect)>,
     pub last_parent_rect: Option<layout::Rect>,
+    pub last_cursor_style: Option<crossterm::cursor::SetCursorStyle>,
     pub dirty: bool,
     pub last_cursor_style: Option<crossterm::cursor::SetCursorStyle>,
 }
@@ -90,6 +91,32 @@ impl Ui {
     /// Explicitly mark the layout as dirty to force a recalculation on next draw.
     pub fn set_dirty(&mut self) {
         self.dirty = true;
+    }
+
+    pub fn update(
+        &mut self,
+        editor: &mut Editor,
+        should_sync: &mut bool,
+    ) -> std::io::Result<()> {
+        let computed = &self.cached_layouts;
+        for &(win_id, rect) in computed {
+            if let Some(win) = self.windows.get_mut(&win_id) {
+                let inner_rect = if win.draw_border {
+                    layout::Rect {
+                        x: rect.x.saturating_add(1),
+                        y: rect.y.saturating_add(1),
+                        width: rect.width.saturating_sub(2),
+                        height: rect.height.saturating_sub(2),
+                    }
+                } else {
+                    rect
+                };
+                if let Some(ref mut view) = win.view {
+                    view.update(editor, inner_rect, should_sync)?;
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Renders the layout and all windows/components managed by this UI instance.

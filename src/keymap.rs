@@ -166,6 +166,14 @@ impl Default for Keymap {
             Action::Undo { count: 1 },
         );
         normal_actions.insert(
+            KeyCombo::new(KeyCode::Char('H'), KeyModifiers::empty()),
+            Action::PreviousBuffer,
+        );
+        normal_actions.insert(
+            KeyCombo::new(KeyCode::Char('L'), KeyModifiers::empty()),
+            Action::NextBuffer,
+        );
+        normal_actions.insert(
             KeyCombo::new(KeyCode::Char('h'), KeyModifiers::empty()),
             Action::MoveLeft {
                 select: false,

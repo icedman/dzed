@@ -15,4 +15,12 @@ pub trait View {
         event: &Event,
         editor: &mut Editor,
     ) -> Option<crate::input::HandleEvent>;
+    fn update(
+        &mut self,
+        _editor: &mut Editor,
+        _rect: Rect,
+        _should_sync: &mut bool,
+    ) -> std::io::Result<()> {
+        Ok(())
+    }
 }
