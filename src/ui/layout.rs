@@ -1,0 +1,128 @@
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SplitDirection {
+    Horizontal,
+    Vertical,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Rect {
+    pub x: u16,
+    pub y: u16,
+    pub width: u16,
+    pub height: u16,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SizeConstraint {
+    Fixed(u16),
+    Percentage(f32),
+}
+
+#[derive(Debug, Clone)]
+pub enum LayoutNode {
+    Leaf {
+        window_id: usize,
+    },
+    Split {
+        direction: SplitDirection,
+        constraints: Vec<SizeConstraint>,
+        children: Vec<LayoutNode>,
+    },
+}
+
+impl LayoutNode {
+    /// Recursively computes the rects for all leaf windows under this node given a parent rect.
+    pub fn compute_layout(&self, rect: Rect) -> Vec<(usize, Rect)> {
+        let mut results = Vec::new();
+        self.compute_layout_recursive(rect, &mut results);
+        results
+    }
+
+    fn compute_layout_recursive(&self, rect: Rect, results: &mut Vec<(usize, Rect)>) {
+        match self {
+            LayoutNode::Leaf { window_id } => {
+                results.push((*window_id, rect));
+            }
+            LayoutNode::Split {
+                direction,
+                constraints,
+                children,
+            } => {
+                if children.is_empty() {
+                    return;
+                }
+
+                // If constraints don't match children count, assume equal percentage weights
+                let actual_constraints = if constraints.len() == children.len() {
+                    constraints.clone()
+                } else {
+                    vec![SizeConstraint::Percentage(1.0); children.len()]
+                };
+
+                let mut current_x = rect.x;
+                let mut current_y = rect.y;
+                let count = children.len();
+
+                // Compute exact sizes
+                let total_size = match direction {
+                    SplitDirection::Horizontal => rect.width,
+                    SplitDirection::Vertical => rect.height,
+                };
+
+                let mut fixed_sum = 0u16;
+                let mut percent_weight_sum = 0.0f32;
+
+                for c in &actual_constraints {
+                    match c {
+                        SizeConstraint::Fixed(val) => fixed_sum = fixed_sum.saturating_add(*val),
+                        SizeConstraint::Percentage(weight) => percent_weight_sum += weight,
+                    }
+                }
+
+                let remaining_size = total_size.saturating_sub(fixed_sum);
+                let mut allocated_size = 0u16;
+
+                for i in 0..count {
+                    let constraint = actual_constraints[i];
+                    let size = if i == count - 1 {
+                        total_size.saturating_sub(allocated_size)
+                    } else {
+                        match constraint {
+                            SizeConstraint::Fixed(val) => val,
+                            SizeConstraint::Percentage(weight) => {
+                                if percent_weight_sum > 0.0 {
+                                    ((weight / percent_weight_sum) * remaining_size as f32).round() as u16
+                                } else {
+                                    0
+                                }
+                            }
+                        }
+                    };
+                    allocated_size = allocated_size.saturating_add(size);
+
+                    let child_rect = match direction {
+                        SplitDirection::Horizontal => Rect {
+                            x: current_x,
+                            y: current_y,
+                            width: size,
+                            height: rect.height,
+                        },
+                        SplitDirection::Vertical => Rect {
+                            x: current_x,
+                            y: current_y,
+                            width: rect.width,
+                            height: size,
+                        },
+                    };
+
+                    children[i].compute_layout_recursive(child_rect, results);
+
+                    match direction {
+                        SplitDirection::Horizontal => current_x = current_x.saturating_add(size),
+                        SplitDirection::Vertical => current_y = current_y.saturating_add(size),
+                    }
+                }
+            }
+        }
+    }
+}

@@ -60,6 +60,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
     execute!(stdout, crossterm::cursor::Hide).unwrap();
 
+    let mut ui = ui::Ui::new();
     let mut should_redraw = true;
     let mut should_sync = true;
     let mut prev_screen_rows = 0;
@@ -146,6 +147,17 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let active_buffer = editor.buffer_manager.active_mut();
         editor.mode = active_buffer.doc.current_mode();
 
+        let parent_rect = ui::layout::Rect {
+            x: 0,
+            y: 0,
+            width: screen_cols as u16,
+            height: screen_rows as u16,
+        };
+        let computed_layouts = ui.layout.compute_layout(parent_rect);
+        let editor_rect = computed_layouts.iter().find(|(id, _)| *id == 0).map(|(_, rect)| *rect).unwrap_or(parent_rect);
+        let editor_inner_width = editor_rect.width.saturating_sub(2);
+        let editor_inner_height = editor_rect.height.saturating_sub(2);
+
         // Update layout before wrapping so the wrap width reflects the current gutter.
         let row_count = active_buffer.doc.buffer().row_count();
         let gutter_width = if editor.show_line_numbers {
@@ -159,7 +171,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         };
 
         active_buffer.display_map.margin_left = gutter_width as u32;
-        let wrap_cols = screen_cols
+        let wrap_cols = (editor_inner_width as i32)
             .saturating_sub(active_buffer.display_map.margin_left as i32)
             .saturating_sub(active_buffer.display_map.margin_right as i32)
             .max(1);
@@ -241,34 +253,20 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             .point_to_display_point(cursor_point);
         active_buffer
             .display_map
-            .scroll_to_cursor(display_cursor, screen_rows, screen_cols);
+            .scroll_to_cursor(display_cursor, editor_inner_height as i32, editor_inner_width as i32);
 
-        let display_snapshot = active_buffer.display_map.snapshot();
-        let cursor_row = display_cursor.row() as i32;
-        let cursor_col = display_cursor.column() as i32;
-
-        let visible_rows = (screen_rows - 1)
-            .saturating_sub(display_snapshot.margin_top as i32)
-            .saturating_sub(display_snapshot.margin_bottom as i32);
-
-        // scroll based on cursor position
-        let cursor_screen_row = cursor_row - display_snapshot.scroll_y as i32;
-        let cursor_screen_col = cursor_col - display_snapshot.scroll_x as i32;
+        let visible_rows = editor_inner_height as i32;
 
         //------------------
         // render
         //------------------
         if should_redraw {
             should_redraw = false;
-            ui::render(
+            ui.draw(
                 &mut stdout,
                 &mut editor,
-                gutter_width,
-                screen_rows,
-                screen_cols,
-                visible_rows,
-                cursor_screen_row,
-                cursor_screen_col,
+                screen_cols as u16,
+                screen_rows as u16,
                 &mut last_cursor_style,
             )?;
             if editor.mode == Mode::Insert {
