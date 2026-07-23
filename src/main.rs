@@ -150,114 +150,20 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             width: screen_cols as u16,
             height: screen_rows as u16,
         };
-        let computed_layouts = ui.layout.compute_layout(parent_rect);
-        let editor_rect = computed_layouts
+        if ui.dirty || ui.last_parent_rect != Some(parent_rect) {
+            ui.cached_layouts = ui.layout.compute_layout(parent_rect);
+            ui.last_parent_rect = Some(parent_rect);
+            ui.dirty = false;
+        }
+
+        ui.update(&mut editor, &mut should_sync)?;
+
+        let editor_rect = ui.cached_layouts
             .iter()
             .find(|(id, _)| *id == 0)
             .map(|(_, rect)| *rect)
             .unwrap_or(parent_rect);
-        let editor_inner_width = editor_rect.width.saturating_sub(2);
         let editor_inner_height = editor_rect.height.saturating_sub(2);
-
-        // Update layout before wrapping so the wrap width reflects the current gutter.
-        let row_count = active_buffer.doc.buffer().row_count();
-        let gutter_width = if editor.show_line_numbers {
-            2 + if row_count == 0 {
-                0
-            } else {
-                row_count.ilog10() as usize
-            }
-        } else {
-            0
-        };
-
-        active_buffer.display_map.margin_left = gutter_width as u32;
-        let wrap_cols = (editor_inner_width as i32)
-            .saturating_sub(active_buffer.display_map.margin_left as i32)
-            .saturating_sub(active_buffer.display_map.margin_right as i32)
-            .max(1);
-        active_buffer
-            .display_map
-            .set_wrap_width(editor.wrap.then_some(wrap_cols as u32));
-
-        if should_sync {
-            active_buffer
-                .display_map
-                .sync(active_buffer.doc.buffer().snapshot().clone());
-            active_buffer.dirty_hl = true;
-
-            let (start, _) = active_buffer
-                .doc
-                .selections()
-                .rows_in_selection(active_buffer.doc.buffer());
-            active_buffer.hl.invalidate_state(start);
-
-            // Spawn background highlight task
-            let hl_task_id = active_buffer
-                .latest_hl_task_id
-                .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
-                + 1;
-            editor
-                .bg_worker
-                .spawn_task(background::BackgroundTask::Highlight {
-                    file_path: active_buffer.file_path.clone(),
-                    snapshot: active_buffer.doc.buffer().snapshot().clone(),
-                    start_row: start,
-                    row_count: active_buffer.doc.buffer().row_count() - start,
-                    theme: std::sync::Arc::new(editor.theme.theme.clone()),
-                    task_id: background::TaskId(hl_task_id),
-                    latest_task_id: active_buffer.latest_hl_task_id.clone(),
-                });
-
-            // Spawn background wrap task
-            let wrap_width = editor.wrap.then_some(wrap_cols as u32);
-            let wrap_task_id = active_buffer
-                .latest_wrap_task_id
-                .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
-                + 1;
-            editor
-                .bg_worker
-                .spawn_task(background::BackgroundTask::Wrap {
-                    file_path: active_buffer.file_path.clone(),
-                    snapshot: active_buffer.doc.buffer().snapshot().clone(),
-                    wrap_width,
-                    task_id: background::TaskId(wrap_task_id),
-                    latest_task_id: active_buffer.latest_wrap_task_id.clone(),
-                });
-
-            if editor.tree_sitter
-                && let Some(grammar) = active_buffer.grammar
-            {
-                let parse_task_id = active_buffer
-                    .latest_parse_task_id
-                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
-                    + 1;
-                editor
-                    .bg_worker
-                    .spawn_task(background::BackgroundTask::Parse {
-                        file_path: active_buffer.file_path.clone(),
-                        snapshot: active_buffer.doc.buffer().snapshot().clone(),
-                        grammar,
-                        task_id: background::TaskId(parse_task_id),
-                        latest_task_id: active_buffer.latest_parse_task_id.clone(),
-                    });
-            }
-
-            should_sync = false;
-        }
-
-        let cursor = active_buffer.doc.selection();
-        let cursor_point = cursor.head().to_point(active_buffer.doc.buffer());
-        let display_cursor = active_buffer
-            .display_map
-            .snapshot()
-            .point_to_display_point(cursor_point);
-        active_buffer.display_map.scroll_to_cursor(
-            display_cursor,
-            editor_inner_height as i32,
-            editor_inner_width as i32,
-        );
-
         let visible_rows = editor_inner_height as i32;
 
         //------------------

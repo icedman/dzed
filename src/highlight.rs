@@ -7,6 +7,7 @@ use syntect::{
     parsing::{ParseState, SyntaxReference, SyntaxSet},
 };
 use text::{BufferSnapshot, ToOffset};
+use clock::Global;
 
 const ENABLE_STATE_CACHE: bool = true;
 const CACHE_INTERVAL: u32 = 32;
@@ -46,6 +47,7 @@ pub struct Highlights {
     state_cache: HashMap<usize, StateCache>,
     style_cache: HashMap<u32, StyleCache>,
     highlight_start: u32,
+    pub last_snapshot_version: Option<Global>,
 }
 
 fn row_text(buffer: &BufferSnapshot, row: u32) -> String {
@@ -74,7 +76,12 @@ impl Highlights {
             state_cache: HashMap::new(),
             style_cache: HashMap::new(),
             highlight_start: 0,
+            last_snapshot_version: None,
         }
+    }
+
+    pub fn is_sync(&self, buffer: &BufferSnapshot) -> bool {
+        self.last_snapshot_version.as_ref() == Some(&buffer.version)
     }
 
     pub fn highlight_lines(
@@ -84,6 +91,7 @@ impl Highlights {
         row_count: u32,
         theme: &Theme,
     ) {
+        self.last_snapshot_version = Some(buffer.version.clone());
         self.style_cache.clear();
         let mut cached_highlighter: Option<HighlightLines> = None;
 
