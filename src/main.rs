@@ -64,8 +64,6 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut should_sync = true;
     let mut prev_screen_rows = 0;
     let mut prev_screen_cols = 0;
-    let mut last_cursor_style = None;
-
     let mut ticks: Duration = Duration::ZERO;
 
     loop {
@@ -272,7 +270,6 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 &mut editor,
                 screen_cols as u16,
                 screen_rows as u16,
-                &mut last_cursor_style,
             )?;
             if editor.mode == Mode::Insert {
                 ticks = Duration::ZERO;
