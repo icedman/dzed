@@ -450,6 +450,8 @@ impl Keymap {
         insert_actions.insert("Delete".to_string(), Action::DeleteChar { count: 1 });
         insert_actions.insert("{c}".to_string(), Action::InsertText("".to_string()));
 
+        visual_actions.insert("Esc".to_string(), Action::Clear);
+
         Self {
             op_actions,
             motion_actions,

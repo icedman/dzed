@@ -101,6 +101,12 @@ pub fn resolve_count(seq: &mut String) -> u32 {
 
 pub fn resolve_action(seq: &mut String, map: &HashMap<String, Action>) -> Action {
     if let Some(lc) = seq.chars().last() {
+        if lc.is_ascii_digit() {
+            if peek_count(seq) > 0 {
+                return Action::NoOp;
+            }
+        }
+
         let last_char = lc.to_string();
         let mut matched: Option<(String, Action, bool, String)> = None;
 
@@ -149,6 +155,11 @@ pub fn resolve_action(seq: &mut String, map: &HashMap<String, Action>) -> Action
 pub fn peek_action(seq: &str, map: &HashMap<String, Action>) -> Action {
     let mut s = seq.to_string();
     resolve_action(&mut s, map)
+}
+
+pub fn peek_count(seq: &str) -> u32 {
+    let mut s = seq.to_string();
+    resolve_count(&mut s)
 }
 
 pub fn resolve_op_motion_action(motion: Action, action: Action) -> Action {
@@ -226,8 +237,7 @@ impl VimInput {
         self.sequence.push_str(sequence);
         self.clear_resolved();
 
-        // 1. Try to resolve a full motion first (possibly with an operator)
-        // insert action
+        // insert mode
         let insert_action = if self.mode == Mode::Insert || self.mode == Mode::Command {
             resolve_action(&mut self.sequence, &self.keymap.insert_actions)
         } else {
@@ -238,6 +248,18 @@ impl VimInput {
             return self.resolved_action.clone();
         }
 
+        // visual mode
+        let visual_action = if self.mode.is_visual() {
+            resolve_action(&mut self.sequence, &self.keymap.visual_actions)
+        } else {
+            Action::NoOp
+        };
+        if visual_action != Action::NoOp {
+            self.resolved_action = visual_action.clone();
+            return self.resolved_action.clone();
+        }
+
+        // normal mode
         // 1. Try to resolve a full motion first (possibly with an operator)
         if self.mode == Mode::Normal || self.mode.is_visual() {
             let mut seq_for_motion = self.sequence.clone();
@@ -267,14 +289,12 @@ impl VimInput {
                         self.resolved_motion.clone(),
                         self.resolved_op.clone(),
                     );
-                    if self.resolved_action != Action::NoOp {
-                        self.sequence.clear();
-                    }
                 } else {
                     // Just a motion
                     self.resolved_action = motion_action.clone();
-                    self.sequence.clear();
                 }
+
+                self.sequence.clear();
             } else if self.resolved_action == Action::NoOp {
                 // 2. Try to resolve a normal action (like 'dd' or 'x')
                 let mut seq_for_normal = self.sequence.clone();

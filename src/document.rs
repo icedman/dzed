@@ -77,7 +77,7 @@ impl Document {
     }
 
     pub fn enter_mode(&mut self, mode: Mode) {
-        if (self.mode == mode) {
+        if self.mode == mode {
             self.clear_selections();
             return;
         }
@@ -235,7 +235,8 @@ impl Document {
                     .move_to_previous_word(*select, *count, &self.buffer)
             }
             Action::MoveToWord { select, count } => {
-                self.selections.move_to_word(*select, *count, &self.buffer)
+                self.selections
+                    .move_to_next_word(*select, *count, &self.buffer)
             }
             Action::MoveToPreviousWordEnd { select, count } => self
                 .selections
