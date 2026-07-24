@@ -34,11 +34,14 @@ impl std::fmt::Display for Mode {
 pub enum Action {
     // OPTS
     NoOp,
+    Clear,
     Delete { count: u32 },
     Change { count: u32 },
     Yank { count: u32 },
 
     // MOTIONS
+    StandBy { count: u32, select: bool },
+
     MoveLeft { count: u32, select: bool },
     MoveRight { count: u32, select: bool },
     MoveUp { count: u32, select: bool },
@@ -134,6 +137,7 @@ impl std::fmt::Display for Action {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Action::NoOp => write!(f, "None"),
+            Action::Clear => write!(f, "Clear"),
             Action::Delete { count } => write!(f, "Delete({})", count),
             Action::Change { count } => write!(f, "Change({})", count),
             Action::Yank { count } => write!(f, "Yank({})", count),
@@ -185,6 +189,7 @@ impl std::fmt::Display for Action {
             Action::SearchBackward { count } => write!(f, "SearchBackward {}", count),
             Action::SearchNext { count } => write!(f, "SearchNext({})", count),
             Action::SearchPrevious { count } => write!(f, "SearchPrev({})", count),
+            Action::StandBy { count, .. } => write!(f, "StandBy({})", count),
             Action::MoveLeft { count, .. } => write!(f, "MoveLeft({})", count),
             Action::MoveRight { count, .. } => write!(f, "MoveRight({})", count),
             Action::MoveUp { count, .. } => write!(f, "MoveUp({})", count),
@@ -245,6 +250,7 @@ impl std::fmt::Display for Action {
 impl Action {
     pub fn with_select(self, select: bool) -> Self {
         match self {
+            Action::StandBy { count, .. } => Action::StandBy { count, select },
             Action::MoveLeft { count, .. } => Action::MoveLeft { count, select },
             Action::MoveRight { count, .. } => Action::MoveRight { count, select },
             Action::MoveUp { count, .. } => Action::MoveUp { count, select },
@@ -374,6 +380,10 @@ impl Action {
             Action::SearchBackward { .. } => Action::SearchBackward { count },
             Action::SearchNext { .. } => Action::SearchNext { count },
             Action::SearchPrevious { .. } => Action::SearchPrevious { count },
+            Action::StandBy { .. } => Action::StandBy {
+                count,
+                select: false,
+            },
             Action::MoveLeft { .. } => Action::MoveLeft {
                 count,
                 select: false,
@@ -428,6 +438,7 @@ impl Action {
                 motion: motion,
             },
             Action::InsertTab => Action::InsertTab,
+            Action::Clear => Action::Clear,
             Action::NoOp => Action::NoOp,
         }
     }

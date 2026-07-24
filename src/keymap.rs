@@ -387,6 +387,8 @@ impl Keymap {
             },
         );
 
+        normal_actions.insert("Esc".to_string(), Action::Clear);
+
         // change mode -- only at normal
         mode_actions.insert("i".to_string(), Action::SetToInsert);
         mode_actions.insert(":".to_string(), Action::SetToCommand);
@@ -438,7 +440,7 @@ impl Keymap {
                 select: false,
             },
         );
-        insert_actions.insert("Esc".to_string(), Action::SetToNormal);
+        insert_actions.insert("Esc".to_string(), Action::Clear);
         insert_actions.insert("Enter".to_string(), Action::InsertNewLine { count: 1 });
         insert_actions.insert("Tab".to_string(), Action::InsertTab);
         insert_actions.insert(

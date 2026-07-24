@@ -244,14 +244,12 @@ impl VimInput {
             let mut motion_action =
                 resolve_action(&mut seq_for_motion, &self.keymap.motion_actions);
 
-            /*
             if motion_action == Action::NoOp && self.mode.is_visual() {
-                motion_action = Action::MoveLeft {
+                motion_action = Action::StandBy {
                     count: 0,
                     select: true,
                 };
             }
-            */
 
             if motion_action != Action::NoOp {
                 if self.mode.is_visual() {
@@ -301,13 +299,6 @@ impl VimInput {
                         }
                     }
                 }
-            }
-        }
-
-        if self.resolved_action == Action::NoOp {
-            if sequence == "Esc" {
-                self.mode = Mode::Normal;
-                self.clear();
             }
         }
 
