@@ -4,8 +4,8 @@ use crate::document::Document;
 use crate::highlight::Highlights;
 use crate::theme::Theme;
 use onig::Regex;
-use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
+use std::sync::Arc;
 
 pub struct EditorBuffer {
     pub id: usize,
@@ -112,7 +112,6 @@ pub struct Editor {
     pub command_history: Vec<String>,
     pub search_history: Vec<String>,
     pub history_idx: usize,
-    pub pending_cmd: String,
 
     pub search: bool,
     pub pattern: bool,
@@ -127,6 +126,7 @@ pub struct Editor {
     pub bg_worker: crate::background::BackgroundWorker,
     pub clipboard: std::cell::RefCell<crate::clipboard::Clipboard>,
     pub keymap: crate::keymap::Keymap,
+    pub input: crate::input::VimInput,
 }
 
 impl Editor {
@@ -181,7 +181,6 @@ impl Editor {
             command_history: Vec::new(),
             search_history: Vec::new(),
             history_idx: 0,
-            pending_cmd: String::new(),
             search: false,
             pattern: false,
             search_text: "".to_string(),
@@ -195,7 +194,8 @@ impl Editor {
             show_line_numbers: false,
             bg_worker,
             clipboard: std::cell::RefCell::new(crate::clipboard::Clipboard::new()),
-            keymap: crate::keymap::Keymap::default(),
+            keymap: crate::keymap::Keymap::new(),
+            input: crate::input::VimInput::new(),
         })
     }
 }

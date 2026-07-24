@@ -1,5 +1,5 @@
 use crate::document::BufferText;
-use crate::search::{TextSearch, compile};
+use crate::search::{compile, TextSearch};
 use onig::Regex;
 use rope::Point;
 use std::cmp::Ordering;
@@ -1505,11 +1505,9 @@ mod tests {
         );
         let mut cursor = selection(&buffer, 0, 0, 0, false);
 
-        assert!(
-            cursor
-                .move_to_next_match_within("target", &buffer, 1)
-                .is_none()
-        );
+        assert!(cursor
+            .move_to_next_match_within("target", &buffer, 1)
+            .is_none());
 
         let matched = cursor
             .move_to_next_match_within("target", &buffer, 2)

@@ -158,7 +158,8 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
         ui.update(&mut editor, &mut should_sync)?;
 
-        let editor_rect = ui.cached_layouts
+        let editor_rect = ui
+            .cached_layouts
             .iter()
             .find(|(id, _)| *id == 0)
             .map(|(_, rect)| *rect)
@@ -190,7 +191,8 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         //------------------
         if event::poll(Duration::from_millis(50))? {
             let event = event::read()?;
-            let event_res = ui.handle_event(&event, &mut editor)
+            let event_res = ui
+                .handle_event(&event, &mut editor)
                 .unwrap_or_else(|| handle_event(&mut editor, event, visible_rows));
             match event_res {
                 HandleEvent::Exit => break,

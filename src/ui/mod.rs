@@ -92,11 +92,7 @@ impl Ui {
         self.dirty = true;
     }
 
-    pub fn update(
-        &mut self,
-        editor: &mut Editor,
-        should_sync: &mut bool,
-    ) -> std::io::Result<()> {
+    pub fn update(&mut self, editor: &mut Editor, should_sync: &mut bool) -> std::io::Result<()> {
         let computed = &self.cached_layouts;
         for &(win_id, rect) in computed {
             if let Some(win) = self.windows.get_mut(&win_id) {

@@ -1,137 +1,7 @@
-use crate::actions::Mode::{Command, VisualBlock, VisualLine};
 use crate::actions::{Action, Mode};
-use crate::document::BufferText;
-use crate::document::Document;
-use crate::editor::{Editor, EditorBuffer};
-use crate::keymap::KeyCombo;
-use crossterm::event::{Event, KeyCode, KeyModifiers, MouseEventKind};
-
-pub fn apply_context(action: Action, select: bool, count: u32) -> Action {
-    match action {
-        Action::MoveUp { .. } => Action::MoveUp { select, count },
-        Action::MoveDown { .. } => Action::MoveDown { select, count },
-        Action::MoveLeft { .. } => Action::MoveLeft { select, count },
-        Action::MoveRight { .. } => Action::MoveRight { select, count },
-        Action::MoveToPreviousWord { .. } => Action::MoveToPreviousWord { select, count },
-        Action::MoveToNextWord { .. } => Action::MoveToNextWord { select, count },
-        Action::MoveToPreviousWordEnd { .. } => Action::MoveToPreviousWordEnd { select, count },
-        Action::MoveToNextWordEnd { .. } => Action::MoveToNextWordEnd { select, count },
-        Action::MoveToStartOfDocument { .. } => Action::MoveToStartOfDocument { select },
-        Action::MoveToEndOfDocument { .. } => Action::MoveToEndOfDocument { select },
-        Action::MoveToStartOfLine { .. } => Action::MoveToStartOfLine { select },
-        Action::MoveToStartOfLineNonSpace { .. } => Action::MoveToStartOfLineNonSpace { select },
-        Action::MoveToEndOfLine { .. } => Action::MoveToEndOfLine { select },
-        Action::MoveToLine { line, .. } => Action::MoveToLine { select, line },
-        Action::MoveToPreviousParagraph { .. } => Action::MoveToPreviousParagraph { select, count },
-        Action::MoveToNextParagraph { .. } => Action::MoveToNextParagraph { select, count },
-        Action::MoveToPreviousCharacter { char, .. } => Action::MoveToPreviousCharacter {
-            select,
-            count,
-            char,
-        },
-        Action::MoveToNextCharacter { char, .. } => Action::MoveToNextCharacter {
-            select,
-            count,
-            char,
-        },
-        Action::DeleteText { .. } => Action::DeleteText {
-            count: count as usize,
-        },
-        Action::Delete { .. } => Action::Delete { count },
-        Action::DeleteCurrentLine { .. } => Action::DeleteCurrentLine { count },
-        Action::DeleteMotion { motion, .. } => Action::DeleteMotion {
-            count,
-            motion: Box::new(apply_context(*motion, true, 1)),
-        },
-        Action::ChangeMotion { motion, .. } => Action::ChangeMotion {
-            count,
-            motion: Box::new(apply_context(*motion, true, 1)),
-        },
-        Action::ChangeCurrentLine { .. } => Action::ChangeCurrentLine { count },
-        Action::YankMotion { motion, .. } => Action::YankMotion {
-            count,
-            motion: Box::new(apply_context(*motion, true, 1)),
-        },
-        Action::YankCurrentLine { .. } => Action::YankCurrentLine { count },
-        Action::Paste { .. } => Action::Paste { count },
-        Action::MoveToNextFunction { .. } => Action::MoveToNextFunction { select, count },
-        Action::MoveToPreviousFunction { .. } => Action::MoveToPreviousFunction { select, count },
-        Action::MoveToNextBlock { .. } => Action::MoveToNextBlock { select, count },
-        Action::MoveToPreviousBlock { .. } => Action::MoveToPreviousBlock { select, count },
-        Action::MoveToBlockStart { .. } => Action::MoveToBlockStart { select, count },
-        Action::MoveToBlockEnd { .. } => Action::MoveToBlockEnd { select, count },
-        Action::MoveToNextClass { .. } => Action::MoveToNextClass { select, count },
-        Action::MoveToPreviousClass { .. } => Action::MoveToPreviousClass { select, count },
-        Action::MoveToNextArgument { .. } => Action::MoveToNextArgument { select, count },
-        Action::MoveToPreviousArgument { .. } => Action::MoveToPreviousArgument { select, count },
-        Action::Undo { .. } => Action::Undo { count },
-        Action::Redo { .. } => Action::Redo { count },
-        Action::SetInsertModeMotion { motion } => Action::SetInsertModeMotion {
-            motion: Box::new(apply_context(*motion, select, count)),
-        },
-        other => other,
-    }
-}
-
-fn resolve_pattern_pending_action(cmd: &str, select: bool, count: u32) -> Option<Action> {
-    if cmd.starts_with("df") && cmd.len() == 3 {
-        let ch = cmd.chars().nth(2).unwrap();
-        Some(Action::DeleteMotion {
-            count,
-            motion: Box::new(Action::MoveToNextCharacter {
-                select: true,
-                count: 1,
-                char: ch,
-            }),
-        })
-    } else if cmd.starts_with("dF") && cmd.len() == 3 {
-        let ch = cmd.chars().nth(2).unwrap();
-        Some(Action::DeleteMotion {
-            count,
-            motion: Box::new(Action::MoveToPreviousCharacter {
-                select: true,
-                count: 1,
-                char: ch,
-            }),
-        })
-    } else if cmd.starts_with("cf") && cmd.len() == 3 {
-        let ch = cmd.chars().nth(2).unwrap();
-        Some(Action::ChangeMotion {
-            count,
-            motion: Box::new(Action::MoveToNextCharacter {
-                select: true,
-                count: 1,
-                char: ch,
-            }),
-        })
-    } else if cmd.starts_with("cF") && cmd.len() == 3 {
-        let ch = cmd.chars().nth(2).unwrap();
-        Some(Action::ChangeMotion {
-            count,
-            motion: Box::new(Action::MoveToPreviousCharacter {
-                select: true,
-                count: 1,
-                char: ch,
-            }),
-        })
-    } else if cmd.starts_with('f') && cmd.len() == 2 {
-        let ch = cmd.chars().nth(1).unwrap();
-        Some(Action::MoveToNextCharacter {
-            select,
-            count,
-            char: ch,
-        })
-    } else if cmd.starts_with('F') && cmd.len() == 2 {
-        let ch = cmd.chars().nth(1).unwrap();
-        Some(Action::MoveToPreviousCharacter {
-            select,
-            count,
-            char: ch,
-        })
-    } else {
-        None
-    }
-}
+use crate::keymap::{KeyCombo, Keymap};
+use crossterm::event::{Event, KeyEvent, MouseEventKind};
+use std::collections::HashMap;
 
 pub enum HandleEvent {
     Redraw,
@@ -140,698 +10,507 @@ pub enum HandleEvent {
     Exit,
 }
 
-pub fn handle_event(editor: &mut Editor, event: Event, visible_rows: i32) -> HandleEvent {
-    // Mouse events: currently no-op placeholders
-    let mut scroll_up = false;
-    let mut scroll_down = false;
+pub fn handle_event(
+    editor: &mut crate::editor::Editor,
+    event: Event,
+    _visible_rows: i32,
+) -> HandleEvent {
+    match event {
+        Event::Key(key_event) => {
+            let action = editor.input.handle_event(&key_event);
 
-    if let Event::Mouse(mouse_event) = &event {
-        match mouse_event.kind {
+            // Sync mode from VimInput to Document
+            let active_buffer = editor.buffer_manager.active_mut();
+            if active_buffer.doc.current_mode() != editor.input.mode {
+                active_buffer.doc.enter_mode(editor.input.mode);
+            }
+
+            if action != Action::NoOp {
+                match action {
+                    Action::Redo { .. } => {
+                        return HandleEvent::Exit;
+                    }
+                    _ => {}
+                }
+
+                editor.apply_active_action(&action);
+                // After applying action, mode might have changed again (e.g. Change action sets Insert mode)
+                editor.input.mode = editor.buffer_manager.active().doc.current_mode();
+                editor.buffer_manager.active_mut().doc.sync();
+                return HandleEvent::RedrawAndSync;
+            }
+
+            // Handle Esc specifically if it didn't produce an action but should clear state
+            if key_event.code == crossterm::event::KeyCode::Esc {
+                editor.input.clear();
+                return HandleEvent::Redraw;
+            }
+
+            // If sequence is not empty, we might be in the middle of a command, redraw to show it
+            if !editor.input.sequence.is_empty() {
+                return HandleEvent::Redraw;
+            }
+        }
+        Event::Mouse(mouse_event) => match mouse_event.kind {
             MouseEventKind::ScrollUp => {
-                scroll_up = true;
+                editor.apply_active_action(&Action::ScrollLineUp { count: 1 });
+                return HandleEvent::Redraw;
             }
             MouseEventKind::ScrollDown => {
-                scroll_down = true;
+                editor.apply_active_action(&Action::ScrollLineDown { count: 1 });
+                return HandleEvent::Redraw;
             }
             _ => {}
-        }
-        return HandleEvent::NoRedraw;
+        },
+        _ => {}
     }
-
-    // Bracketed paste
-    if let Event::Paste(content) = &event {
-        if editor.mode == Mode::Insert {
-            editor.apply_active_action(&Action::InsertText(content.clone()));
-            return HandleEvent::RedrawAndSync;
-        }
-        return HandleEvent::NoRedraw;
-    }
-
-    if let Event::Key(key_event) = event {
-        let mut should_redraw = false;
-        let mut should_sync = false;
-        let mut current_mode = editor.mode.clone();
-
-        {
-            let active_buffer = editor.buffer_manager.active_mut();
-            current_mode = active_buffer.doc.current_mode();
-        }
-
-        let combo = KeyCombo::from(&key_event);
-
-        // Global actions
-        match (key_event.code, key_event.modifiers) {
-            (KeyCode::Esc, _) => {
-                should_redraw = true;
-                let active_buffer = editor.buffer_manager.active_mut();
-
-                let clear_cursors =
-                    current_mode != Mode::Normal && active_buffer.doc.has_selection();
-                if current_mode == Mode::Normal {
-                    active_buffer.doc.clear_selections();
-                }
-
-                active_buffer.doc.enter_mode(Mode::Normal);
-                current_mode = Mode::Normal;
-                if clear_cursors {
-                    editor.apply_active_action(&Action::ClearCursors);
-                }
-            }
-            (KeyCode::Char('q'), KeyModifiers::CONTROL) => return HandleEvent::Exit,
-            _ => {}
-        }
-
-        // Count from pending_cmd prefix
-        let count = {
-            let mut count_str = String::new();
-            let mut parsing_count = true;
-            for ch in editor.pending_cmd.chars() {
-                if parsing_count && ch.is_ascii_digit() {
-                    count_str.push(ch);
-                } else {
-                    parsing_count = false;
-                }
-            }
-            count_str.parse::<u32>().unwrap_or(1)
-        };
-
-        let select = editor.mode == Mode::Visual
-            || editor.mode == Mode::VisualLine
-            || editor.mode == Mode::VisualBlock;
-
-        // Resolve motions from keymap (applies to normal, visual, and insert/command modes)
-        let mut move_action = if let Some(action) = editor.keymap.get_normal_action(&combo) {
-            let is_motion = matches!(
-                action,
-                Action::MoveLeft { .. }
-                    | Action::MoveRight { .. }
-                    | Action::MoveUp { .. }
-                    | Action::MoveDown { .. }
-                    | Action::MoveToStartOfLine { .. }
-                    | Action::MoveToEndOfLine { .. }
-                    | Action::MoveToStartOfLineNonSpace { .. }
-                    | Action::MoveToPreviousParagraph { .. }
-                    | Action::MoveToNextParagraph { .. }
-                    | Action::MoveToPreviousWord { .. }
-                    | Action::MoveToNextWord { .. }
-                    | Action::MoveToPreviousWordEnd { .. }
-                    | Action::MoveToNextWordEnd { .. }
-                    | Action::MoveToStartOfDocument { .. }
-                    | Action::MoveToEndOfDocument { .. }
-                    | Action::MoveToLine { .. }
-                    | Action::MoveToPreviousCharacter { .. }
-                    | Action::MoveToNextCharacter { .. }
-                    | Action::MoveToPreviousMatch { .. }
-                    | Action::MoveToNextMatch { .. }
-                    | Action::MoveToNextFunction { .. }
-                    | Action::MoveToPreviousFunction { .. }
-                    | Action::MoveToNextClass { .. }
-                    | Action::MoveToPreviousClass { .. }
-                    | Action::MoveToNextArgument { .. }
-                    | Action::MoveToPreviousArgument { .. }
-                    | Action::MoveToNextBlock { .. }
-                    | Action::MoveToPreviousBlock { .. }
-                    | Action::MoveToBlockStart { .. }
-                    | Action::MoveToBlockEnd { .. }
-            );
-            let is_char_motion = matches!(combo.code, KeyCode::Char(_));
-            let is_insert_or_command = editor.mode == Mode::Insert || editor.mode == Mode::Command;
-
-            if is_motion && (!is_insert_or_command || !is_char_motion) {
-                let resolved = apply_context(action, select, count);
-                match resolved {
-                    Action::MoveUp { select, count } if combo.code == KeyCode::PageUp => {
-                        Action::MoveUp {
-                            select,
-                            count: (visible_rows >> 1) as u32 * count,
-                        }
-                    }
-                    Action::MoveDown { select, count } if combo.code == KeyCode::PageDown => {
-                        Action::MoveDown {
-                            select,
-                            count: (visible_rows >> 1) as u32 * count,
-                        }
-                    }
-                    _ => resolved,
-                }
-            } else {
-                Action::NoOp
-            }
-        } else {
-            Action::NoOp
-        };
-
-        // Fallback for dead scroll up/down code placeholders
-        if move_action == Action::NoOp {
-            if scroll_up {
-                move_action = Action::MoveUp {
-                    select,
-                    count: (visible_rows >> 1) as u32 * count,
-                };
-            } else if scroll_down {
-                move_action = Action::MoveDown {
-                    select,
-                    count: (visible_rows >> 1) as u32 * count,
-                };
-            }
-        }
-
-        // Resolve Normal & Visual Mode actions
-        let mut normal_action = Action::NoOp;
-        if current_mode == Mode::Normal
-            || current_mode == Mode::Visual
-            || current_mode == Mode::VisualLine
-            || current_mode == Mode::VisualBlock
-        {
-            let pending_sequence = editor
-                .pending_cmd
-                .chars()
-                .any(|character| !character.is_ascii_digit());
-
-            if combo.code == KeyCode::Esc {
-                editor.pending_cmd.clear();
-                should_redraw = true;
-            } else if !pending_sequence
-                && let Some(action) = editor.keymap.get_normal_action(&combo)
-            {
-                let is_motion = matches!(
-                    action,
-                    Action::MoveLeft { .. }
-                        | Action::MoveRight { .. }
-                        | Action::MoveUp { .. }
-                        | Action::MoveDown { .. }
-                        | Action::MoveToStartOfLine { .. }
-                        | Action::MoveToEndOfLine { .. }
-                        | Action::MoveToStartOfLineNonSpace { .. }
-                        | Action::MoveToPreviousParagraph { .. }
-                        | Action::MoveToNextParagraph { .. }
-                        | Action::MoveToPreviousWord { .. }
-                        | Action::MoveToNextWord { .. }
-                        | Action::MoveToPreviousWordEnd { .. }
-                        | Action::MoveToNextWordEnd { .. }
-                        | Action::MoveToStartOfDocument { .. }
-                        | Action::MoveToEndOfDocument { .. }
-                        | Action::MoveToLine { .. }
-                        | Action::MoveToPreviousCharacter { .. }
-                        | Action::MoveToNextCharacter { .. }
-                        | Action::MoveToPreviousMatch { .. }
-                        | Action::MoveToNextMatch { .. }
-                        | Action::MoveToNextFunction { .. }
-                        | Action::MoveToPreviousFunction { .. }
-                        | Action::MoveToNextClass { .. }
-                        | Action::MoveToPreviousClass { .. }
-                        | Action::MoveToNextArgument { .. }
-                        | Action::MoveToPreviousArgument { .. }
-                        | Action::MoveToNextBlock { .. }
-                        | Action::MoveToPreviousBlock { .. }
-                        | Action::MoveToBlockStart { .. }
-                        | Action::MoveToBlockEnd { .. }
-                );
-
-                if !is_motion {
-                    match action {
-                        Action::SetVisualMode => {
-                            normal_action = if current_mode == Mode::Visual {
-                                Action::SetNormalMode
-                            } else {
-                                Action::SetVisualMode
-                            };
-                        }
-                        Action::SetVisualLineMode => {
-                            normal_action = if current_mode == Mode::VisualLine {
-                                Action::SetNormalMode
-                            } else {
-                                Action::SetVisualLineMode
-                            };
-                        }
-                        Action::SetVisualBlockMode => {
-                            normal_action = if current_mode == Mode::VisualBlock {
-                                Action::SetNormalMode
-                            } else {
-                                Action::SetVisualBlockMode
-                            };
-                        }
-                        other_action => {
-                            let is_mode_changing = matches!(
-                                other_action,
-                                Action::SetInsertMode
-                                    | Action::SetInsertModeMotion { .. }
-                                    | Action::SetCommandMode { .. }
-                            );
-                            if !(is_mode_changing && current_mode != Mode::Normal) {
-                                let resolved = apply_context(other_action, select, count);
-                                normal_action = match resolved {
-                                    Action::MoveToNextMatch { .. }
-                                        if !editor.search_text.is_empty() =>
-                                    {
-                                        Action::MoveToNextMatch {
-                                            search: editor.search_text.clone(),
-                                            pattern: editor.pattern,
-                                        }
-                                    }
-                                    Action::MoveToPreviousMatch { .. }
-                                        if !editor.search_text.is_empty() =>
-                                    {
-                                        Action::MoveToPreviousMatch {
-                                            search: editor.search_text.clone(),
-                                            pattern: editor.pattern,
-                                        }
-                                    }
-                                    _ => resolved,
-                                };
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Fallback for single char / pending commands building
-            if normal_action == Action::NoOp {
-                if let KeyCode::Char(c) = combo.code {
-                    editor.pending_cmd.push(c);
-                    let (parsed_count, cmd_without_count) = {
-                        let mut count_str = String::new();
-                        let mut cmd_str = String::new();
-                        let mut parsing_count = true;
-                        for ch in editor.pending_cmd.chars() {
-                            if parsing_count
-                                && ch.is_ascii_digit()
-                                && (ch != '0' || !count_str.is_empty())
-                            {
-                                count_str.push(ch);
-                            } else {
-                                parsing_count = false;
-                                cmd_str.push(ch);
-                            }
-                        }
-                        let count = if count_str.is_empty() {
-                            1
-                        } else {
-                            count_str.parse::<u32>().unwrap_or(1)
-                        };
-                        (count, cmd_str)
-                    };
-
-                    let pending_action = if let Some(action) =
-                        editor.keymap.get_pending_action(&cmd_without_count)
-                    {
-                        Some(action)
-                    } else {
-                        resolve_pattern_pending_action(&cmd_without_count, select, parsed_count)
-                    };
-
-                    if let Some(a) = pending_action {
-                        editor.pending_cmd.clear();
-                        normal_action = apply_context(a, select, parsed_count);
-                    }
-                }
-            }
-        }
-
-        // Resolve Insert & Command Mode Actions
-        let insert_action = if let Some(action) = editor.keymap.get_insert_action(&combo) {
-            if current_mode == Mode::Insert || current_mode == Mode::Command {
-                action
-            } else {
-                Action::NoOp
-            }
-        } else if current_mode == Mode::Insert || current_mode == Mode::Command {
-            if let KeyCode::Char(c) = combo.code {
-                Action::InsertText(c.to_string())
-            } else {
-                Action::NoOp
-            }
-        } else {
-            Action::NoOp
-        };
-
-        if normal_action != Action::NoOp {
-            move_action = Action::NoOp;
-        }
-
-        //----------------------------
-        // handle Action here
-        //----------------------------
-        match current_mode {
-            Mode::Normal => {
-                if normal_action != Action::NoOp {
-                    let active_buffer = editor.buffer_manager.active_mut();
-                    match normal_action {
-                        Action::SetInsertMode => {
-                            should_redraw = true;
-                            active_buffer.doc.enter_mode(Mode::Insert);
-                        }
-                        Action::SetVisualMode => {
-                            should_redraw = true;
-                            active_buffer.doc.enter_mode(Mode::Visual);
-                        }
-                        Action::SetVisualLineMode => {
-                            should_redraw = true;
-                            active_buffer.doc.enter_mode(VisualLine);
-                        }
-                        Action::SetVisualBlockMode => {
-                            should_redraw = true;
-                            active_buffer.doc.enter_mode(VisualBlock);
-                        }
-                        Action::SetCommandMode { search, pattern } => {
-                            should_redraw = true;
-                            editor.search = search;
-                            editor.pattern = pattern;
-                            active_buffer.doc.enter_mode(Command);
-                        }
-                        Action::NextBuffer => {
-                            should_redraw = true;
-                            editor.buffer_manager.switch_next();
-                        }
-                        Action::PreviousBuffer => {
-                            should_redraw = true;
-                            editor.buffer_manager.switch_prev();
-                        }
-                        _ => {
-                            editor.apply_active_action(&normal_action);
-                            editor.pending_cmd.clear();
-                        }
-                    }
-                } else if move_action != Action::NoOp {
-                    editor.apply_active_action(&move_action);
-                    editor.pending_cmd.clear();
-                }
-            }
-            Mode::Visual | Mode::VisualLine | Mode::VisualBlock => {
-                if move_action != Action::NoOp {
-                    editor.apply_active_action(&move_action);
-                    editor.buffer_manager.active_mut().doc.sync();
-                    editor.pending_cmd.clear();
-                } else if normal_action != Action::NoOp {
-                    editor.apply_active_action(&normal_action);
-                    editor.pending_cmd.clear();
-                }
-            }
-            Mode::Insert => {
-                editor.pending_cmd.clear();
-                if insert_action != Action::NoOp {
-                    editor.apply_active_action(&insert_action);
-                } else if move_action != Action::NoOp {
-                    editor.apply_active_action(&move_action);
-                }
-            }
-            Mode::Command => {
-                let mut update_search = false;
-                if move_action != Action::NoOp && !editor.search {
-                    match move_action {
-                        Action::MoveUp { .. } => {
-                            if !editor.command_history.is_empty() {
-                                let h_idx = editor
-                                    .command_history
-                                    .len()
-                                    .saturating_sub(editor.history_idx + 1);
-                                if let Some(h_cmd) = editor.command_history.get(h_idx).cloned() {
-                                    editor.cmd = Document::new("").unwrap();
-                                    editor.apply_command_action(&Action::InsertText(h_cmd));
-                                }
-                                if editor.history_idx < editor.command_history.len() {
-                                    editor.history_idx += 1;
-                                }
-                            }
-                        }
-                        Action::MoveDown { .. } => {
-                            if !editor.command_history.is_empty() {
-                                editor.cmd = Document::new("").unwrap();
-                                if editor.history_idx > 0 {
-                                    editor.history_idx -= 1;
-                                }
-                                let h_idx = editor
-                                    .command_history
-                                    .len()
-                                    .saturating_sub(editor.history_idx);
-                                if let Some(h_cmd) = editor.command_history.get(h_idx).cloned() {
-                                    editor.apply_command_action(&Action::InsertText(h_cmd));
-                                }
-                            }
-                        }
-                        _ => {}
-                    }
-                    should_redraw = true;
-                }
-
-                if move_action != Action::NoOp && editor.search {
-                    match move_action {
-                        Action::MoveUp { .. } => {
-                            if !editor.search_history.is_empty() {
-                                let h_idx = editor
-                                    .search_history
-                                    .len()
-                                    .saturating_sub(editor.history_idx + 1);
-                                if let Some(h_cmd) = editor.search_history.get(h_idx).cloned() {
-                                    editor.cmd = Document::new("").unwrap();
-                                    editor.apply_command_action(&Action::InsertText(h_cmd));
-                                }
-                                if editor.history_idx < editor.search_history.len() {
-                                    editor.history_idx += 1;
-                                }
-                            }
-                        }
-                        Action::MoveDown { .. } => {
-                            if !editor.search_history.is_empty() {
-                                editor.cmd = Document::new("").unwrap();
-                                if editor.history_idx > 0 {
-                                    editor.history_idx -= 1;
-                                }
-                                let h_idx = editor
-                                    .search_history
-                                    .len()
-                                    .saturating_sub(editor.history_idx);
-                                if let Some(h_cmd) = editor.search_history.get(h_idx).cloned() {
-                                    editor.apply_command_action(&Action::InsertText(h_cmd));
-                                }
-                            }
-                        }
-                        _ => {}
-                    }
-                    should_redraw = true;
-                }
-
-                if let (KeyCode::Enter, _) = (key_event.code, key_event.modifiers) {
-                    let command_text = editor.cmd.buffer().row_text(0);
-
-                    // TODO resolve into action
-                    if editor.search {
-                        if !command_text.is_empty() {
-                            editor.search_text = command_text.clone();
-                            editor.search_history.push(command_text);
-
-                            editor.apply_active_action(&Action::MoveToNextMatch {
-                                search: editor.search_text.clone(),
-                                pattern: editor.pattern,
-                            });
-                        }
-                    } else {
-                        let command_parts: Vec<&str> =
-                            command_text.trim().split_whitespace().collect();
-
-                        if !command_parts.is_empty() {
-                            let mut exit = false;
-                            let save_command = true;
-                            match command_parts[0] {
-                                "q" => {
-                                    exit = true;
-                                }
-                                "bn" => {
-                                    editor.buffer_manager.switch_next();
-                                }
-                                "bp" => {
-                                    editor.buffer_manager.switch_prev();
-                                }
-                                "e" if command_parts.len() > 1 => {
-                                    let next_id = editor.buffer_manager.buffers.iter().map(|b| b.id).max().unwrap_or(0) + 1;
-                                    if let Ok(new_buffer) = EditorBuffer::new(next_id, command_parts[1]) {
-                                        editor.buffer_manager.add_buffer(new_buffer);
-                                    }
-                                }
-                                "set" if command_parts.len() > 1 => match command_parts[1] {
-                                    "wrap" => editor.wrap = true,
-                                    "nowrap" => editor.wrap = false,
-                                    "treesitter" | "ts" => {
-                                        editor.set_tree_sitter_enabled(true);
-                                        should_sync = true;
-                                    }
-                                    "notreesitter" | "nots" => {
-                                        editor.set_tree_sitter_enabled(false);
-                                    }
-                                    _ if command_parts[1].starts_with("nu") => {
-                                        editor.show_line_numbers = true;
-                                    }
-                                    _ if command_parts[1].starts_with("nonu") => {
-                                        editor.show_line_numbers = false;
-                                    }
-                                    _ => {}
-                                },
-                                "theme" if command_parts.len() > 1 => {
-                                    editor.theme.load_theme(command_parts[1]);
-                                    editor.syntax = true;
-                                }
-                                _ if command_parts[0].starts_with("syn")
-                                    && command_parts.len() > 1 =>
-                                {
-                                    match command_parts[1] {
-                                        "on" => {
-                                            editor.syntax = true;
-                                        }
-                                        "off" => editor.syntax = false,
-                                        _ => {}
-                                    }
-                                }
-                                cmd if cmd.parse::<u32>().is_ok() => {
-                                    let line_number = cmd.parse::<u32>().unwrap();
-                                    editor.apply_active_action(&Action::MoveToLine {
-                                        select: false,
-                                        line: line_number,
-                                    });
-                                }
-                                _ => {}
-                            }
-
-                            if save_command {
-                                editor.command_history.push(command_text.trim().to_string());
-                            }
-
-                            if exit {
-                                return HandleEvent::Exit;
-                            }
-                        }
-                    }
-
-                    // Clear command buffer and return to Normal mode
-                    editor.cmd = Document::new("").unwrap();
-                    {
-                        let active_buffer = editor.buffer_manager.active_mut();
-                        active_buffer.doc.enter_mode(Mode::Normal);
-                    }
-                    should_redraw = true;
-                } else if insert_action != Action::NoOp {
-                    editor.apply_command_action(&insert_action);
-                    update_search = true;
-                } else if let (KeyCode::Backspace, _) = (key_event.code, key_event.modifiers) {
-                    editor.apply_command_action(&Action::Backspace { count: 1 });
-                    update_search = true;
-                } else if let (KeyCode::Left, _) = (key_event.code, key_event.modifiers) {
-                    editor.apply_command_action(&Action::Backspace { count: 1 });
-                }
-
-                if current_mode == Mode::Command && update_search && editor.search {
-                    editor.search_text = editor.cmd.buffer().row_text(0);
-                }
-            }
-        }
-
-        if normal_action != Action::NoOp
-            || move_action != Action::NoOp
-            || insert_action != Action::NoOp
-        {
-            should_redraw = true;
-        }
-        if normal_action != Action::NoOp || insert_action != Action::NoOp {
-            should_sync = true;
-        }
-
-        return if should_sync {
-            HandleEvent::RedrawAndSync
-        } else if should_redraw {
-            HandleEvent::Redraw
-        } else {
-            HandleEvent::NoRedraw
-        };
-    }
-
     HandleEvent::NoRedraw
+}
+
+pub fn truncate_chars(s: &mut String, n: usize) {
+    let char_count = s.chars().count();
+    let new_len = char_count.saturating_sub(n);
+    if new_len == 0 {
+        s.clear();
+    } else {
+        if let Some((idx, _)) = s.char_indices().nth(new_len) {
+            s.truncate(idx);
+        }
+    }
+}
+
+pub fn resolve_count(seq: &mut String) -> u32 {
+    let mut digits = String::new();
+    while let Some(c) = seq.chars().last() {
+        if c.is_ascii_digit() {
+            digits.push(seq.pop().unwrap());
+        } else {
+            break;
+        }
+    }
+    if digits.is_empty() {
+        return 1;
+    }
+    digits
+        .chars()
+        .rev()
+        .collect::<String>()
+        .parse::<u32>()
+        .unwrap_or(1)
+}
+
+pub fn resolve_action(seq: &mut String, map: &HashMap<String, Action>) -> Action {
+    if let Some(lc) = seq.chars().last() {
+        let last_char = lc.to_string();
+        let mut matched: Option<(String, Action, bool, String)> = None;
+
+        for (key, action) in map {
+            let mut current_mk = key.as_str();
+            let rk;
+            let current_with_char;
+
+            if key.ends_with("{c}") {
+                rk = key.replace("{c}", &last_char);
+                current_mk = rk.as_str();
+                current_with_char = true;
+            } else {
+                current_with_char = false;
+            }
+
+            if seq.ends_with(current_mk) {
+                if matched.is_none()
+                    || current_mk.chars().count() > matched.as_ref().unwrap().0.chars().count()
+                {
+                    matched = Some((
+                        current_mk.to_string(),
+                        action.clone(),
+                        current_with_char,
+                        key.clone(),
+                    ));
+                }
+            }
+        }
+
+        if let Some((mk, action, with_char, _key)) = matched {
+            if with_char {
+                truncate_chars(seq, mk.chars().count());
+                let count = resolve_count(seq);
+                return action.with_char(lc, count);
+            }
+            truncate_chars(seq, mk.chars().count());
+            let count = resolve_count(seq);
+            return action.with_count(count);
+        }
+    }
+
+    Action::NoOp
+}
+
+pub fn peek_action(seq: &str, map: &HashMap<String, Action>) -> Action {
+    let mut s = seq.to_string();
+    resolve_action(&mut s, map)
+}
+
+pub fn resolve_op_motion_action(motion: Action, action: Action) -> Action {
+    let count = action.count();
+    match action {
+        Action::Delete { .. } => Action::DeleteMotion {
+            count,
+            motion: Box::new(motion),
+        },
+        Action::Change { .. } => Action::ChangeMotion {
+            count,
+            motion: Box::new(motion),
+        },
+        Action::Yank { .. } => Action::YankMotion {
+            count,
+            motion: Box::new(motion),
+        },
+        _ => Action::NoOp,
+    }
+}
+
+pub struct InputContext {
+    pub mode: Mode,
+}
+
+impl InputContext {
+    pub fn new() -> Self {
+        Self { mode: Mode::Normal }
+    }
+}
+
+pub struct VimInput {
+    pub mode: Mode,
+    pub sequence: String,
+    pub resolved_motion: Action,
+    pub resolved_op: Action,
+    pub resolved_action: Action,
+    pub keymap: Keymap,
+}
+
+impl VimInput {
+    pub fn new() -> Self {
+        Self {
+            mode: Mode::Normal,
+            sequence: "".to_string(),
+            resolved_motion: Action::NoOp,
+            resolved_op: Action::NoOp,
+            resolved_action: Action::NoOp,
+            keymap: Keymap::new(),
+        }
+    }
+
+    pub fn clear_resolved(&mut self) {
+        self.resolved_motion = Action::NoOp;
+        self.resolved_op = Action::NoOp;
+        self.resolved_action = Action::NoOp;
+    }
+
+    pub fn clear(&mut self) {
+        self.clear_resolved();
+        self.sequence.clear();
+    }
+
+    pub fn handle_sequence(&mut self, sequence: &str) -> Action {
+        self.sequence.clear();
+        self.handle_input(sequence)
+    }
+
+    pub fn handle_event(&mut self, key_event: &KeyEvent) -> Action {
+        let combo = KeyCombo::from(key_event);
+        return self.handle_input(combo.to_string().as_str());
+    }
+
+    pub fn handle_input(&mut self, sequence: &str) -> Action {
+        self.sequence.push_str(sequence);
+        self.clear_resolved();
+
+        // 1. Try to resolve a full motion first (possibly with an operator)
+        // insert action
+        let insert_action = if self.mode == Mode::Insert || self.mode == Mode::Command {
+            resolve_action(&mut self.sequence, &self.keymap.insert_actions)
+        } else {
+            Action::NoOp
+        };
+        if insert_action != Action::NoOp {
+            self.resolved_action = insert_action.clone();
+            return self.resolved_action.clone();
+        }
+
+        // 1. Try to resolve a full motion first (possibly with an operator)
+        if self.mode == Mode::Normal || self.mode.is_visual() {
+            let mut seq_for_motion = self.sequence.clone();
+            let mut motion_action =
+                resolve_action(&mut seq_for_motion, &self.keymap.motion_actions);
+
+            /*
+            if motion_action == Action::NoOp && self.mode.is_visual() {
+                motion_action = Action::MoveLeft {
+                    count: 0,
+                    select: true,
+                };
+            }
+            */
+
+            if motion_action != Action::NoOp {
+                if self.mode.is_visual() {
+                    motion_action = motion_action.with_select(true);
+                }
+
+                self.resolved_motion = motion_action.clone();
+
+                // Check if there's an operator before the motion
+                let op_action = resolve_action(&mut seq_for_motion, &self.keymap.op_actions);
+
+                if op_action != Action::NoOp {
+                    self.resolved_op = op_action.clone();
+                    self.resolved_action = resolve_op_motion_action(
+                        self.resolved_motion.clone(),
+                        self.resolved_op.clone(),
+                    );
+                    if self.resolved_action != Action::NoOp {
+                        self.sequence.clear();
+                    }
+                } else {
+                    // Just a motion
+                    self.resolved_action = motion_action.clone();
+                    self.sequence.clear();
+                }
+            } else if self.resolved_action == Action::NoOp {
+                // 2. Try to resolve a normal action (like 'dd' or 'x')
+                let mut seq_for_normal = self.sequence.clone();
+                let normal_action =
+                    resolve_action(&mut seq_for_normal, &self.keymap.normal_actions);
+                if normal_action != Action::NoOp {
+                    self.resolved_op = normal_action.clone();
+                    self.resolved_action = normal_action.clone();
+                    self.sequence.clear();
+                } else {
+                    // 3. Try to resolve a mode change
+                    let mut seq_for_mode = self.sequence.clone();
+                    let mode_action = resolve_action(&mut seq_for_mode, &self.keymap.mode_actions);
+                    if mode_action != Action::NoOp {
+                        self.resolved_action = mode_action.clone();
+                        self.sequence.clear();
+                    } else {
+                        // 4. If nothing resolved yet, peek for an operator to update UI
+                        let op_action = peek_action(&self.sequence, &self.keymap.op_actions);
+                        if op_action != Action::NoOp {
+                            self.resolved_op = op_action;
+                        }
+                    }
+                }
+            }
+        }
+
+        if self.resolved_action == Action::NoOp {
+            if sequence == "Esc" {
+                self.mode = Mode::Normal;
+                self.clear();
+            }
+        }
+
+        return self.resolved_action.clone();
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crossterm::event::KeyEvent;
-    use text::ToPoint;
+    use crate::actions::Action;
 
     #[test]
-    fn pending_sequences_take_priority_over_single_key_actions() {
-        let mut editor = Editor::new(Vec::new()).unwrap();
+    fn test_resolve_count() {
+        let mut s = "123".to_string();
+        assert_eq!(resolve_count(&mut s), 123);
+        assert_eq!(s, "");
 
-        handle_event(
-            &mut editor,
-            Event::Key(KeyEvent::new(KeyCode::Char(']'), KeyModifiers::empty())),
-            20,
-        );
-        assert_eq!(editor.pending_cmd, "]");
+        let mut s = "abc123".to_string();
+        assert_eq!(resolve_count(&mut s), 123);
+        assert_eq!(s, "abc");
 
-        handle_event(
-            &mut editor,
-            Event::Key(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::empty())),
-            20,
-        );
+        let mut s = "abc".to_string();
+        assert_eq!(resolve_count(&mut s), 1);
+        assert_eq!(s, "abc");
+    }
 
-        assert!(editor.pending_cmd.is_empty());
+    #[test]
+    fn test_simple_motions() {
+        let mut vim = VimInput::new();
+
+        // Test 'j'
         assert_eq!(
-            editor.buffer_manager.active().doc.current_mode(),
-            Mode::Normal
+            vim.handle_input("j"),
+            Action::MoveDown {
+                count: 1,
+                select: false
+            }
+        );
+
+        // Test '5k'
+        vim.handle_input("5");
+        assert_eq!(
+            vim.handle_input("k"),
+            Action::MoveUp {
+                count: 5,
+                select: false
+            }
+        );
+
+        // Test 'gg'
+        vim.handle_input("g");
+        assert_eq!(
+            vim.handle_input("g"),
+            Action::MoveToStartOfDocument {
+                count: 1,
+                select: false
+            }
         );
     }
 
     #[test]
-    fn pending_sequences_take_priority_over_single_key_actions_in_visual_mode() {
-        let mut editor = Editor::new(Vec::new()).unwrap();
-        editor
-            .buffer_manager
-            .active_mut()
-            .doc
-            .enter_mode(Mode::Visual);
+    fn test_operators() {
+        let mut vim = VimInput::new();
 
-        handle_event(
-            &mut editor,
-            Event::Key(KeyEvent::new(KeyCode::Char(']'), KeyModifiers::empty())),
-            20,
-        );
-        assert_eq!(editor.pending_cmd, "]");
+        // Test 'dw'
+        vim.handle_input("d");
+        let action = vim.handle_input("w");
+        if let Action::DeleteMotion { count, motion } = action {
+            assert_eq!(count, 1);
+            assert_eq!(
+                *motion,
+                Action::MoveToWord {
+                    count: 1,
+                    select: false
+                }
+            );
+        } else {
+            panic!("Expected DeleteMotion, got {:?}", action);
+        }
 
-        handle_event(
-            &mut editor,
-            Event::Key(KeyEvent::new(KeyCode::Char('{'), KeyModifiers::empty())),
-            20,
-        );
+        // Test '2d3w'
+        vim.handle_input("2");
+        vim.handle_input("d");
+        vim.handle_input("3");
+        let action = vim.handle_input("w");
+        if let Action::DeleteMotion { count, motion } = action {
+            assert_eq!(count, 2);
+            assert_eq!(
+                *motion,
+                Action::MoveToWord {
+                    count: 3,
+                    select: false
+                }
+            );
+        } else {
+            panic!("Expected DeleteMotion, got {:?}", action);
+        }
 
-        assert!(editor.pending_cmd.is_empty());
+        // Test 'd3w'
+        vim.handle_input("d");
+        vim.handle_input("3");
+        let action = vim.handle_input("w");
+        if let Action::DeleteMotion { count, motion } = action {
+            assert_eq!(count, 1);
+            assert_eq!(
+                *motion,
+                Action::MoveToWord {
+                    count: 3,
+                    select: false
+                }
+            );
+        } else {
+            panic!("Expected DeleteMotion, got {:?}", action);
+        }
     }
 
     #[test]
-    fn test_pageup_pagedown_movement_amount() {
-        let mut editor = Editor::new(Vec::new()).unwrap();
-        editor.apply_active_action(&Action::InsertText(
-            "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nline 10"
-                .into(),
-        ));
+    fn test_line_operators() {
+        let mut vim = VimInput::new();
 
-        let start_point = editor
-            .buffer_manager
-            .active()
-            .doc
-            .selection()
-            .head()
-            .to_point(editor.buffer_manager.active().doc.buffer());
-        assert_eq!(start_point.row, 9); // cursor starts at line 10 (row 9)
+        // Test 'dd'
+        vim.handle_input("d");
+        assert_eq!(vim.handle_input("d"), Action::DeleteLine { count: 1 });
 
-        handle_event(
-            &mut editor,
-            Event::Key(KeyEvent::new(KeyCode::PageUp, KeyModifiers::empty())),
-            10, // visible_rows
+        // Test '5yy'
+        vim.handle_input("5");
+        vim.handle_input("y");
+        assert_eq!(vim.handle_input("y"), Action::YankLine { count: 5 });
+    }
+
+    #[test]
+    fn test_char_motions() {
+        let mut vim = VimInput::new();
+
+        // Test 'fx'
+        vim.handle_input("f");
+        assert_eq!(
+            vim.handle_input("x"),
+            Action::MoveToNextCharacter {
+                count: 1,
+                select: false,
+                ch: 'x'
+            }
         );
 
-        let end_point = editor
-            .buffer_manager
-            .active()
-            .doc
-            .selection()
-            .head()
-            .to_point(editor.buffer_manager.active().doc.buffer());
-        // visible_rows >> 1 = 5. So row should be 9 - 5 = 4.
-        assert_eq!(end_point.row, 4);
+        // Test '3Fy'
+        vim.handle_input("3");
+        vim.handle_input("F");
+        assert_eq!(
+            vim.handle_input("y"),
+            Action::MoveToPreviousCharacter {
+                count: 3,
+                select: false,
+                ch: 'y'
+            }
+        );
+    }
+
+    #[test]
+    fn test_mode_changes() {
+        let mut vim = VimInput::new();
+
+        assert_eq!(vim.mode, Mode::Normal);
+        vim.handle_input("i");
+        assert_eq!(vim.mode, Mode::Insert);
+
+        vim.handle_input("Esc");
+        assert_eq!(vim.mode, Mode::Normal);
+
+        vim.handle_input("v");
+        assert_eq!(vim.mode, Mode::Visual);
+    }
+
+    #[test]
+    fn test_insert_mode() {
+        let mut vim = VimInput::new();
+        vim.handle_input("i");
+        assert_eq!(vim.mode, Mode::Insert);
+
+        // Test inserting a character
+        assert_eq!(vim.handle_input("a"), Action::InsertText("a".to_string()));
+
+        // Test Enter in insert mode
+        assert_eq!(
+            vim.handle_input("Enter"),
+            Action::InsertNewLine { count: 1 }
+        );
+
+        // Test escaping back to normal mode
+        vim.handle_input("Esc");
+        assert_eq!(vim.mode, Mode::Normal);
+    }
+
+    #[test]
+    fn test_partial_operator() {
+        let mut vim = VimInput::new();
+        vim.handle_input("d");
+        assert_eq!(vim.resolved_op, Action::Delete { count: 1 });
+
+        // Test 'd3' - operator should still be resolved even with count
+        vim.handle_input("3");
+        // This currently fails because 'd' is not at the end of "d3"
+        assert_eq!(vim.resolved_op, Action::Delete { count: 1 });
     }
 }

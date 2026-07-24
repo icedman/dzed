@@ -1,10 +1,6 @@
 use crossterm;
 use std::path::Path;
-use syntect::{
-    easy::HighlightLines,
-    highlighting::ThemeSet,
-    parsing::SyntaxSet,
-};
+use syntect::{easy::HighlightLines, highlighting::ThemeSet, parsing::SyntaxSet};
 
 pub trait ToCrossTerm {
     fn rgb(&self) -> crossterm::style::Color;

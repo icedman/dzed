@@ -1,8 +1,8 @@
-use crate::actions::{Action, SelectInKind};
+use crate::actions::Action;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct KeyCombo {
     pub code: KeyCode,
     pub modifiers: KeyModifiers,
@@ -13,917 +13,448 @@ impl KeyCombo {
         Self { code, modifiers }
     }
 
-    pub fn parse(s: &str) -> Result<Self, String> {
-        let parts: Vec<&str> = s.split('-').collect();
-        let mut modifiers = KeyModifiers::empty();
-        let mut code = None;
-
-        for (i, part) in parts.iter().enumerate() {
-            if i == parts.len() - 1 {
-                // The last part is the KeyCode
-                let part_lower = part.to_lowercase();
-                code = Some(match part_lower.as_str() {
-                    "esc" | "escape" => KeyCode::Esc,
-                    "enter" | "return" => KeyCode::Enter,
-                    "tab" => KeyCode::Tab,
-                    "backspace" => KeyCode::Backspace,
-                    "delete" | "del" => KeyCode::Delete,
-                    "left" => KeyCode::Left,
-                    "right" => KeyCode::Right,
-                    "up" => KeyCode::Up,
-                    "down" => KeyCode::Down,
-                    "pageup" | "pgup" => KeyCode::PageUp,
-                    "pagedown" | "pgdn" => KeyCode::PageDown,
-                    "home" => KeyCode::Home,
-                    "end" => KeyCode::End,
-                    _ if part.chars().count() == 1 => {
-                        let ch = part.chars().next().unwrap();
-                        KeyCode::Char(ch)
-                    }
-                    _ => return Err(format!("Unknown key code: {}", part)),
-                });
-            } else {
-                // Modifiers
-                let part_lower = part.to_lowercase();
-                match part_lower.as_str() {
-                    "ctrl" | "control" => modifiers.insert(KeyModifiers::CONTROL),
-                    "alt" | "option" => modifiers.insert(KeyModifiers::ALT),
-                    "shift" => modifiers.insert(KeyModifiers::SHIFT),
-                    _ => return Err(format!("Unknown modifier: {}", part)),
-                }
+    pub fn to_string(&self) -> String {
+        let mut s = String::new();
+        if self.modifiers.contains(KeyModifiers::CONTROL) {
+            s.push_str("C-");
+        }
+        if self.modifiers.contains(KeyModifiers::ALT) {
+            s.push_str("M-");
+        }
+        if self.modifiers.contains(KeyModifiers::SHIFT) {
+            match self.code {
+                KeyCode::Char(_) => {} // Shift is usually reflected in the char itself
+                _ => s.push_str("S-"),
             }
         }
 
-        if let Some(mut code) = code {
-            // Normalize Char key codes under Shift modifier to uppercase
-            if modifiers.contains(KeyModifiers::SHIFT) {
-                if let KeyCode::Char(c) = code {
-                    if c.is_ascii_lowercase() {
-                        code = KeyCode::Char(c.to_ascii_uppercase());
-                    }
-                }
-            }
-            Ok(Self { code, modifiers })
-        } else {
-            Err("Empty key binding".to_string())
+        match self.code {
+            KeyCode::Char(c) => s.push(c),
+            KeyCode::Esc => s.push_str("Esc"),
+            KeyCode::Enter => s.push_str("Enter"),
+            KeyCode::Backspace => s.push_str("Backspace"),
+            KeyCode::Tab => s.push_str("Tab"),
+            KeyCode::Up => s.push_str("Up"),
+            KeyCode::Down => s.push_str("Down"),
+            KeyCode::Left => s.push_str("Left"),
+            KeyCode::Right => s.push_str("Right"),
+            KeyCode::PageUp => s.push_str("PageUp"),
+            KeyCode::PageDown => s.push_str("PageDown"),
+            KeyCode::Home => s.push_str("Home"),
+            KeyCode::End => s.push_str("End"),
+            KeyCode::Delete => s.push_str("Delete"),
+            KeyCode::Insert => s.push_str("Insert"),
+            KeyCode::BackTab => s.push_str("BackTab"),
+            KeyCode::F(n) => s.push_str(&format!("F{}", n)),
+            _ => s.push_str(&format!("{:?}", self.code)),
         }
+        s
     }
 }
 
 impl From<&KeyEvent> for KeyCombo {
     fn from(event: &KeyEvent) -> Self {
         let mut code = event.code;
-        let modifiers = event.modifiers;
-        // Normalize
+        let mut modifiers = event.modifiers;
+
         if modifiers.contains(KeyModifiers::SHIFT) {
             if let KeyCode::Char(c) = code {
-                if c.is_ascii_lowercase() {
-                    code = KeyCode::Char(c.to_ascii_uppercase());
+                code = KeyCode::Char(c.to_ascii_uppercase());
+                // If it's a character and we have Shift, we've normalized the char
+                // so we can often consider Shift "consumed".
+                if c.is_ascii_alphabetic() {
+                    modifiers.remove(KeyModifiers::SHIFT);
                 }
             }
         }
+
         Self { code, modifiers }
     }
 }
 
 pub struct Keymap {
-    pub normal_actions: HashMap<KeyCombo, Action>,
-    pub insert_actions: HashMap<KeyCombo, Action>,
-    pub pending_commands: HashMap<String, Action>,
-}
-
-impl Default for Keymap {
-    fn default() -> Self {
-        let mut normal_actions = HashMap::new();
-        let mut insert_actions = HashMap::new();
-        let mut pending_commands = HashMap::new();
-
-        // 1. Normal-mode commands
-        normal_actions.insert(
-            KeyCombo::new(KeyCode::Char('i'), KeyModifiers::empty()),
-            Action::SetInsertMode,
-        );
-        normal_actions.insert(
-            KeyCombo::new(KeyCode::Char('I'), KeyModifiers::empty()),
-            Action::SetInsertModeMotion {
-                motion: Box::new(Action::MoveToStartOfLine { select: false }),
-            },
-        );
-        normal_actions.insert(
-            KeyCombo::new(KeyCode::Char('a'), KeyModifiers::empty()),
-            Action::SetInsertModeMotion {
-                motion: Box::new(Action::MoveRight {
-                    select: false,
-                    count: 1,
-                }),
-            },
-        );
-        normal_actions.insert(
-            KeyCombo::new(KeyCode::Char('A'), KeyModifiers::empty()),
-            Action::SetInsertModeMotion {
-                motion: Box::new(Action::MoveToEndOfLine { select: false }),
-            },
-        );
-        normal_actions.insert(
-            KeyCombo::new(KeyCode::Char('V'), KeyModifiers::empty()),
-            Action::SetVisualLineMode,
-        );
-        normal_actions.insert(
-            KeyCombo::new(KeyCode::Char('v'), KeyModifiers::CONTROL),
-            Action::SetVisualBlockMode,
-        );
-        normal_actions.insert(
-            KeyCombo::new(KeyCode::Char('v'), KeyModifiers::empty()),
-            Action::SetVisualMode,
-        );
-        normal_actions.insert(
-            KeyCombo::new(KeyCode::Char(':'), KeyModifiers::empty()),
-            Action::SetCommandMode {
-                search: false,
-                pattern: false,
-            },
-        );
-        normal_actions.insert(
-            KeyCombo::new(KeyCode::Char('/'), KeyModifiers::empty()),
-            Action::SetCommandMode {
-                search: true,
-                pattern: false,
-            },
-        );
-        normal_actions.insert(
-            KeyCombo::new(KeyCode::Char('?'), KeyModifiers::empty()),
-            Action::SetCommandMode {
-                search: true,
-                pattern: true,
-            },
-        );
-        normal_actions.insert(
-            KeyCombo::new(KeyCode::Char('r'), KeyModifiers::CONTROL),
-            Action::Redo { count: 1 },
-        );
-        normal_actions.insert(
-            KeyCombo::new(KeyCode::Char('u'), KeyModifiers::empty()),
-            Action::Undo { count: 1 },
-        );
-        normal_actions.insert(
-            KeyCombo::new(KeyCode::Char('H'), KeyModifiers::empty()),
-            Action::PreviousBuffer,
-        );
-        normal_actions.insert(
-            KeyCombo::new(KeyCode::Char('L'), KeyModifiers::empty()),
-            Action::NextBuffer,
-        );
-        normal_actions.insert(
-            KeyCombo::new(KeyCode::Char('h'), KeyModifiers::empty()),
-            Action::MoveLeft {
-                select: false,
-                count: 1,
-            },
-        );
-        normal_actions.insert(
-            KeyCombo::new(KeyCode::Char('l'), KeyModifiers::empty()),
-            Action::MoveRight {
-                select: false,
-                count: 1,
-            },
-        );
-        normal_actions.insert(
-            KeyCombo::new(KeyCode::Char('k'), KeyModifiers::empty()),
-            Action::MoveUp {
-                select: false,
-                count: 1,
-            },
-        );
-        normal_actions.insert(
-            KeyCombo::new(KeyCode::Char('j'), KeyModifiers::empty()),
-            Action::MoveDown {
-                select: false,
-                count: 1,
-            },
-        );
-        normal_actions.insert(
-            KeyCombo::new(KeyCode::Char('n'), KeyModifiers::empty()),
-            Action::MoveToNextMatch {
-                search: String::new(),
-                pattern: false,
-            },
-        );
-        normal_actions.insert(
-            KeyCombo::new(KeyCode::Char('N'), KeyModifiers::empty()),
-            Action::MoveToPreviousMatch {
-                search: String::new(),
-                pattern: false,
-            },
-        );
-        normal_actions.insert(
-            KeyCombo::new(KeyCode::Delete, KeyModifiers::empty()),
-            Action::DeleteText { count: 1 },
-        );
-        normal_actions.insert(
-            KeyCombo::new(KeyCode::Backspace, KeyModifiers::empty()),
-            Action::MoveLeft {
-                select: false,
-                count: 1,
-            },
-        );
-        normal_actions.insert(
-            KeyCombo::new(KeyCode::Left, KeyModifiers::SHIFT),
-            Action::MoveToPreviousWord {
-                select: false,
-                count: 1,
-            },
-        );
-        normal_actions.insert(
-            KeyCombo::new(KeyCode::Right, KeyModifiers::SHIFT),
-            Action::MoveToNextWord {
-                select: false,
-                count: 1,
-            },
-        );
-        normal_actions.insert(
-            KeyCombo::new(KeyCode::Char('d'), KeyModifiers::CONTROL),
-            Action::SelectSimilar,
-        );
-
-        // 2. Motions
-        normal_actions.insert(
-            KeyCombo::new(KeyCode::Left, KeyModifiers::empty()),
-            Action::MoveLeft {
-                select: false,
-                count: 1,
-            },
-        );
-        normal_actions.insert(
-            KeyCombo::new(KeyCode::Right, KeyModifiers::empty()),
-            Action::MoveRight {
-                select: false,
-                count: 1,
-            },
-        );
-        normal_actions.insert(
-            KeyCombo::new(KeyCode::Up, KeyModifiers::empty()),
-            Action::MoveUp {
-                select: false,
-                count: 1,
-            },
-        );
-        normal_actions.insert(
-            KeyCombo::new(KeyCode::Down, KeyModifiers::empty()),
-            Action::MoveDown {
-                select: false,
-                count: 1,
-            },
-        );
-        normal_actions.insert(
-            KeyCombo::new(KeyCode::PageUp, KeyModifiers::empty()),
-            Action::MoveUp {
-                select: false,
-                count: 1,
-            },
-        );
-        normal_actions.insert(
-            KeyCombo::new(KeyCode::PageDown, KeyModifiers::empty()),
-            Action::MoveDown {
-                select: false,
-                count: 1,
-            },
-        );
-        normal_actions.insert(
-            KeyCombo::new(KeyCode::Home, KeyModifiers::empty()),
-            Action::MoveToStartOfLine { select: false },
-        );
-        normal_actions.insert(
-            KeyCombo::new(KeyCode::End, KeyModifiers::empty()),
-            Action::MoveToEndOfLine { select: false },
-        );
-        normal_actions.insert(
-            KeyCombo::new(KeyCode::Char('0'), KeyModifiers::empty()),
-            Action::MoveToStartOfLine { select: false },
-        );
-        normal_actions.insert(
-            KeyCombo::new(KeyCode::Char('$'), KeyModifiers::empty()),
-            Action::MoveToEndOfLine { select: false },
-        );
-        normal_actions.insert(
-            KeyCombo::new(KeyCode::Char('^'), KeyModifiers::empty()),
-            Action::MoveToStartOfLineNonSpace { select: false },
-        );
-        normal_actions.insert(
-            KeyCombo::new(KeyCode::Char('{'), KeyModifiers::empty()),
-            Action::MoveToPreviousParagraph {
-                select: false,
-                count: 1,
-            },
-        );
-        normal_actions.insert(
-            KeyCombo::new(KeyCode::Char('}'), KeyModifiers::empty()),
-            Action::MoveToNextParagraph {
-                select: false,
-                count: 1,
-            },
-        );
-
-        // 3. Insert-mode keybindings
-        insert_actions.insert(
-            KeyCombo::new(KeyCode::Enter, KeyModifiers::empty()),
-            Action::InsertNewLine,
-        );
-        insert_actions.insert(
-            KeyCombo::new(KeyCode::Tab, KeyModifiers::empty()),
-            Action::InsertTab,
-        );
-        insert_actions.insert(
-            KeyCombo::new(KeyCode::Delete, KeyModifiers::empty()),
-            Action::Delete { count: 1 },
-        );
-        insert_actions.insert(
-            KeyCombo::new(KeyCode::Backspace, KeyModifiers::empty()),
-            Action::Backspace { count: 1 },
-        );
-
-        // 4. Pending sequence commands
-        pending_commands.insert(
-            "iw".to_string(),
-            Action::SelectIn {
-                kind: SelectInKind::Word,
-            },
-        );
-        pending_commands.insert("i{".to_string(), Action::SelectInPair { kind: '{' });
-        pending_commands.insert("i}".to_string(), Action::SelectInPair { kind: '{' });
-        pending_commands.insert("i[".to_string(), Action::SelectInPair { kind: '[' });
-        pending_commands.insert("i]".to_string(), Action::SelectInPair { kind: '[' });
-        pending_commands.insert("i(".to_string(), Action::SelectInPair { kind: '(' });
-        pending_commands.insert("i)".to_string(), Action::SelectInPair { kind: '(' });
-        pending_commands.insert(
-            "aw".to_string(),
-            Action::SelectAround {
-                kind: SelectInKind::Word,
-            },
-        );
-        pending_commands.insert(
-            "gg".to_string(),
-            Action::MoveToStartOfDocument { select: false },
-        );
-        pending_commands.insert(
-            "G".to_string(),
-            Action::MoveToEndOfDocument { select: false },
-        );
-        pending_commands.insert(
-            "]f".to_string(),
-            Action::MoveToNextFunction {
-                select: false,
-                count: 1,
-            },
-        );
-        pending_commands.insert(
-            "[f".to_string(),
-            Action::MoveToPreviousFunction {
-                select: false,
-                count: 1,
-            },
-        );
-        pending_commands.insert(
-            "]n".to_string(),
-            Action::MoveToNextBlock {
-                select: false,
-                count: 1,
-            },
-        );
-        pending_commands.insert(
-            "[n".to_string(),
-            Action::MoveToPreviousBlock {
-                select: false,
-                count: 1,
-            },
-        );
-        pending_commands.insert(
-            "[[".to_string(),
-            Action::MoveToBlockStart {
-                select: false,
-                count: 1,
-            },
-        );
-        pending_commands.insert(
-            "]]".to_string(),
-            Action::MoveToBlockEnd {
-                select: false,
-                count: 1,
-            },
-        );
-        pending_commands.insert(
-            "]c".to_string(),
-            Action::MoveToNextClass {
-                select: false,
-                count: 1,
-            },
-        );
-        pending_commands.insert(
-            "[c".to_string(),
-            Action::MoveToPreviousClass {
-                select: false,
-                count: 1,
-            },
-        );
-        pending_commands.insert(
-            "]a".to_string(),
-            Action::MoveToNextArgument {
-                select: false,
-                count: 1,
-            },
-        );
-        pending_commands.insert(
-            "[a".to_string(),
-            Action::MoveToPreviousArgument {
-                select: false,
-                count: 1,
-            },
-        );
-        pending_commands.insert("yy".to_string(), Action::YankCurrentLine { count: 1 });
-        pending_commands.insert(
-            "yw".to_string(),
-            Action::YankMotion {
-                count: 1,
-                motion: Box::new(Action::MoveToNextWord {
-                    select: true,
-                    count: 1,
-                }),
-            },
-        );
-        pending_commands.insert(
-            "yb".to_string(),
-            Action::YankMotion {
-                count: 1,
-                motion: Box::new(Action::MoveToPreviousWord {
-                    select: true,
-                    count: 1,
-                }),
-            },
-        );
-        pending_commands.insert(
-            "ye".to_string(),
-            Action::YankMotion {
-                count: 1,
-                motion: Box::new(Action::MoveToNextWordEnd {
-                    select: true,
-                    count: 1,
-                }),
-            },
-        );
-        pending_commands.insert(
-            "yge".to_string(),
-            Action::YankMotion {
-                count: 1,
-                motion: Box::new(Action::MoveToPreviousWordEnd {
-                    select: true,
-                    count: 1,
-                }),
-            },
-        );
-        pending_commands.insert(
-            "yj".to_string(),
-            Action::YankMotion {
-                count: 1,
-                motion: Box::new(Action::MoveDown {
-                    select: true,
-                    count: 1,
-                }),
-            },
-        );
-        pending_commands.insert(
-            "yk".to_string(),
-            Action::YankMotion {
-                count: 1,
-                motion: Box::new(Action::MoveUp {
-                    select: true,
-                    count: 1,
-                }),
-            },
-        );
-        pending_commands.insert(
-            "yh".to_string(),
-            Action::YankMotion {
-                count: 1,
-                motion: Box::new(Action::MoveLeft {
-                    select: true,
-                    count: 1,
-                }),
-            },
-        );
-        pending_commands.insert(
-            "yl".to_string(),
-            Action::YankMotion {
-                count: 1,
-                motion: Box::new(Action::MoveRight {
-                    select: true,
-                    count: 1,
-                }),
-            },
-        );
-        pending_commands.insert(
-            "y0".to_string(),
-            Action::YankMotion {
-                count: 1,
-                motion: Box::new(Action::MoveToStartOfLine { select: true }),
-            },
-        );
-        pending_commands.insert(
-            "y$".to_string(),
-            Action::YankMotion {
-                count: 1,
-                motion: Box::new(Action::MoveToEndOfLine { select: true }),
-            },
-        );
-        pending_commands.insert(
-            "y^".to_string(),
-            Action::YankMotion {
-                count: 1,
-                motion: Box::new(Action::MoveToStartOfLineNonSpace { select: true }),
-            },
-        );
-        pending_commands.insert(
-            "y{".to_string(),
-            Action::YankMotion {
-                count: 1,
-                motion: Box::new(Action::MoveToPreviousParagraph {
-                    select: true,
-                    count: 1,
-                }),
-            },
-        );
-        pending_commands.insert(
-            "y}".to_string(),
-            Action::YankMotion {
-                count: 1,
-                motion: Box::new(Action::MoveToNextParagraph {
-                    select: true,
-                    count: 1,
-                }),
-            },
-        );
-        pending_commands.insert(
-            "Y".to_string(),
-            Action::YankMotion {
-                count: 1,
-                motion: Box::new(Action::MoveToEndOfLine { select: true }),
-            },
-        );
-        pending_commands.insert("p".to_string(), Action::Paste { count: 1 });
-
-        pending_commands.insert("dd".to_string(), Action::DeleteCurrentLine { count: 1 });
-        pending_commands.insert(
-            "dw".to_string(),
-            Action::DeleteMotion {
-                count: 1,
-                motion: Box::new(Action::MoveToNextWord {
-                    select: true,
-                    count: 1,
-                }),
-            },
-        );
-        pending_commands.insert(
-            "db".to_string(),
-            Action::DeleteMotion {
-                count: 1,
-                motion: Box::new(Action::MoveToPreviousWord {
-                    select: true,
-                    count: 1,
-                }),
-            },
-        );
-        pending_commands.insert(
-            "de".to_string(),
-            Action::DeleteMotion {
-                count: 1,
-                motion: Box::new(Action::MoveToNextWordEnd {
-                    select: true,
-                    count: 1,
-                }),
-            },
-        );
-        pending_commands.insert(
-            "dge".to_string(),
-            Action::DeleteMotion {
-                count: 1,
-                motion: Box::new(Action::MoveToPreviousWordEnd {
-                    select: true,
-                    count: 1,
-                }),
-            },
-        );
-        pending_commands.insert(
-            "dj".to_string(),
-            Action::DeleteMotion {
-                count: 1,
-                motion: Box::new(Action::MoveDown {
-                    select: true,
-                    count: 1,
-                }),
-            },
-        );
-        pending_commands.insert(
-            "dk".to_string(),
-            Action::DeleteMotion {
-                count: 1,
-                motion: Box::new(Action::MoveUp {
-                    select: true,
-                    count: 1,
-                }),
-            },
-        );
-        pending_commands.insert(
-            "dh".to_string(),
-            Action::DeleteMotion {
-                count: 1,
-                motion: Box::new(Action::MoveLeft {
-                    select: true,
-                    count: 1,
-                }),
-            },
-        );
-        pending_commands.insert(
-            "dl".to_string(),
-            Action::DeleteMotion {
-                count: 1,
-                motion: Box::new(Action::MoveRight {
-                    select: true,
-                    count: 1,
-                }),
-            },
-        );
-        pending_commands.insert(
-            "d0".to_string(),
-            Action::DeleteMotion {
-                count: 1,
-                motion: Box::new(Action::MoveToStartOfLine { select: true }),
-            },
-        );
-        pending_commands.insert(
-            "d$".to_string(),
-            Action::DeleteMotion {
-                count: 1,
-                motion: Box::new(Action::MoveToEndOfLine { select: true }),
-            },
-        );
-        pending_commands.insert(
-            "d^".to_string(),
-            Action::DeleteMotion {
-                count: 1,
-                motion: Box::new(Action::MoveToStartOfLineNonSpace { select: true }),
-            },
-        );
-        pending_commands.insert(
-            "d{".to_string(),
-            Action::DeleteMotion {
-                count: 1,
-                motion: Box::new(Action::MoveToPreviousParagraph {
-                    select: true,
-                    count: 1,
-                }),
-            },
-        );
-        pending_commands.insert(
-            "d}".to_string(),
-            Action::DeleteMotion {
-                count: 1,
-                motion: Box::new(Action::MoveToNextParagraph {
-                    select: true,
-                    count: 1,
-                }),
-            },
-        );
-        pending_commands.insert(
-            "D".to_string(),
-            Action::DeleteMotion {
-                count: 1,
-                motion: Box::new(Action::MoveToEndOfLine { select: true }),
-            },
-        );
-        pending_commands.insert("cc".to_string(), Action::ChangeCurrentLine { count: 1 });
-        pending_commands.insert(
-            "cw".to_string(),
-            Action::ChangeMotion {
-                count: 1,
-                motion: Box::new(Action::MoveToNextWord {
-                    select: true,
-                    count: 1,
-                }),
-            },
-        );
-        pending_commands.insert(
-            "cb".to_string(),
-            Action::ChangeMotion {
-                count: 1,
-                motion: Box::new(Action::MoveToPreviousWord {
-                    select: true,
-                    count: 1,
-                }),
-            },
-        );
-        pending_commands.insert(
-            "ce".to_string(),
-            Action::ChangeMotion {
-                count: 1,
-                motion: Box::new(Action::MoveToNextWordEnd {
-                    select: true,
-                    count: 1,
-                }),
-            },
-        );
-        pending_commands.insert(
-            "cge".to_string(),
-            Action::ChangeMotion {
-                count: 1,
-                motion: Box::new(Action::MoveToPreviousWordEnd {
-                    select: true,
-                    count: 1,
-                }),
-            },
-        );
-        pending_commands.insert(
-            "cj".to_string(),
-            Action::ChangeMotion {
-                count: 1,
-                motion: Box::new(Action::MoveDown {
-                    select: true,
-                    count: 1,
-                }),
-            },
-        );
-        pending_commands.insert(
-            "ck".to_string(),
-            Action::ChangeMotion {
-                count: 1,
-                motion: Box::new(Action::MoveUp {
-                    select: true,
-                    count: 1,
-                }),
-            },
-        );
-        pending_commands.insert(
-            "ch".to_string(),
-            Action::ChangeMotion {
-                count: 1,
-                motion: Box::new(Action::MoveLeft {
-                    select: true,
-                    count: 1,
-                }),
-            },
-        );
-        pending_commands.insert(
-            "cl".to_string(),
-            Action::ChangeMotion {
-                count: 1,
-                motion: Box::new(Action::MoveRight {
-                    select: true,
-                    count: 1,
-                }),
-            },
-        );
-        pending_commands.insert(
-            "c0".to_string(),
-            Action::ChangeMotion {
-                count: 1,
-                motion: Box::new(Action::MoveToStartOfLine { select: true }),
-            },
-        );
-        pending_commands.insert(
-            "c$".to_string(),
-            Action::ChangeMotion {
-                count: 1,
-                motion: Box::new(Action::MoveToEndOfLine { select: true }),
-            },
-        );
-        pending_commands.insert(
-            "c^".to_string(),
-            Action::ChangeMotion {
-                count: 1,
-                motion: Box::new(Action::MoveToStartOfLineNonSpace { select: true }),
-            },
-        );
-        pending_commands.insert(
-            "c{".to_string(),
-            Action::ChangeMotion {
-                count: 1,
-                motion: Box::new(Action::MoveToPreviousParagraph {
-                    select: true,
-                    count: 1,
-                }),
-            },
-        );
-        pending_commands.insert(
-            "c}".to_string(),
-            Action::ChangeMotion {
-                count: 1,
-                motion: Box::new(Action::MoveToNextParagraph {
-                    select: true,
-                    count: 1,
-                }),
-            },
-        );
-        pending_commands.insert("c".to_string(), Action::Change {});
-        pending_commands.insert(
-            "C".to_string(),
-            Action::ChangeMotion {
-                count: 1,
-                motion: Box::new(Action::MoveToEndOfLine { select: true }),
-            },
-        );
-        pending_commands.insert(
-            "o".to_string(),
-            Action::InsertNewLineMotion {
-                count: 1,
-                motion: Box::new(Action::MoveToStartOfNextLine { select: false }),
-            },
-        );
-        pending_commands.insert(
-            "O".to_string(),
-            Action::InsertNewLineMotion {
-                count: 1,
-                motion: Box::new(Action::MoveToStartOfLine { select: false }),
-            },
-        );
-        pending_commands.insert("x".to_string(), Action::Delete { count: 1 });
-        pending_commands.insert(
-            "b".to_string(),
-            Action::MoveToPreviousWord {
-                select: false,
-                count: 1,
-            },
-        );
-        pending_commands.insert(
-            "w".to_string(),
-            Action::MoveToNextWord {
-                select: false,
-                count: 1,
-            },
-        );
-        pending_commands.insert(
-            "e".to_string(),
-            Action::MoveToNextWordEnd {
-                select: false,
-                count: 1,
-            },
-        );
-        pending_commands.insert(
-            "ge".to_string(),
-            Action::MoveToPreviousWordEnd {
-                select: false,
-                count: 1,
-            },
-        );
-
-        Self {
-            normal_actions,
-            insert_actions,
-            pending_commands,
-        }
-    }
+    pub op_actions: HashMap<String, Action>,
+    pub motion_actions: HashMap<String, Action>,
+    pub mode_actions: HashMap<String, Action>,
+    pub normal_actions: HashMap<String, Action>,
+    pub insert_actions: HashMap<String, Action>,
+    pub visual_actions: HashMap<String, Action>,
 }
 
 impl Keymap {
-    pub fn get_normal_action(&self, combo: &KeyCombo) -> Option<Action> {
-        if let Some(action) = self.normal_actions.get(combo) {
-            return Some(action.clone());
+    pub fn new() -> Self {
+        let mut op_actions = HashMap::new();
+        let mut motion_actions = HashMap::new();
+        let mut normal_actions = HashMap::new();
+        let mut mode_actions = HashMap::new();
+        let mut insert_actions = HashMap::new();
+        let mut visual_actions = HashMap::new();
+
+        // operators
+        op_actions.insert("d".to_string(), Action::Delete { count: 1 });
+        op_actions.insert("c".to_string(), Action::Change { count: 1 });
+        op_actions.insert("y".to_string(), Action::Yank { count: 1 });
+
+        // motions
+        motion_actions.insert(
+            "w".to_string(),
+            Action::MoveToWord {
+                count: 1,
+                select: false,
+            },
+        );
+        motion_actions.insert(
+            "e".to_string(),
+            Action::MoveToWordEnd {
+                count: 1,
+                select: false,
+            },
+        );
+        motion_actions.insert(
+            "b".to_string(),
+            Action::MoveToPreviousWord {
+                count: 1,
+                select: false,
+            },
+        );
+        motion_actions.insert(
+            "ge".to_string(),
+            Action::MoveToPreviousWordEnd {
+                count: 1,
+                select: false,
+            },
+        );
+        motion_actions.insert(
+            "W".to_string(),
+            Action::MoveToBigWord {
+                count: 1,
+                select: false,
+            },
+        );
+        motion_actions.insert(
+            "B".to_string(),
+            Action::MoveToPreviousBigWord {
+                count: 1,
+                select: false,
+            },
+        );
+        motion_actions.insert(
+            "E".to_string(),
+            Action::MoveToBigWordEnd {
+                count: 1,
+                select: false,
+            },
+        );
+        motion_actions.insert(
+            "h".to_string(),
+            Action::MoveLeft {
+                count: 1,
+                select: false,
+            },
+        );
+        motion_actions.insert(
+            "l".to_string(),
+            Action::MoveRight {
+                count: 1,
+                select: false,
+            },
+        );
+        motion_actions.insert(
+            "k".to_string(),
+            Action::MoveUp {
+                count: 1,
+                select: false,
+            },
+        );
+        motion_actions.insert(
+            "j".to_string(),
+            Action::MoveDown {
+                count: 1,
+                select: false,
+            },
+        );
+        motion_actions.insert(
+            "Left".to_string(),
+            Action::MoveLeft {
+                count: 1,
+                select: false,
+            },
+        );
+        motion_actions.insert(
+            "Right".to_string(),
+            Action::MoveRight {
+                count: 1,
+                select: false,
+            },
+        );
+        motion_actions.insert(
+            "Up".to_string(),
+            Action::MoveUp {
+                count: 1,
+                select: false,
+            },
+        );
+        motion_actions.insert(
+            "Down".to_string(),
+            Action::MoveDown {
+                count: 1,
+                select: false,
+            },
+        );
+        motion_actions.insert(
+            "gg".to_string(),
+            Action::MoveToStartOfDocument {
+                count: 1,
+                select: false,
+            },
+        );
+        motion_actions.insert(
+            "G".to_string(),
+            Action::MoveToEndOfDocument {
+                count: 1,
+                select: false,
+            },
+        );
+        motion_actions.insert(
+            "0".to_string(),
+            Action::MoveToStartOfLine {
+                count: 1,
+                select: false,
+            },
+        );
+        motion_actions.insert(
+            "^".to_string(),
+            Action::MoveToStartOfLineNonSpace {
+                count: 1,
+                select: false,
+            },
+        );
+        motion_actions.insert(
+            "$".to_string(),
+            Action::MoveToEndOfLine {
+                count: 1,
+                select: false,
+            },
+        );
+        motion_actions.insert(
+            "-".to_string(),
+            Action::MoveToStartOfPreviousLine {
+                count: 1,
+                select: false,
+            },
+        );
+        motion_actions.insert(
+            "+".to_string(),
+            Action::MoveToStartOfNextLine {
+                count: 1,
+                select: false,
+            },
+        );
+        motion_actions.insert(
+            "g-".to_string(),
+            Action::MoveToEndOfPreviousLine {
+                count: 1,
+                select: false,
+            },
+        );
+        motion_actions.insert(
+            "g+".to_string(),
+            Action::MoveToEndOfNextLine {
+                count: 1,
+                select: false,
+            },
+        );
+
+        motion_actions.insert(
+            "H".to_string(),
+            Action::MoveToScreenTop {
+                count: 1,
+                select: false,
+            },
+        );
+        motion_actions.insert(
+            "M".to_string(),
+            Action::MoveToScreenMiddle {
+                count: 1,
+                select: false,
+            },
+        );
+        motion_actions.insert(
+            "L".to_string(),
+            Action::MoveToScreenBottom {
+                count: 1,
+                select: false,
+            },
+        );
+        motion_actions.insert(
+            "{".to_string(),
+            Action::MoveToPreviousParagraph {
+                count: 1,
+                select: false,
+            },
+        );
+        motion_actions.insert(
+            "}".to_string(),
+            Action::MoveToNextParagraph {
+                count: 1,
+                select: false,
+            },
+        );
+        motion_actions.insert(
+            "(".to_string(),
+            Action::MoveToPreviousSentence {
+                count: 1,
+                select: false,
+            },
+        );
+        motion_actions.insert(
+            ")".to_string(),
+            Action::MoveToNextSentence {
+                count: 1,
+                select: false,
+            },
+        );
+
+        motion_actions.insert(
+            "f{c}".to_string(),
+            Action::MoveToNextCharacter {
+                count: 1,
+                select: false,
+                ch: '?',
+            },
+        );
+        motion_actions.insert(
+            "F{c}".to_string(),
+            Action::MoveToPreviousCharacter {
+                count: 1,
+                select: false,
+                ch: '?',
+            },
+        );
+
+        motion_actions.insert("C-f".to_string(), Action::ScrollForward { count: 1 });
+        motion_actions.insert("C-b".to_string(), Action::ScrollBackward { count: 1 });
+        motion_actions.insert("C-d".to_string(), Action::ScrollHalfPageDown { count: 1 });
+        motion_actions.insert("C-u".to_string(), Action::ScrollHalfPageUp { count: 1 });
+        motion_actions.insert("C-e".to_string(), Action::ScrollLineDown { count: 1 });
+        motion_actions.insert("C-y".to_string(), Action::ScrollLineUp { count: 1 });
+
+        motion_actions.insert("|".to_string(), Action::MoveToColumn { count: 1 });
+
+        motion_actions.insert("/".to_string(), Action::SearchForward { count: 1 });
+        motion_actions.insert("?".to_string(), Action::SearchBackward { count: 1 });
+        motion_actions.insert("n".to_string(), Action::SearchNext { count: 1 });
+        motion_actions.insert("N".to_string(), Action::SearchPrevious { count: 1 });
+
+        motion_actions.insert(
+            "End".to_string(),
+            Action::MoveToEndOfLine {
+                count: 1,
+                select: false,
+            },
+        );
+        motion_actions.insert(
+            "Home".to_string(),
+            Action::MoveToStartOfLine {
+                count: 1,
+                select: false,
+            },
+        );
+
+        // normal
+        normal_actions.insert("dd".to_string(), Action::DeleteLine { count: 1 });
+        normal_actions.insert("cc".to_string(), Action::ChangeLine { count: 1 });
+        normal_actions.insert("yy".to_string(), Action::YankLine { count: 1 });
+
+        normal_actions.insert("x".to_string(), Action::DeleteChar { count: 1 });
+        normal_actions.insert("X".to_string(), Action::DeleteCharBefore { count: 1 });
+        normal_actions.insert("p".to_string(), Action::Put { count: 1 });
+        normal_actions.insert("P".to_string(), Action::PutBefore { count: 1 });
+        normal_actions.insert("J".to_string(), Action::JoinLines { count: 1 });
+        normal_actions.insert("u".to_string(), Action::Undo { count: 1 });
+        normal_actions.insert("C-r".to_string(), Action::Redo { count: 1 });
+        normal_actions.insert(".".to_string(), Action::Repeat { count: 1 });
+        normal_actions.insert(">".to_string(), Action::Indent { count: 1 });
+        normal_actions.insert("<".to_string(), Action::Outdent { count: 1 });
+        normal_actions.insert("~".to_string(), Action::ChangeCase { count: 1 });
+
+        normal_actions.insert("Delete".to_string(), Action::DeleteChar { count: 1 });
+        normal_actions.insert(
+            "Backspace".to_string(),
+            Action::MoveLeft {
+                count: 1,
+                select: false,
+            },
+        );
+
+        // change mode -- only at normal
+        mode_actions.insert("i".to_string(), Action::SetToInsert);
+        mode_actions.insert(":".to_string(), Action::SetToCommand);
+        mode_actions.insert("v".to_string(), Action::SetToVisual);
+        mode_actions.insert("V".to_string(), Action::SetToVisualLine);
+        mode_actions.insert("C-v".to_string(), Action::SetToVisualBlock);
+        mode_actions.insert(":".to_string(), Action::SetToCommand);
+
+        // insert mode
+        insert_actions.insert(
+            "Left".to_string(),
+            Action::MoveLeft {
+                count: 1,
+                select: false,
+            },
+        );
+        insert_actions.insert(
+            "Right".to_string(),
+            Action::MoveRight {
+                count: 1,
+                select: false,
+            },
+        );
+        insert_actions.insert(
+            "Up".to_string(),
+            Action::MoveUp {
+                count: 1,
+                select: false,
+            },
+        );
+        insert_actions.insert(
+            "Down".to_string(),
+            Action::MoveDown {
+                count: 1,
+                select: false,
+            },
+        );
+        insert_actions.insert(
+            "PageUp".to_string(),
+            Action::MovePageUp {
+                count: 1,
+                select: false,
+            },
+        );
+        insert_actions.insert(
+            "Down".to_string(),
+            Action::MoveDown {
+                count: 1,
+                select: false,
+            },
+        );
+        insert_actions.insert("Esc".to_string(), Action::SetToNormal);
+        insert_actions.insert("Enter".to_string(), Action::InsertNewLine { count: 1 });
+        insert_actions.insert("Tab".to_string(), Action::InsertTab);
+        insert_actions.insert(
+            "Backspace".to_string(),
+            Action::DeleteCharBefore { count: 1 },
+        );
+        insert_actions.insert("Delete".to_string(), Action::DeleteChar { count: 1 });
+        insert_actions.insert("{c}".to_string(), Action::InsertText("".to_string()));
+
+        Self {
+            op_actions,
+            motion_actions,
+            mode_actions,
+            normal_actions,
+            insert_actions,
+            visual_actions,
         }
-        if !combo.modifiers.is_empty() {
-            let fallback_combo = KeyCombo::new(combo.code, KeyModifiers::empty());
-            if let Some(action) = self.normal_actions.get(&fallback_combo) {
-                return Some(action.clone());
-            }
-        }
-        None
-    }
-
-    pub fn get_insert_action(&self, combo: &KeyCombo) -> Option<Action> {
-        if let Some(action) = self.insert_actions.get(combo) {
-            return Some(action.clone());
-        }
-        if !combo.modifiers.is_empty() {
-            let fallback_combo = KeyCombo::new(combo.code, KeyModifiers::empty());
-            if let Some(action) = self.insert_actions.get(&fallback_combo) {
-                return Some(action.clone());
-            }
-        }
-        None
-    }
-
-    pub fn get_pending_action(&self, pending: &str) -> Option<Action> {
-        self.pending_commands.get(pending).cloned()
-    }
-
-    pub fn bind_normal(&mut self, keys: &str, action: Action) -> Result<(), String> {
-        let combo = KeyCombo::parse(keys)?;
-        self.normal_actions.insert(combo, action);
-        Ok(())
-    }
-
-    pub fn bind_insert(&mut self, keys: &str, action: Action) -> Result<(), String> {
-        let combo = KeyCombo::parse(keys)?;
-        self.insert_actions.insert(combo, action);
-        Ok(())
-    }
-
-    pub fn bind_pending(&mut self, sequence: &str, action: Action) {
-        self.pending_commands.insert(sequence.to_string(), action);
     }
 }
