@@ -36,89 +36,310 @@ pub enum Action {
     NoOp,
     Clear,
     Quit,
-    Delete { count: u32 },
-    Change { count: u32 },
-    Yank { count: u32 },
+    Delete {
+        count: u32,
+    },
+    Change {
+        count: u32,
+    },
+    Yank {
+        count: u32,
+    },
 
     // MOTIONS
-    StandBy { count: u32, select: bool },
+    StandBy {
+        count: u32,
+        select: bool,
+    },
 
-    MoveLeft { count: u32, select: bool },
-    MoveRight { count: u32, select: bool },
-    MoveUp { count: u32, select: bool },
-    MoveDown { count: u32, select: bool },
+    MoveLeft {
+        count: u32,
+        select: bool,
+    },
+    MoveRight {
+        count: u32,
+        select: bool,
+    },
+    MoveUp {
+        count: u32,
+        select: bool,
+    },
+    MoveDown {
+        count: u32,
+        select: bool,
+    },
 
-    MovePageUp { count: u32, select: bool },
-    MovePageDown { count: u32, select: bool },
+    MovePageUp {
+        count: u32,
+        select: bool,
+    },
+    MovePageDown {
+        count: u32,
+        select: bool,
+    },
 
-    MoveToWord { count: u32, select: bool },
-    MoveToPreviousWord { count: u32, select: bool },
-    MoveToWordEnd { count: u32, select: bool },
-    MoveToPreviousWordEnd { count: u32, select: bool },
+    MoveToWord {
+        count: u32,
+        select: bool,
+    },
+    MoveToPreviousWord {
+        count: u32,
+        select: bool,
+    },
+    MoveToWordEnd {
+        count: u32,
+        select: bool,
+    },
+    MoveToPreviousWordEnd {
+        count: u32,
+        select: bool,
+    },
 
-    MoveToBigWord { count: u32, select: bool },
-    MoveToPreviousBigWord { count: u32, select: bool },
-    MoveToBigWordEnd { count: u32, select: bool },
-    MoveToPreviousBigWordEnd { count: u32, select: bool },
+    MoveToBigWord {
+        count: u32,
+        select: bool,
+    },
+    MoveToPreviousBigWord {
+        count: u32,
+        select: bool,
+    },
+    MoveToBigWordEnd {
+        count: u32,
+        select: bool,
+    },
+    MoveToPreviousBigWordEnd {
+        count: u32,
+        select: bool,
+    },
 
-    MoveToStartOfDocument { count: u32, select: bool },
-    MoveToEndOfDocument { count: u32, select: bool },
-    MoveToStartOfLine { count: u32, select: bool },
-    MoveToStartOfLineNonSpace { count: u32, select: bool },
-    MoveToEndOfLine { count: u32, select: bool },
-    MoveToStartOfPreviousLine { count: u32, select: bool },
-    MoveToEndOfPreviousLine { count: u32, select: bool },
-    MoveToStartOfNextLine { count: u32, select: bool },
-    MoveToEndOfNextLine { count: u32, select: bool },
+    MoveToStartOfDocument {
+        count: u32,
+        select: bool,
+    },
+    MoveToEndOfDocument {
+        count: u32,
+        select: bool,
+    },
+    MoveToStartOfLine {
+        count: u32,
+        select: bool,
+    },
+    MoveToStartOfLineNonSpace {
+        count: u32,
+        select: bool,
+    },
+    MoveToEndOfLine {
+        count: u32,
+        select: bool,
+    },
+    MoveToStartOfPreviousLine {
+        count: u32,
+        select: bool,
+    },
+    MoveToEndOfPreviousLine {
+        count: u32,
+        select: bool,
+    },
+    MoveToStartOfNextLine {
+        count: u32,
+        select: bool,
+    },
+    MoveToEndOfNextLine {
+        count: u32,
+        select: bool,
+    },
 
-    MoveToScreenTop { count: u32, select: bool },
-    MoveToScreenMiddle { count: u32, select: bool },
-    MoveToScreenBottom { count: u32, select: bool },
-    MoveToPreviousParagraph { count: u32, select: bool },
-    MoveToNextParagraph { count: u32, select: bool },
-    MoveToPreviousSentence { count: u32, select: bool },
-    MoveToNextSentence { count: u32, select: bool },
+    MoveToScreenTop {
+        count: u32,
+        select: bool,
+    },
+    MoveToScreenMiddle {
+        count: u32,
+        select: bool,
+    },
+    MoveToScreenBottom {
+        count: u32,
+        select: bool,
+    },
+    MoveToPreviousParagraph {
+        count: u32,
+        select: bool,
+    },
+    MoveToNextParagraph {
+        count: u32,
+        select: bool,
+    },
+    MoveToPreviousSentence {
+        count: u32,
+        select: bool,
+    },
+    MoveToNextSentence {
+        count: u32,
+        select: bool,
+    },
 
-    MoveToNextCharacter { count: u32, ch: char, till: bool, select: bool },
-    MoveToPreviousCharacter { count: u32, ch: char, till: bool, select: bool },
+    MoveToNextFunction {
+        select: bool,
+        count: u32,
+    },
+    MoveToPreviousFunction {
+        select: bool,
+        count: u32,
+    },
+    MoveToNextBlock {
+        select: bool,
+        count: u32,
+    },
+    MoveToPreviousBlock {
+        select: bool,
+        count: u32,
+    },
+    MoveToBlockStart {
+        select: bool,
+        count: u32,
+    },
+    MoveToBlockEnd {
+        select: bool,
+        count: u32,
+    },
+    MoveToNextClass {
+        select: bool,
+        count: u32,
+    },
+    MoveToPreviousClass {
+        select: bool,
+        count: u32,
+    },
+    MoveToNextArgument {
+        select: bool,
+        count: u32,
+    },
+    MoveToPreviousArgument {
+        select: bool,
+        count: u32,
+    },
+    SelectInPair {
+        kind: char,
+    },
+    SelectAroundPair {
+        kind: char,
+    },
 
-    MoveWithinCharacter { count: u32, ch: char },
-    MoveAroundCharacter { count: u32, ch: char },
+    MoveToNextCharacter {
+        count: u32,
+        ch: char,
+        till: bool,
+        select: bool,
+    },
+    MoveToPreviousCharacter {
+        count: u32,
+        ch: char,
+        till: bool,
+        select: bool,
+    },
 
-    ScrollForward { count: u32 },
-    ScrollBackward { count: u32 },
-    ScrollHalfPageDown { count: u32 },
-    ScrollHalfPageUp { count: u32 },
-    ScrollLineDown { count: u32 },
-    ScrollLineUp { count: u32 },
+    MoveWithinCharacter {
+        count: u32,
+        ch: char,
+    },
+    MoveAroundCharacter {
+        count: u32,
+        ch: char,
+    },
 
-    MoveToColumn { count: u32 },
+    ScrollForward {
+        count: u32,
+    },
+    ScrollBackward {
+        count: u32,
+    },
+    ScrollHalfPageDown {
+        count: u32,
+    },
+    ScrollHalfPageUp {
+        count: u32,
+    },
+    ScrollLineDown {
+        count: u32,
+    },
+    ScrollLineUp {
+        count: u32,
+    },
 
-    SearchForward { count: u32 },
-    SearchBackward { count: u32 },
-    SearchNext { count: u32 },
-    SearchPrevious { count: u32 },
+    MoveToColumn {
+        count: u32,
+    },
+
+    SearchForward {
+        count: u32,
+    },
+    SearchBackward {
+        count: u32,
+    },
+    SearchNext {
+        count: u32,
+    },
+    SearchPrevious {
+        count: u32,
+    },
 
     // OPT+MOTION
-    DeleteMotion { count: u32, motion: Box<Action> },
-    ChangeMotion { count: u32, motion: Box<Action> },
-    YankMotion { count: u32, motion: Box<Action> },
+    DeleteMotion {
+        count: u32,
+        motion: Box<Action>,
+    },
+    ChangeMotion {
+        count: u32,
+        motion: Box<Action>,
+    },
+    YankMotion {
+        count: u32,
+        motion: Box<Action>,
+    },
 
     // NORMAL
-    DeleteLine { count: u32 },
-    ChangeLine { count: u32 },
-    YankLine { count: u32 },
-    JoinLines { count: u32 },
-    DeleteChar { count: u32 },
-    DeleteCharBefore { count: u32 },
-    Put { count: u32 },
-    PutBefore { count: u32 },
-    Undo { count: u32 },
-    Redo { count: u32 },
-    Repeat { count: u32 },
-    Indent { count: u32 },
-    Outdent { count: u32 },
-    ChangeCase { count: u32 },
+    DeleteLine {
+        count: u32,
+    },
+    ChangeLine {
+        count: u32,
+    },
+    YankLine {
+        count: u32,
+    },
+    JoinLines {
+        count: u32,
+    },
+    DeleteChar {
+        count: u32,
+    },
+    DeleteCharBefore {
+        count: u32,
+    },
+    Put {
+        count: u32,
+    },
+    PutBefore {
+        count: u32,
+    },
+    Undo {
+        count: u32,
+    },
+    Redo {
+        count: u32,
+    },
+    Repeat {
+        count: u32,
+    },
+    Indent {
+        count: u32,
+    },
+    Outdent {
+        count: u32,
+    },
+    ChangeCase {
+        count: u32,
+    },
 
     // MODE SELECT
     SetToNormal,
@@ -130,13 +351,22 @@ pub enum Action {
     SetToVisualBlock,
     SetToCommand,
     SetToInsertStartOfLineNonSpace,
-    SetToOpenLineBelow { count: u32 },
-    SetToOpenLineAbove { count: u32 },
+    SetToOpenLineBelow {
+        count: u32,
+    },
+    SetToOpenLineAbove {
+        count: u32,
+    },
 
     // INSERT
-    InsertNewLine { count: u32 },
+    InsertNewLine {
+        count: u32,
+    },
     InsertText(String),
-    InsertNewLineMotion { count: u32, motion: Box<Action> },
+    InsertNewLineMotion {
+        count: u32,
+        motion: Box<Action>,
+    },
     InsertTab,
 }
 
@@ -207,10 +437,14 @@ impl std::fmt::Display for Action {
             Action::MoveDown { count, .. } => write!(f, "MoveDown({})", count),
             Action::MovePageUp { count, .. } => write!(f, "MovePageUp({})", count),
             Action::MovePageDown { count, .. } => write!(f, "MovePageDown({})", count),
-            Action::MoveToNextCharacter { count, ch, till, .. } => {
+            Action::MoveToNextCharacter {
+                count, ch, till, ..
+            } => {
                 write!(f, "MoveToNextCharacter({} {} till={})", count, ch, till)
             }
-            Action::MoveToPreviousCharacter { count, ch, till, .. } => {
+            Action::MoveToPreviousCharacter {
+                count, ch, till, ..
+            } => {
                 write!(f, "MoveToPreviousCharacter({} {} till={})", count, ch, till)
             }
             Action::MoveWithinCharacter { count, ch, .. } => {
@@ -219,6 +453,26 @@ impl std::fmt::Display for Action {
             Action::MoveAroundCharacter { count, ch, .. } => {
                 write!(f, "MoveAroundCharacter({} {})", count, ch)
             }
+            Action::MoveToNextFunction { count, .. } => write!(f, "MoveToNextFunction({})", count),
+            Action::MoveToPreviousFunction { count, .. } => {
+                write!(f, "MoveToPreviousFunction({})", count)
+            }
+            Action::MoveToNextBlock { count, .. } => write!(f, "MoveToNextBlock({})", count),
+            Action::MoveToPreviousBlock { count, .. } => {
+                write!(f, "MoveToPreviousBlock({})", count)
+            }
+            Action::MoveToBlockStart { count, .. } => write!(f, "MoveToBlockStart({})", count),
+            Action::MoveToBlockEnd { count, .. } => write!(f, "MoveToBlockEnd({})", count),
+            Action::MoveToNextClass { count, .. } => write!(f, "MoveToNextClass({})", count),
+            Action::MoveToPreviousClass { count, .. } => {
+                write!(f, "MoveToPreviousClass({})", count)
+            }
+            Action::MoveToNextArgument { count, .. } => write!(f, "MoveToNextArgument({})", count),
+            Action::MoveToPreviousArgument { count, .. } => {
+                write!(f, "MoveToPreviousArgument({})", count)
+            }
+            Action::SelectInPair { kind } => write!(f, "SelectInPair({})", kind),
+            Action::SelectAroundPair { kind } => write!(f, "SelectAroundPair({})", kind),
             Action::DeleteMotion { count, motion } => {
                 write!(f, "DeleteMotion({}, {})", count, motion)
             }
@@ -272,31 +526,101 @@ impl Action {
             Action::MoveUp { count, .. } => Action::MoveUp { count, select },
             Action::MoveDown { count, .. } => Action::MoveDown { count, select },
             Action::MoveToWord { count, .. } => Action::MoveToWord { count, select },
-            Action::MoveToPreviousWord { count, .. } => Action::MoveToPreviousWord { count, select },
+            Action::MoveToPreviousWord { count, .. } => {
+                Action::MoveToPreviousWord { count, select }
+            }
             Action::MoveToWordEnd { count, .. } => Action::MoveToWordEnd { count, select },
-            Action::MoveToPreviousWordEnd { count, .. } => Action::MoveToPreviousWordEnd { count, select },
+            Action::MoveToPreviousWordEnd { count, .. } => {
+                Action::MoveToPreviousWordEnd { count, select }
+            }
             Action::MoveToBigWord { count, .. } => Action::MoveToBigWord { count, select },
-            Action::MoveToPreviousBigWord { count, .. } => Action::MoveToPreviousBigWord { count, select },
+            Action::MoveToPreviousBigWord { count, .. } => {
+                Action::MoveToPreviousBigWord { count, select }
+            }
             Action::MoveToBigWordEnd { count, .. } => Action::MoveToBigWordEnd { count, select },
-            Action::MoveToPreviousBigWordEnd { count, .. } => Action::MoveToPreviousBigWordEnd { count, select },
-            Action::MoveToStartOfDocument { count, .. } => Action::MoveToStartOfDocument { count, select },
-            Action::MoveToEndOfDocument { count, .. } => Action::MoveToEndOfDocument { count, select },
+            Action::MoveToPreviousBigWordEnd { count, .. } => {
+                Action::MoveToPreviousBigWordEnd { count, select }
+            }
+            Action::MoveToStartOfDocument { count, .. } => {
+                Action::MoveToStartOfDocument { count, select }
+            }
+            Action::MoveToEndOfDocument { count, .. } => {
+                Action::MoveToEndOfDocument { count, select }
+            }
             Action::MoveToStartOfLine { count, .. } => Action::MoveToStartOfLine { count, select },
-            Action::MoveToStartOfLineNonSpace { count, .. } => Action::MoveToStartOfLineNonSpace { count, select },
+            Action::MoveToStartOfLineNonSpace { count, .. } => {
+                Action::MoveToStartOfLineNonSpace { count, select }
+            }
             Action::MoveToEndOfLine { count, .. } => Action::MoveToEndOfLine { count, select },
-            Action::MoveToStartOfPreviousLine { count, .. } => Action::MoveToStartOfPreviousLine { count, select },
-            Action::MoveToEndOfPreviousLine { count, .. } => Action::MoveToEndOfPreviousLine { count, select },
-            Action::MoveToStartOfNextLine { count, .. } => Action::MoveToStartOfNextLine { count, select },
-            Action::MoveToEndOfNextLine { count, .. } => Action::MoveToEndOfNextLine { count, select },
+            Action::MoveToStartOfPreviousLine { count, .. } => {
+                Action::MoveToStartOfPreviousLine { count, select }
+            }
+            Action::MoveToEndOfPreviousLine { count, .. } => {
+                Action::MoveToEndOfPreviousLine { count, select }
+            }
+            Action::MoveToStartOfNextLine { count, .. } => {
+                Action::MoveToStartOfNextLine { count, select }
+            }
+            Action::MoveToEndOfNextLine { count, .. } => {
+                Action::MoveToEndOfNextLine { count, select }
+            }
             Action::MoveToScreenTop { count, .. } => Action::MoveToScreenTop { count, select },
-            Action::MoveToScreenMiddle { count, .. } => Action::MoveToScreenMiddle { count, select },
-            Action::MoveToScreenBottom { count, .. } => Action::MoveToScreenBottom { count, select },
-            Action::MoveToPreviousParagraph { count, .. } => Action::MoveToPreviousParagraph { count, select },
-            Action::MoveToNextParagraph { count, .. } => Action::MoveToNextParagraph { count, select },
-            Action::MoveToPreviousSentence { count, .. } => Action::MoveToPreviousSentence { count, select },
-            Action::MoveToNextSentence { count, .. } => Action::MoveToNextSentence { count, select },
-            Action::MoveToNextCharacter { count, ch, till, .. } => Action::MoveToNextCharacter { count, ch, till, select },
-            Action::MoveToPreviousCharacter { count, ch, till, .. } => Action::MoveToPreviousCharacter { count, ch, till, select },
+            Action::MoveToScreenMiddle { count, .. } => {
+                Action::MoveToScreenMiddle { count, select }
+            }
+            Action::MoveToScreenBottom { count, .. } => {
+                Action::MoveToScreenBottom { count, select }
+            }
+            Action::MoveToPreviousParagraph { count, .. } => {
+                Action::MoveToPreviousParagraph { count, select }
+            }
+            Action::MoveToNextParagraph { count, .. } => {
+                Action::MoveToNextParagraph { count, select }
+            }
+            Action::MoveToPreviousSentence { count, .. } => {
+                Action::MoveToPreviousSentence { count, select }
+            }
+            Action::MoveToNextSentence { count, .. } => {
+                Action::MoveToNextSentence { count, select }
+            }
+            Action::MoveToNextCharacter {
+                count, ch, till, ..
+            } => Action::MoveToNextCharacter {
+                count,
+                ch,
+                till,
+                select,
+            },
+            Action::MoveToPreviousCharacter {
+                count, ch, till, ..
+            } => Action::MoveToPreviousCharacter {
+                count,
+                ch,
+                till,
+                select,
+            },
+            Action::MoveToNextFunction { count, .. } => {
+                Action::MoveToNextFunction { count, select }
+            }
+            Action::MoveToPreviousFunction { count, .. } => {
+                Action::MoveToPreviousFunction { count, select }
+            }
+            Action::MoveToNextBlock { count, .. } => Action::MoveToNextBlock { count, select },
+            Action::MoveToPreviousBlock { count, .. } => {
+                Action::MoveToPreviousBlock { count, select }
+            }
+            Action::MoveToBlockStart { count, .. } => Action::MoveToBlockStart { count, select },
+            Action::MoveToBlockEnd { count, .. } => Action::MoveToBlockEnd { count, select },
+            Action::MoveToNextClass { count, .. } => Action::MoveToNextClass { count, select },
+            Action::MoveToPreviousClass { count, .. } => {
+                Action::MoveToPreviousClass { count, select }
+            }
+            Action::MoveToNextArgument { count, .. } => {
+                Action::MoveToNextArgument { count, select }
+            }
+            Action::MoveToPreviousArgument { count, .. } => {
+                Action::MoveToPreviousArgument { count, select }
+            }
             _ => self,
         }
     }
@@ -402,18 +726,44 @@ impl Action {
                 count,
                 select: false,
             },
-            Action::MoveToNextCharacter { ch, till, select, .. } => Action::MoveToNextCharacter {
+            Action::MoveToNextCharacter {
+                ch, till, select, ..
+            } => Action::MoveToNextCharacter {
                 count,
                 ch,
                 till,
                 select,
             },
-            Action::MoveToPreviousCharacter { ch, till, select, .. } => Action::MoveToPreviousCharacter {
+            Action::MoveToPreviousCharacter {
+                ch, till, select, ..
+            } => Action::MoveToPreviousCharacter {
                 count,
                 ch,
                 till,
                 select,
             },
+            Action::MoveToNextFunction { select, .. } => {
+                Action::MoveToNextFunction { count, select }
+            }
+            Action::MoveToPreviousFunction { select, .. } => {
+                Action::MoveToPreviousFunction { count, select }
+            }
+            Action::MoveToNextBlock { select, .. } => Action::MoveToNextBlock { count, select },
+            Action::MoveToPreviousBlock { select, .. } => {
+                Action::MoveToPreviousBlock { count, select }
+            }
+            Action::MoveToBlockStart { select, .. } => Action::MoveToBlockStart { count, select },
+            Action::MoveToBlockEnd { select, .. } => Action::MoveToBlockEnd { count, select },
+            Action::MoveToNextClass { select, .. } => Action::MoveToNextClass { count, select },
+            Action::MoveToPreviousClass { select, .. } => {
+                Action::MoveToPreviousClass { count, select }
+            }
+            Action::MoveToNextArgument { select, .. } => {
+                Action::MoveToNextArgument { count, select }
+            }
+            Action::MoveToPreviousArgument { select, .. } => {
+                Action::MoveToPreviousArgument { count, select }
+            }
             Action::MoveWithinCharacter { ch, .. } => Action::MoveWithinCharacter { count, ch },
             Action::MoveAroundCharacter { ch, .. } => Action::MoveAroundCharacter { count, ch },
 
@@ -491,6 +841,9 @@ impl Action {
                 motion: motion,
             },
             Action::InsertTab => Action::InsertTab,
+
+            Action::SelectInPair { .. } | Action::SelectAroundPair { .. } => todo!(),
+
             Action::Clear => Action::Clear,
             Action::NoOp => Action::NoOp,
             Action::Quit => Action::Quit,
@@ -583,6 +936,16 @@ impl Action {
             Action::InsertNewLineMotion { count, .. } => *count,
             Action::MoveToNextCharacter { count, .. } => *count,
             Action::MoveToPreviousCharacter { count, .. } => *count,
+            Action::MoveToNextFunction { count, .. } => *count,
+            Action::MoveToPreviousFunction { count, .. } => *count,
+            Action::MoveToNextBlock { count, .. } => *count,
+            Action::MoveToPreviousBlock { count, .. } => *count,
+            Action::MoveToBlockStart { count, .. } => *count,
+            Action::MoveToBlockEnd { count, .. } => *count,
+            Action::MoveToNextClass { count, .. } => *count,
+            Action::MoveToPreviousClass { count, .. } => *count,
+            Action::MoveToNextArgument { count, .. } => *count,
+            Action::MoveToPreviousArgument { count, .. } => *count,
             _ => 1,
         }
     }

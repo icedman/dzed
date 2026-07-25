@@ -678,6 +678,98 @@ impl Keymap {
             )
             .expect("Valid binding");
 
+        // tree-sitter
+        motion_actions
+            .bind(
+                "]f",
+                Action::MoveToNextFunction {
+                    count: 1,
+                    select: false,
+                },
+            )
+            .expect("Valid binding");
+        motion_actions
+            .bind(
+                "[f",
+                Action::MoveToPreviousFunction {
+                    count: 1,
+                    select: false,
+                },
+            )
+            .expect("Valid binding");
+        motion_actions
+            .bind(
+                "]c",
+                Action::MoveToNextClass {
+                    count: 1,
+                    select: false,
+                },
+            )
+            .expect("Valid binding");
+        motion_actions
+            .bind(
+                "[c",
+                Action::MoveToPreviousClass {
+                    count: 1,
+                    select: false,
+                },
+            )
+            .expect("Valid binding");
+        motion_actions
+            .bind(
+                "]a",
+                Action::MoveToNextArgument {
+                    count: 1,
+                    select: false,
+                },
+            )
+            .expect("Valid binding");
+        motion_actions
+            .bind(
+                "[a",
+                Action::MoveToPreviousArgument {
+                    count: 1,
+                    select: false,
+                },
+            )
+            .expect("Valid binding");
+        motion_actions
+            .bind(
+                "]n",
+                Action::MoveToNextBlock {
+                    count: 1,
+                    select: false,
+                },
+            )
+            .expect("Valid binding");
+        motion_actions
+            .bind(
+                "[n",
+                Action::MoveToPreviousBlock {
+                    count: 1,
+                    select: false,
+                },
+            )
+            .expect("Valid binding");
+        motion_actions
+            .bind(
+                "[[",
+                Action::MoveToBlockStart {
+                    count: 1,
+                    select: false,
+                },
+            )
+            .expect("Valid binding");
+        motion_actions
+            .bind(
+                "]]",
+                Action::MoveToBlockEnd {
+                    count: 1,
+                    select: false,
+                },
+            )
+            .expect("Valid binding");
+
         // Normal Mode
         normal_actions
             .bind("dd", Action::DeleteLine { count: 1 })
@@ -1393,20 +1485,32 @@ mod tests {
         // 3. Big Word motions 'W', 'B', 'E', 'gE'
         assert_eq!(
             sm.process_key(KeyCombo::parse("W").unwrap(), &keymap),
-            Action::MoveToBigWord { count: 1, select: false }
+            Action::MoveToBigWord {
+                count: 1,
+                select: false
+            }
         );
         assert_eq!(
             sm.process_key(KeyCombo::parse("B").unwrap(), &keymap),
-            Action::MoveToPreviousBigWord { count: 1, select: false }
+            Action::MoveToPreviousBigWord {
+                count: 1,
+                select: false
+            }
         );
         assert_eq!(
             sm.process_key(KeyCombo::parse("E").unwrap(), &keymap),
-            Action::MoveToBigWordEnd { count: 1, select: false }
+            Action::MoveToBigWordEnd {
+                count: 1,
+                select: false
+            }
         );
         sm.process_key(KeyCombo::parse("g").unwrap(), &keymap);
         assert_eq!(
             sm.process_key(KeyCombo::parse("E").unwrap(), &keymap),
-            Action::MoveToPreviousBigWordEnd { count: 1, select: false }
+            Action::MoveToPreviousBigWordEnd {
+                count: 1,
+                select: false
+            }
         );
     }
 
