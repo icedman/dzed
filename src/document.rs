@@ -627,8 +627,8 @@ impl Document {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::treesitter::TreeSitterParser;
     use crate::treesitter::grammars::Grammar;
+    use crate::treesitter::TreeSitterParser;
 
     #[test]
     fn consecutive_insert_text_actions_leave_cursor_after_inserted_text() {
