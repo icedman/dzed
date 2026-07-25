@@ -121,6 +121,7 @@ impl Ui {
         editor: &mut Editor,
         screen_width: u16,
         screen_height: u16,
+        show_cursor: bool,
     ) -> std::io::Result<()> {
         execute!(stdout, crossterm::cursor::Hide)?;
 
@@ -214,6 +215,7 @@ impl Ui {
             cursor_screen_col,
             cursor_screen_row,
             &mut self.last_cursor_style,
+            show_cursor,
         )?;
 
         stdout.flush()?;

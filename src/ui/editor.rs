@@ -167,7 +167,6 @@ impl View for EditorView {
     }
 }
 
-
 /// Renders the core editor buffer lines including line numbers, highlight groups, and active selections.
 pub fn render_editor_content<W: Write>(
     stdout: &mut W,
@@ -188,7 +187,9 @@ pub fn render_editor_content<W: Write>(
             display_snapshot.buffer_row_for_display_row(end_line.saturating_sub(1));
         let end_buffer_row_exclusive = end_buffer_row + 1;
 
-        if !active_buffer.hl.is_sync(&active_buffer.doc.buffer().snapshot())
+        if !active_buffer
+            .hl
+            .is_sync(&active_buffer.doc.buffer().snapshot())
             || !active_buffer
                 .hl
                 .contains_rows(start_buffer_row, end_buffer_row_exclusive)
@@ -211,14 +212,18 @@ pub fn render_editor_content<W: Write>(
 
     let height = inner_rect.height as u32;
     let handle_h = if total_rows > 0 {
-        ((height as f32 / total_rows as f32) * height as f32).round().max(1.0) as u32
+        ((height as f32 / total_rows as f32) * height as f32)
+            .round()
+            .max(1.0) as u32
     } else {
         height
     };
     let handle_h = handle_h.min(height);
 
     let start_y = if total_rows > height {
-        ((display_snapshot.scroll_y as f32 / (total_rows - height) as f32) * (height - handle_h) as f32).round() as u32
+        ((display_snapshot.scroll_y as f32 / (total_rows - height) as f32)
+            * (height - handle_h) as f32)
+            .round() as u32
     } else {
         0
     };
@@ -346,6 +351,10 @@ pub fn render_editor_content<W: Write>(
                 bg = editor.theme.select;
             }
 
+            if at_cursor {
+                bg = editor.theme.caret;
+            }
+
             if x_scroll > 0 {
                 x_scroll = x_scroll.saturating_sub(1);
             } else {
@@ -374,7 +383,8 @@ pub fn render_editor_content<W: Write>(
                             } else {
                                 bg
                             };
-                            execute!(stdout, crossterm::style::SetBackgroundColor(cell_bg)).unwrap();
+                            execute!(stdout, crossterm::style::SetBackgroundColor(cell_bg))
+                                .unwrap();
                             print!(" ");
                             curr_x += 1;
                             cols_remaining = cols_remaining.saturating_sub(1);
@@ -458,6 +468,7 @@ pub fn update_cursor_position<W: Write>(
     cursor_screen_col: i32,
     cursor_screen_row: i32,
     last_cursor_style: &mut Option<crossterm::cursor::SetCursorStyle>,
+    show_cursor: bool,
 ) -> std::io::Result<()> {
     let needed_style = if editor.mode == Mode::Command {
         crossterm::cursor::SetCursorStyle::BlinkingBar
@@ -496,6 +507,10 @@ pub fn update_cursor_position<W: Write>(
         .unwrap();
     }
 
-    execute!(stdout, crossterm::cursor::Show).unwrap();
+    if show_cursor {
+        execute!(stdout, crossterm::cursor::Show).unwrap();
+    } else {
+        execute!(stdout, crossterm::cursor::Hide).unwrap();
+    }
     Ok(())
 }

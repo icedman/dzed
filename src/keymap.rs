@@ -711,6 +711,9 @@ impl Keymap {
             .bind("C-r", Action::Redo { count: 1 })
             .expect("Valid binding");
         normal_actions
+            .bind("C-q", Action::Quit)
+            .expect("Valid binding");
+        normal_actions
             .bind(".", Action::Repeat { count: 1 })
             .expect("Valid binding");
         normal_actions

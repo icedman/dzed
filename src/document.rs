@@ -552,7 +552,7 @@ impl Document {
             }
             Action::Undo { count } => self.undo(*count),
             Action::Redo { count } => self.redo(*count),
-            Action::NoOp => {
+            Action::NoOp | Action::Quit => {
                 return;
             }
             _ => {}

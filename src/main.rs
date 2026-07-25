@@ -65,6 +65,8 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut prev_screen_rows = 0;
     let mut prev_screen_cols = 0;
     let mut ticks: Duration = Duration::ZERO;
+    let mut last_activity = Instant::now();
+    let mut cursor_visible = false;
 
     loop {
         let start = Instant::now();
@@ -167,6 +169,11 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let editor_inner_height = editor_rect.height.saturating_sub(2);
         let visible_rows = editor_inner_height as i32;
 
+        if !cursor_visible && last_activity.elapsed() >= Duration::from_secs(1) {
+            cursor_visible = true;
+            should_redraw = true;
+        }
+
         //------------------
         // render
         //------------------
@@ -177,6 +184,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 &mut editor,
                 screen_cols as u16,
                 screen_rows as u16,
+                cursor_visible,
             )?;
             if editor.mode == Mode::Insert {
                 ticks = Duration::ZERO;
@@ -191,6 +199,8 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         //------------------
         if event::poll(Duration::from_millis(50))? {
             let event = event::read()?;
+            last_activity = Instant::now();
+            cursor_visible = false;
             let event_res = ui
                 .handle_event(&event, &mut editor)
                 .unwrap_or_else(|| handle_event(&mut editor, event, visible_rows));

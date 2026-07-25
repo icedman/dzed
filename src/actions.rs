@@ -35,6 +35,7 @@ pub enum Action {
     // OPTS
     NoOp,
     Clear,
+    Quit,
     Delete { count: u32 },
     Change { count: u32 },
     Yank { count: u32 },
@@ -144,6 +145,7 @@ impl std::fmt::Display for Action {
         match self {
             Action::NoOp => write!(f, "None"),
             Action::Clear => write!(f, "Clear"),
+            Action::Quit => write!(f, "Quit"),
             Action::Delete { count } => write!(f, "Delete({})", count),
             Action::Change { count } => write!(f, "Change({})", count),
             Action::Yank { count } => write!(f, "Yank({})", count),
@@ -491,6 +493,7 @@ impl Action {
             Action::InsertTab => Action::InsertTab,
             Action::Clear => Action::Clear,
             Action::NoOp => Action::NoOp,
+            Action::Quit => Action::Quit,
         }
     }
 

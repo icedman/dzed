@@ -106,7 +106,14 @@ impl Theme {
 
         self.fg = fg.rgb();
         self.bg = bg.darken(10).rgb();
-        self.caret = settings.caret.unwrap_or(fg).rgb();
+        let raw_caret = settings.caret.unwrap_or(fg);
+        let mixed_caret = syntect::highlighting::Color {
+            r: ((raw_caret.r as f32 * 0.4) + (bg.r as f32 * 0.6)) as u8,
+            g: ((raw_caret.g as f32 * 0.4) + (bg.g as f32 * 0.6)) as u8,
+            b: ((raw_caret.b as f32 * 0.4) + (bg.b as f32 * 0.6)) as u8,
+            a: raw_caret.a,
+        };
+        self.caret = mixed_caret.rgb();
         self.select = settings.selection.unwrap_or(bg.darken(10)).rgb();
         self.find_fg = settings.find_highlight_foreground.unwrap_or(fg).rgb();
         self.find = settings.find_highlight.unwrap_or(bg.darken(10)).rgb();

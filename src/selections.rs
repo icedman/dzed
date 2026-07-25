@@ -984,6 +984,9 @@ impl SelectionCollection {
 
         let first_id = first_sel.id;
         let first_row = first_sel.head().to_point(buffer).row;
+        let cursor_col = first_sel.head().to_point(buffer).column;
+        let anchor_col = anchor_sel.start.to_point(buffer).column;
+        let reversed = cursor_col < anchor_col;
 
         // Remove selections that are outside the block row range, except the first selection
         self.selections.retain(|sel| {
@@ -1021,7 +1024,7 @@ impl SelectionCollection {
                     id,
                     start: start_anchor,
                     end: end_anchor,
-                    reversed: false,
+                    reversed,
                     goal: SelectionGoal::None,
                 };
             } else {
@@ -1031,7 +1034,7 @@ impl SelectionCollection {
                     id,
                     start: start_anchor,
                     end: end_anchor,
-                    reversed: false,
+                    reversed,
                     goal: SelectionGoal::None,
                 });
             }
@@ -1055,7 +1058,7 @@ impl SelectionCollection {
             id: first_id,
             start: start_anchor,
             end: end_anchor,
-            reversed: false,
+            reversed,
             goal: SelectionGoal::None,
         };
     }

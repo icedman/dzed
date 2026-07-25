@@ -1,5 +1,6 @@
 use crate::actions::{Action, Mode};
 use crate::keymap::{InputStateMachine, KeyCombo, Keymap};
+use crate::document::BufferText;
 use crossterm::event::{Event, KeyCode, KeyEvent, MouseEventKind};
 
 pub enum HandleEvent {
@@ -25,11 +26,32 @@ pub fn handle_event(
             }
 
             if action != Action::NoOp {
-                if matches!(action, Action::Redo { .. }) {
+                if matches!(action, Action::Quit) {
                     return HandleEvent::Exit;
                 }
 
-                editor.apply_active_action(&action);
+                if editor.mode == Mode::Command {
+                    if matches!(action, Action::InsertNewLine { .. }) {
+                        let cmd_text = editor.cmd.buffer().row_text(editor.cmd.buffer().row_count() - 1);
+                        if cmd_text == "q" || cmd_text == "quit" {
+                            return HandleEvent::Exit;
+                        }
+                        editor.cmd = crate::document::Document::new("").unwrap();
+                        editor.input.set_mode(Mode::Normal);
+                        editor.buffer_manager.active_mut().doc.enter_mode(Mode::Normal);
+                        return HandleEvent::RedrawAndSync;
+                    } else if matches!(action, Action::Clear) {
+                        editor.cmd = crate::document::Document::new("").unwrap();
+                        editor.input.set_mode(Mode::Normal);
+                        editor.buffer_manager.active_mut().doc.enter_mode(Mode::Normal);
+                        return HandleEvent::RedrawAndSync;
+                    } else {
+                        editor.apply_command_action(&action);
+                    }
+                } else {
+                    editor.apply_active_action(&action);
+                }
+
                 // After applying action, mode might have changed again
                 editor
                     .input
@@ -297,20 +319,29 @@ mod tests {
         send_key(&mut vim, KeyCode::Esc, KeyModifiers::NONE);
         assert_eq!(vim.mode(), Mode::Normal);
 
-        assert_eq!(send_char(&mut vim, 'o'), Action::SetToOpenLineBelow { count: 1 });
+        assert_eq!(
+            send_char(&mut vim, 'o'),
+            Action::SetToOpenLineBelow { count: 1 }
+        );
         assert_eq!(vim.mode(), Mode::Insert);
 
         send_key(&mut vim, KeyCode::Esc, KeyModifiers::NONE);
         assert_eq!(vim.mode(), Mode::Normal);
 
         send_char(&mut vim, '3');
-        assert_eq!(send_char(&mut vim, 'O'), Action::SetToOpenLineAbove { count: 3 });
+        assert_eq!(
+            send_char(&mut vim, 'O'),
+            Action::SetToOpenLineAbove { count: 3 }
+        );
         assert_eq!(vim.mode(), Mode::Insert);
 
         send_key(&mut vim, KeyCode::Esc, KeyModifiers::NONE);
         assert_eq!(vim.mode(), Mode::Normal);
 
-        assert_eq!(send_char(&mut vim, 'I'), Action::SetToInsertStartOfLineNonSpace);
+        assert_eq!(
+            send_char(&mut vim, 'I'),
+            Action::SetToInsertStartOfLineNonSpace
+        );
         assert_eq!(vim.mode(), Mode::Insert);
 
         send_key(&mut vim, KeyCode::Esc, KeyModifiers::NONE);
