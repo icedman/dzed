@@ -356,18 +356,18 @@ impl Action {
                 count,
                 select: false,
             },
-            Action::MoveToNextCharacter { .. } => Action::MoveToNextCharacter {
+            Action::MoveToNextCharacter { ch, select, .. } => Action::MoveToNextCharacter {
                 count,
-                ch: '?',
-                select: false,
+                ch,
+                select,
             },
-            Action::MoveToPreviousCharacter { .. } => Action::MoveToPreviousCharacter {
+            Action::MoveToPreviousCharacter { ch, select, .. } => Action::MoveToPreviousCharacter {
                 count,
-                ch: '?',
-                select: false,
+                ch,
+                select,
             },
-            Action::MoveWithinCharacter { .. } => Action::MoveWithinCharacter { count, ch: '?' },
-            Action::MoveAroundCharacter { .. } => Action::MoveAroundCharacter { count, ch: '?' },
+            Action::MoveWithinCharacter { ch, .. } => Action::MoveWithinCharacter { count, ch },
+            Action::MoveAroundCharacter { ch, .. } => Action::MoveAroundCharacter { count, ch },
 
             Action::ScrollForward { .. } => Action::ScrollForward { count },
             Action::ScrollBackward { .. } => Action::ScrollBackward { count },

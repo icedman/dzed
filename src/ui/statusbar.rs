@@ -94,9 +94,9 @@ fn draw_statusbar_impl<W: Write>(w: &mut W, rect: Rect, editor: &Editor) -> std:
         buffer_count,
         active_buffer.file_path,
         editor.mode,
-        editor.input.buffer,
-        editor.input.resolved_op,
-        editor.input.resolved_motion,
+        "", // editor.input.buffer,
+        "", // editor.input.resolved_op,
+        "", // editor.input.resolved_motion,
         editor.input.resolved_action,
     );
 

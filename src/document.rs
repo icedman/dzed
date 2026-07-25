@@ -919,6 +919,8 @@ mod tests {
             1
         );
 
+        editor.apply_active_action(&Action::Put { count: 1 });
+
         assert_eq!(
             editor.buffer_manager.active().doc.buffer().row_text(0),
             "abbccde"
