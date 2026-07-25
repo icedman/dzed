@@ -34,6 +34,7 @@ pub trait Motions {
         count: u32,
         ch: char,
         forward: bool,
+        till: bool,
         buffer: &Buffer,
     ) -> Selection<Anchor>;
 
@@ -44,6 +45,10 @@ pub trait Motions {
     fn move_to_next_word(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor>;
     fn move_to_next_word_end(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor>;
     fn move_to_previous_word_end(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor>;
+    fn move_to_big_word(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor>;
+    fn move_to_previous_big_word(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor>;
+    fn move_to_big_word_end(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor>;
+    fn move_to_previous_big_word_end(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor>;
 
     // Paragraph motions
     fn move_to_previous_paragraph(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor>;
@@ -331,6 +336,7 @@ impl Motions for Selection<Anchor> {
         count: u32,
         ch: char,
         forward: bool,
+        till: bool,
         buffer: &Buffer,
     ) -> Selection<Anchor> {
         let mut point = self.head().to_point(buffer);
@@ -343,7 +349,16 @@ impl Motions for Selection<Anchor> {
                     if c == ch {
                         found_count += 1;
                         if found_count == count {
-                            point.column = (start_idx + idx) as u32;
+                            let match_idx = start_idx + idx;
+                            if till {
+                                if let Some(prev_c) = line_text[..match_idx].chars().next_back() {
+                                    point.column = (match_idx - prev_c.len_utf8()) as u32;
+                                } else {
+                                    point.column = match_idx as u32;
+                                }
+                            } else {
+                                point.column = match_idx as u32;
+                            }
                             break;
                         }
                     }
@@ -356,7 +371,11 @@ impl Motions for Selection<Anchor> {
                     if c == ch {
                         found_count += 1;
                         if found_count == count {
-                            point.column = idx as u32;
+                            if till {
+                                point.column = (idx + c.len_utf8()) as u32;
+                            } else {
+                                point.column = idx as u32;
+                            }
                             break;
                         }
                     }
@@ -496,6 +515,86 @@ impl Motions for Selection<Anchor> {
         let mut point = self.head().to_point(buffer);
         let text = buffer.row_text(point.row);
         if let Some(word) = text.as_str().find_previous_word_end(point.column as usize) {
+            point.column = (word.1 - 1) as u32;
+        } else {
+            point.column = 0;
+        }
+        let offset = point.to_offset(buffer);
+        let new_head = buffer.anchor_at(offset, Bias::Left);
+        Selection {
+            id: self.id,
+            start: new_head,
+            end: if anchor { self.tail() } else { new_head },
+            reversed: true,
+            goal: SelectionGoal::None,
+        }
+    }
+
+    fn move_to_big_word(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor> {
+        use crate::search::TextSearch;
+        let mut point = self.head().to_point(buffer);
+        let text = buffer.row_text(point.row);
+        if let Some(word) = text.as_str().find_next_big_word(point.column as usize) {
+            point.column = word.0 as u32;
+        } else {
+            point.column = text.len() as u32;
+        }
+        let offset = point.to_offset(buffer);
+        let new_head = buffer.anchor_at(offset, Bias::Left);
+        Selection {
+            id: self.id,
+            start: new_head,
+            end: if anchor { self.tail() } else { new_head },
+            reversed: false,
+            goal: SelectionGoal::None,
+        }
+    }
+
+    fn move_to_previous_big_word(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor> {
+        use crate::search::TextSearch;
+        let mut point = self.head().to_point(buffer);
+        let text = buffer.row_text(point.row);
+        if let Some(word) = text.as_str().find_previous_big_word(point.column as usize) {
+            point.column = word.0 as u32;
+        } else {
+            point.column = 0;
+        }
+        let offset = point.to_offset(buffer);
+        let new_head = buffer.anchor_at(offset, Bias::Left);
+        Selection {
+            id: self.id,
+            start: new_head,
+            end: if anchor { self.tail() } else { new_head },
+            reversed: true,
+            goal: SelectionGoal::None,
+        }
+    }
+
+    fn move_to_big_word_end(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor> {
+        use crate::search::TextSearch;
+        let mut point = self.head().to_point(buffer);
+        let text = buffer.row_text(point.row);
+        if let Some(word) = text.as_str().find_next_big_word_end(point.column as usize) {
+            point.column = (word.1 - 1) as u32;
+        } else {
+            point.column = text.len() as u32;
+        }
+        let offset = point.to_offset(buffer);
+        let new_head = buffer.anchor_at(offset, Bias::Left);
+        Selection {
+            id: self.id,
+            start: new_head,
+            end: if anchor { self.tail() } else { new_head },
+            reversed: false,
+            goal: SelectionGoal::None,
+        }
+    }
+
+    fn move_to_previous_big_word_end(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor> {
+        use crate::search::TextSearch;
+        let mut point = self.head().to_point(buffer);
+        let text = buffer.row_text(point.row);
+        if let Some(word) = text.as_str().find_previous_big_word_end(point.column as usize) {
             point.column = (word.1 - 1) as u32;
         } else {
             point.column = 0;
@@ -1206,13 +1305,14 @@ impl SelectionCollection {
         count: u32,
         ch: char,
         forward: bool,
+        till: bool,
         buffer: &Buffer,
     ) {
         let cursors = self.selections.clone();
         for cursor in cursors.iter() {
             let next = cursor
                 .clone()
-                .find_character(anchor, count, ch, forward, buffer);
+                .find_character(anchor, count, ch, forward, till, buffer);
             // If not found, `next` equals original selection; update anyway is harmless
             self.update(buffer, &next);
         }
@@ -1292,6 +1392,46 @@ impl SelectionCollection {
             let cursors = self.selections.clone();
             for cursor in cursors.iter() {
                 let next = cursor.clone().move_to_previous_word_end(anchor, buffer);
+                self.update(buffer, &next);
+            }
+        }
+    }
+
+    pub fn move_to_big_word(&mut self, anchor: bool, count: u32, buffer: &Buffer) {
+        for _ in 0..count {
+            let cursors = self.selections.clone();
+            for cursor in cursors.iter() {
+                let next = cursor.clone().move_to_big_word(anchor, buffer);
+                self.update(buffer, &next);
+            }
+        }
+    }
+
+    pub fn move_to_previous_big_word(&mut self, anchor: bool, count: u32, buffer: &Buffer) {
+        for _ in 0..count {
+            let cursors = self.selections.clone();
+            for cursor in cursors.iter() {
+                let next = cursor.clone().move_to_previous_big_word(anchor, buffer);
+                self.update(buffer, &next);
+            }
+        }
+    }
+
+    pub fn move_to_big_word_end(&mut self, anchor: bool, count: u32, buffer: &Buffer) {
+        for _ in 0..count {
+            let cursors = self.selections.clone();
+            for cursor in cursors.iter() {
+                let next = cursor.clone().move_to_big_word_end(anchor, buffer);
+                self.update(buffer, &next);
+            }
+        }
+    }
+
+    pub fn move_to_previous_big_word_end(&mut self, anchor: bool, count: u32, buffer: &Buffer) {
+        for _ in 0..count {
+            let cursors = self.selections.clone();
+            for cursor in cursors.iter() {
+                let next = cursor.clone().move_to_previous_big_word_end(anchor, buffer);
                 self.update(buffer, &next);
             }
         }

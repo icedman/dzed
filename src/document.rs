@@ -121,9 +121,9 @@ impl Document {
             _ => ('~', '~'),
         };
         self.selections
-            .find_character(false, 1, start, false, &self.buffer);
+            .find_character(false, 1, start, false, false, &self.buffer);
         self.selections
-            .find_character(true, 1, end, true, &self.buffer);
+            .find_character(true, 1, end, true, false, &self.buffer);
     }
 
     pub fn select_similar(&mut self) {
@@ -172,6 +172,12 @@ impl Document {
     }
 
     pub fn apply_action(&mut self, action: &Action, editor: &Editor) {
+        let mut action_owned = action.clone();
+        if self.mode.is_visual() {
+            action_owned = action_owned.with_select(true);
+        }
+        let action = &action_owned;
+
         let mut next_action = Action::NoOp;
         match action {
             Action::InsertNewLineMotion { .. }
@@ -202,8 +208,82 @@ impl Document {
                 self.enter_mode(Mode::Insert);
                 return;
             }
+            Action::SetToAppend => {
+                let cursors = self.selections.selections.clone();
+                for cursor in cursors.iter() {
+                    let point = cursor.head().to_point(&self.buffer);
+                    let row_len = self.buffer.line_len(point.row);
+                    if point.column < row_len {
+                        self.selections.move_right(false, 1, &self.buffer);
+                    }
+                }
+                self.enter_mode(Mode::Insert);
+                return;
+            }
+            Action::SetToAppendEndOfLine => {
+                self.selections.move_to_end_of_line(false, &self.buffer);
+                self.enter_mode(Mode::Insert);
+                return;
+            }
+            Action::SetToOpenLineBelow { count } => {
+                let count = *count;
+                self.selections.move_to_end_of_line(false, &self.buffer);
+                let current_row = self.selections.first().unwrap().head().to_point(&self.buffer).row;
+                for _ in 0..count {
+                    self.insert_text(&self.new_line().to_string());
+                }
+                let target_point = Point {
+                    row: current_row + 1,
+                    column: 0,
+                };
+                let target_anchor = self.buffer.anchor_at(target_point.to_offset(&self.buffer), Bias::Left);
+                self.selections.clear(&self.buffer);
+                let first = self.selections.first().unwrap().clone();
+                let next = Selection {
+                    id: first.id,
+                    start: target_anchor.clone(),
+                    end: target_anchor,
+                    reversed: false,
+                    goal: SelectionGoal::None,
+                };
+                self.selections.point = target_point;
+                self.selections.update(&self.buffer, &next);
+                self.enter_mode(Mode::Insert);
+                return;
+            }
+            Action::SetToOpenLineAbove { count } => {
+                let count = *count;
+                self.selections.move_to_start_of_line(false, &self.buffer);
+                let current_row = self.selections.first().unwrap().head().to_point(&self.buffer).row;
+                for _ in 0..count {
+                    self.insert_text(&self.new_line().to_string());
+                }
+                let target_point = Point {
+                    row: current_row,
+                    column: 0,
+                };
+                let target_anchor = self.buffer.anchor_at(target_point.to_offset(&self.buffer), Bias::Left);
+                self.selections.clear(&self.buffer);
+                let first = self.selections.first().unwrap().clone();
+                let next = Selection {
+                    id: first.id,
+                    start: target_anchor.clone(),
+                    end: target_anchor,
+                    reversed: false,
+                    goal: SelectionGoal::None,
+                };
+                self.selections.point = target_point;
+                self.selections.update(&self.buffer, &next);
+                self.enter_mode(Mode::Insert);
+                return;
+            }
             Action::SetToVisual => {
                 self.enter_mode(Mode::Visual);
+                return;
+            }
+            Action::SetToInsertStartOfLineNonSpace => {
+                self.selections.move_to_start_of_line_non_space(false, &self.buffer);
+                self.enter_mode(Mode::Insert);
                 return;
             }
             Action::SetToVisualLine => {
@@ -245,18 +325,34 @@ impl Document {
                 self.selections
                     .move_to_word_end(*select, *count, &self.buffer)
             }
+            Action::MoveToBigWord { select, count } => {
+                self.selections
+                    .move_to_big_word(*select, *count, &self.buffer)
+            }
+            Action::MoveToPreviousBigWord { select, count } => {
+                self.selections
+                    .move_to_previous_big_word(*select, *count, &self.buffer)
+            }
+            Action::MoveToBigWordEnd { select, count } => {
+                self.selections
+                    .move_to_big_word_end(*select, *count, &self.buffer)
+            }
+            Action::MoveToPreviousBigWordEnd { select, count } => {
+                self.selections
+                    .move_to_previous_big_word_end(*select, *count, &self.buffer)
+            }
             Action::MoveToPreviousParagraph { select, count } => self
                 .selections
                 .move_to_previous_paragraph(*select, *count, &self.buffer),
             Action::MoveToNextParagraph { select, count } => self
                 .selections
                 .move_to_next_paragraph(*select, *count, &self.buffer),
-            Action::MoveToPreviousCharacter { select, count, ch } => self
+            Action::MoveToPreviousCharacter { select, count, ch, till } => self
                 .selections
-                .find_character(*select, *count, *ch, false, &self.buffer),
-            Action::MoveToNextCharacter { select, count, ch } => {
+                .find_character(*select, *count, *ch, false, *till, &self.buffer),
+            Action::MoveToNextCharacter { select, count, ch, till } => {
                 self.selections
-                    .find_character(*select, *count, *ch, true, &self.buffer)
+                    .find_character(*select, *count, *ch, true, *till, &self.buffer)
             }
             Action::SearchBackward { count } => {
                 // TODO: handle count
@@ -302,7 +398,7 @@ impl Document {
                 self.delete_text(0);
                 self.insert_text(text);
             }
-            Action::Delete { count } => {
+            Action::DeleteChar { count } | Action::Delete { count } => {
                 if self.delete_text(0) {
                     //
                 } else {
@@ -323,6 +419,62 @@ impl Document {
             }
             Action::DeleteLine { count } | Action::ChangeLine { count } => {
                 self.delete_current_line(*count);
+            }
+            Action::JoinLines { count } => {
+                let count = *count;
+                let lines_to_join = if count <= 1 { 2 } else { count };
+                let newlines_to_remove = lines_to_join - 1;
+
+                let current_row = self.selections.first().unwrap().head().to_point(&self.buffer).row;
+                let total_rows = self.buffer.row_count();
+                let actual_removes = std::cmp::min(newlines_to_remove as usize, (total_rows.saturating_sub(1) - current_row) as usize);
+
+                let mut target_col = None;
+
+                for _ in 0..actual_removes {
+                    let current_line_len = self.buffer.line_len(current_row);
+                    if target_col.is_none() {
+                        target_col = Some(current_line_len);
+                    }
+
+                    let end_of_current = Point { row: current_row, column: current_line_len }.to_offset(&self.buffer);
+                    let next_line_text = self.buffer.row_text(current_row + 1);
+                    let leading_whitespace_len = next_line_text.chars().take_while(|c| c.is_whitespace()).map(|c| c.len_utf8()).sum::<usize>();
+
+                    let delete_start = end_of_current;
+                    let delete_end = end_of_current + 1 + leading_whitespace_len;
+
+                    let current_line_text = self.buffer.row_text(current_row);
+                    let ends_with_space = current_line_text.as_str().ends_with(char::is_whitespace);
+                    let next_first_non_space = next_line_text.as_str().trim_start().chars().next();
+
+                    let replacement = if ends_with_space || next_first_non_space.is_none() {
+                        ""
+                    } else {
+                        " "
+                    };
+
+                    self.buffer.edit([(delete_start..delete_end, replacement)]);
+                }
+
+                if let Some(col) = target_col {
+                    let target_point = Point {
+                        row: current_row,
+                        column: col,
+                    };
+                    let target_anchor = self.buffer.anchor_at(target_point.to_offset(&self.buffer), Bias::Left);
+                    self.selections.clear(&self.buffer);
+                    let first = self.selections.first().unwrap().clone();
+                    let next = Selection {
+                        id: first.id,
+                        start: target_anchor.clone(),
+                        end: target_anchor,
+                        reversed: false,
+                        goal: SelectionGoal::None,
+                    };
+                    self.selections.point = target_point;
+                    self.selections.update(&self.buffer, &next);
+                }
             }
             Action::ChangeMotion { count, motion } | Action::DeleteMotion { count, motion } => {
                 let mut motion = (**motion).clone();
@@ -627,8 +779,8 @@ impl Document {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::treesitter::grammars::Grammar;
     use crate::treesitter::TreeSitterParser;
+    use crate::treesitter::grammars::Grammar;
 
     #[test]
     fn consecutive_insert_text_actions_leave_cursor_after_inserted_text() {
@@ -944,5 +1096,26 @@ mod tests {
         let document = &editor.buffer_manager.active().doc;
         assert_eq!(document.buffer().row_text(0), "abc");
         assert_eq!(document.buffer().row_text(1), "abc");
+    }
+
+    #[test]
+    fn test_join_lines() {
+        let mut editor = Editor::new(Vec::new()).unwrap();
+        editor.apply_active_action(&Action::InsertText("line 1\n  line 2\nline 3".into()));
+        // Move back to line 1
+        editor.apply_active_action(&Action::MoveUp { select: false, count: 2 });
+
+        // Join line 1 and line 2
+        editor.apply_active_action(&Action::JoinLines { count: 1 });
+
+        let document = &editor.buffer_manager.active().doc;
+        assert_eq!(document.buffer().row_text(0), "line 1 line 2");
+        assert_eq!(document.buffer().row_text(1), "line 3");
+
+        // Verify cursor is on the space
+        assert_eq!(
+            document.selection().head().to_point(document.buffer()),
+            Point { row: 0, column: 6 }
+        );
     }
 }

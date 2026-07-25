@@ -1,8 +1,8 @@
 use crate::actions::{Action, Mode};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use smallvec::SmallVec;
 use std::collections::HashMap;
 use std::ops::Deref;
-use smallvec::SmallVec;
 
 /// Represents a single physical keypress with modifiers.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -175,7 +175,9 @@ pub struct KeyComboSequence {
 
 impl KeyComboSequence {
     pub fn new() -> Self {
-        Self { items: SmallVec::new() }
+        Self {
+            items: SmallVec::new(),
+        }
     }
 
     pub fn parse_sequence(s: &str) -> Result<Self, String> {
@@ -315,6 +317,15 @@ impl Keymap {
             .bind(
                 "ge",
                 Action::MoveToPreviousWordEnd {
+                    count: 1,
+                    select: false,
+                },
+            )
+            .expect("Valid binding");
+        motion_actions
+            .bind(
+                "gE",
+                Action::MoveToPreviousBigWordEnd {
                     count: 1,
                     select: false,
                 },
@@ -573,6 +584,7 @@ impl Keymap {
                 Action::MoveToNextCharacter {
                     count: 1,
                     select: false,
+                    till: false,
                     ch: '?',
                 },
             )
@@ -583,6 +595,29 @@ impl Keymap {
                 Action::MoveToPreviousCharacter {
                     count: 1,
                     select: false,
+                    till: false,
+                    ch: '?',
+                },
+            )
+            .expect("Valid binding");
+        motion_actions
+            .bind(
+                "t{c}",
+                Action::MoveToNextCharacter {
+                    count: 1,
+                    select: false,
+                    till: true,
+                    ch: '?',
+                },
+            )
+            .expect("Valid binding");
+        motion_actions
+            .bind(
+                "T{c}",
+                Action::MoveToPreviousCharacter {
+                    count: 1,
+                    select: false,
+                    till: true,
                     ch: '?',
                 },
             )
@@ -707,6 +742,21 @@ impl Keymap {
         // Mode Change
         mode_actions
             .bind("i", Action::SetToInsert)
+            .expect("Valid binding");
+        mode_actions
+            .bind("I", Action::SetToInsertStartOfLineNonSpace)
+            .expect("Valid binding");
+        mode_actions
+            .bind("a", Action::SetToAppend)
+            .expect("Valid binding");
+        mode_actions
+            .bind("A", Action::SetToAppendEndOfLine)
+            .expect("Valid binding");
+        mode_actions
+            .bind("o", Action::SetToOpenLineBelow { count: 1 })
+            .expect("Valid binding");
+        mode_actions
+            .bind("O", Action::SetToOpenLineAbove { count: 1 })
             .expect("Valid binding");
         mode_actions
             .bind("v", Action::SetToVisual)
@@ -852,10 +902,8 @@ impl InputStateMachine {
         let mut resolved = MatchResult::NoMatch;
         let mut used_combined = false;
         if self.pending_op.is_some() && !self.pending_op_sequence.is_empty() {
-            let mut combined: SmallVec<[KeyCombo; 8]> = SmallVec::new();
-            combined.extend(self.pending_op_sequence.iter().cloned());
-            combined.extend(self.key_sequence.iter().cloned());
-            let res = self.try_resolve_sequence(&combined, keymap);
+            let res =
+                self.try_resolve_sequence(&self.pending_op_sequence, &self.key_sequence, keymap);
             if !matches!(res, MatchResult::NoMatch) {
                 resolved = res;
                 used_combined = true;
@@ -870,9 +918,18 @@ impl InputStateMachine {
             MatchResult::Complete(mut action) => {
                 let motion_count = self.take_count();
 
+                if self.mode.is_visual() {
+                    action = action.with_select(true);
+                }
+
                 // Update mode if action is a mode transition
                 match action {
-                    Action::SetToInsert => self.mode = Mode::Insert,
+                    Action::SetToInsert
+                    | Action::SetToAppend
+                    | Action::SetToAppendEndOfLine
+                    | Action::SetToOpenLineBelow { .. }
+                    | Action::SetToOpenLineAbove { .. }
+                    | Action::SetToInsertStartOfLineNonSpace => self.mode = Mode::Insert,
                     Action::SetToVisual => self.mode = Mode::Visual,
                     Action::SetToVisualLine => self.mode = Mode::VisualLine,
                     Action::SetToVisualBlock => self.mode = Mode::VisualBlock,
@@ -914,10 +971,11 @@ impl InputStateMachine {
                     let mut resolved = MatchResult::NoMatch;
                     let mut used_combined = false;
                     if self.pending_op.is_some() && !self.pending_op_sequence.is_empty() {
-                        let mut combined: SmallVec<[KeyCombo; 8]> = SmallVec::new();
-                        combined.extend(self.pending_op_sequence.iter().cloned());
-                        combined.extend(self.key_sequence.iter().cloned());
-                        let res = self.try_resolve_sequence(&combined, keymap);
+                        let res = self.try_resolve_sequence(
+                            &self.pending_op_sequence,
+                            &self.key_sequence,
+                            keymap,
+                        );
                         if !matches!(res, MatchResult::NoMatch) {
                             resolved = res;
                             used_combined = true;
@@ -929,8 +987,16 @@ impl InputStateMachine {
 
                     if let MatchResult::Complete(mut action) = resolved {
                         let count = self.take_count();
+                        if self.mode.is_visual() {
+                            action = action.with_select(true);
+                        }
                         match action {
-                            Action::SetToInsert => self.mode = Mode::Insert,
+                            Action::SetToInsert
+                            | Action::SetToAppend
+                            | Action::SetToAppendEndOfLine
+                            | Action::SetToOpenLineBelow { .. }
+                            | Action::SetToOpenLineAbove { .. }
+                            | Action::SetToInsertStartOfLineNonSpace => self.mode = Mode::Insert,
                             Action::SetToVisual => self.mode = Mode::Visual,
                             Action::SetToVisualLine => self.mode = Mode::VisualLine,
                             Action::SetToVisualBlock => self.mode = Mode::VisualBlock,
@@ -964,26 +1030,39 @@ impl InputStateMachine {
     }
 
     fn try_resolve(&self, keymap: &Keymap) -> MatchResult {
-        self.try_resolve_sequence(&self.key_sequence, keymap)
+        self.try_resolve_sequence(&[], &self.key_sequence, keymap)
     }
 
-    fn try_resolve_sequence(&self, seq: &[KeyCombo], keymap: &Keymap) -> MatchResult {
+    fn try_resolve_sequence(
+        &self,
+        slice1: &[KeyCombo],
+        slice2: &[KeyCombo],
+        keymap: &Keymap,
+    ) -> MatchResult {
         // Visual Mode overrides
         if self.mode.is_visual() {
-            if let Some(res) = match_sequence_in_map(seq, &keymap.visual_actions) {
+            if let Some(res) = match_two_slices_in_map(slice1, slice2, &keymap.visual_actions) {
                 return res;
             }
         }
 
         // Check Motions
-        if let Some(res) = match_sequence_in_map(seq, &keymap.motion_actions) {
+        if let Some(res) = match_two_slices_in_map(slice1, slice2, &keymap.motion_actions) {
             return res;
         }
 
         // Check Operators
         if self.pending_op.is_none() {
-            if let Some(res) = match_sequence_in_map(seq, &keymap.op_actions) {
+            if let Some(res) = match_two_slices_in_map(slice1, slice2, &keymap.op_actions) {
                 if let MatchResult::Complete(op_action) = res {
+                    if self.mode.is_visual() {
+                        let simulated_motion = Action::MoveRight {
+                            count: 0,
+                            select: true,
+                        };
+                        let combined = resolve_op_motion_action(simulated_motion, op_action);
+                        return MatchResult::Complete(combined);
+                    }
                     return MatchResult::PendingOp(op_action);
                 }
                 return res;
@@ -991,12 +1070,12 @@ impl InputStateMachine {
         }
 
         // Check Normal Mode Actions
-        if let Some(res) = match_sequence_in_map(seq, &keymap.normal_actions) {
+        if let Some(res) = match_two_slices_in_map(slice1, slice2, &keymap.normal_actions) {
             return res;
         }
 
         // Check Mode Changes
-        if let Some(res) = match_sequence_in_map(seq, &keymap.mode_actions) {
+        if let Some(res) = match_two_slices_in_map(slice1, slice2, &keymap.mode_actions) {
             return res;
         }
 
@@ -1046,12 +1125,21 @@ fn match_sequence_in_map(
     buf: &[KeyCombo],
     map: &HashMap<KeyComboSequence, Action>,
 ) -> Option<MatchResult> {
+    match_two_slices_in_map(&[], buf, map)
+}
+
+fn match_two_slices_in_map(
+    slice1: &[KeyCombo],
+    slice2: &[KeyCombo],
+    map: &HashMap<KeyComboSequence, Action>,
+) -> Option<MatchResult> {
     let mut has_prefix = false;
     let mut best_match: Option<(&KeyComboSequence, &Action)> = None;
+    let total_len = slice1.len() + slice2.len();
 
     for (seq, action) in map {
-        if buf_matches_pattern(buf, seq) {
-            if buf.len() == seq.len() {
+        if buf_matches_pattern_two_slices(slice1, slice2, seq) {
+            if total_len == seq.len() {
                 if let Some((best_seq, _)) = best_match {
                     if seq.len() > best_seq.len() {
                         best_match = Some((seq, action));
@@ -1059,7 +1147,7 @@ fn match_sequence_in_map(
                 } else {
                     best_match = Some((seq, action));
                 }
-            } else if buf.len() < seq.len() {
+            } else if total_len < seq.len() {
                 has_prefix = true;
             }
         }
@@ -1068,7 +1156,12 @@ fn match_sequence_in_map(
     if let Some((seq, action)) = best_match {
         let mut final_action = action.clone();
         if seq.items.iter().any(|p| matches!(p, KeyPattern::AnyChar)) {
-            if let Some(last) = buf.last() {
+            let last_combo = if !slice2.is_empty() {
+                slice2.last()
+            } else {
+                slice1.last()
+            };
+            if let Some(last) = last_combo {
                 if let KeyCode::Char(ch) = last.code {
                     final_action = final_action.with_char(ch, 1);
                 }
@@ -1084,13 +1177,26 @@ fn match_sequence_in_map(
     None
 }
 
-fn buf_matches_pattern(buf: &[KeyCombo], pattern: &KeyComboSequence) -> bool {
-    if buf.len() > pattern.len() {
+fn buf_matches_pattern_two_slices(
+    slice1: &[KeyCombo],
+    slice2: &[KeyCombo],
+    pattern: &KeyComboSequence,
+) -> bool {
+    let total_len = slice1.len() + slice2.len();
+    if total_len > pattern.len() {
         return false;
     }
-    buf.iter()
-        .zip(pattern.items.iter())
-        .all(|(combo, pat)| pat.matches(combo))
+    for i in 0..total_len {
+        let combo = if i < slice1.len() {
+            &slice1[i]
+        } else {
+            &slice2[i - slice1.len()]
+        };
+        if !pattern.items[i].matches(combo) {
+            return false;
+        }
+    }
+    true
 }
 
 pub fn resolve_op_motion_action(motion: Action, action: Action) -> Action {
@@ -1280,6 +1386,25 @@ mod tests {
                 select: false
             }
         );
+
+        // 3. Big Word motions 'W', 'B', 'E', 'gE'
+        assert_eq!(
+            sm.process_key(KeyCombo::parse("W").unwrap(), &keymap),
+            Action::MoveToBigWord { count: 1, select: false }
+        );
+        assert_eq!(
+            sm.process_key(KeyCombo::parse("B").unwrap(), &keymap),
+            Action::MoveToPreviousBigWord { count: 1, select: false }
+        );
+        assert_eq!(
+            sm.process_key(KeyCombo::parse("E").unwrap(), &keymap),
+            Action::MoveToBigWordEnd { count: 1, select: false }
+        );
+        sm.process_key(KeyCombo::parse("g").unwrap(), &keymap);
+        assert_eq!(
+            sm.process_key(KeyCombo::parse("E").unwrap(), &keymap),
+            Action::MoveToPreviousBigWordEnd { count: 1, select: false }
+        );
     }
 
     #[test]
@@ -1352,6 +1477,20 @@ mod tests {
             Action::MoveToNextCharacter {
                 count: 1,
                 ch: 'x',
+                till: false,
+                select: false
+            }
+        );
+
+        // 'tx' -> MoveToNextCharacter('x', till = true)
+        sm.process_key(KeyCombo::parse("t").unwrap(), &keymap);
+        let action_t = sm.process_key(KeyCombo::parse("x").unwrap(), &keymap);
+        assert_eq!(
+            action_t,
+            Action::MoveToNextCharacter {
+                count: 1,
+                ch: 'x',
+                till: true,
                 select: false
             }
         );

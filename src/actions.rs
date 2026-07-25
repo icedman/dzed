@@ -58,6 +58,7 @@ pub enum Action {
     MoveToBigWord { count: u32, select: bool },
     MoveToPreviousBigWord { count: u32, select: bool },
     MoveToBigWordEnd { count: u32, select: bool },
+    MoveToPreviousBigWordEnd { count: u32, select: bool },
 
     MoveToStartOfDocument { count: u32, select: bool },
     MoveToEndOfDocument { count: u32, select: bool },
@@ -77,8 +78,8 @@ pub enum Action {
     MoveToPreviousSentence { count: u32, select: bool },
     MoveToNextSentence { count: u32, select: bool },
 
-    MoveToNextCharacter { count: u32, ch: char, select: bool },
-    MoveToPreviousCharacter { count: u32, ch: char, select: bool },
+    MoveToNextCharacter { count: u32, ch: char, till: bool, select: bool },
+    MoveToPreviousCharacter { count: u32, ch: char, till: bool, select: bool },
 
     MoveWithinCharacter { count: u32, ch: char },
     MoveAroundCharacter { count: u32, ch: char },
@@ -121,10 +122,15 @@ pub enum Action {
     // MODE SELECT
     SetToNormal,
     SetToInsert,
+    SetToAppend,
+    SetToAppendEndOfLine,
     SetToVisual,
     SetToVisualLine,
     SetToVisualBlock,
     SetToCommand,
+    SetToInsertStartOfLineNonSpace,
+    SetToOpenLineBelow { count: u32 },
+    SetToOpenLineAbove { count: u32 },
 
     // INSERT
     InsertNewLine { count: u32 },
@@ -152,6 +158,9 @@ impl std::fmt::Display for Action {
                 write!(f, "MoveToPrevBigWord({})", count)
             }
             Action::MoveToBigWordEnd { count, .. } => write!(f, "MoveToBigWordEnd({})", count),
+            Action::MoveToPreviousBigWordEnd { count, .. } => {
+                write!(f, "MoveToPrevBigWordEnd({})", count)
+            }
             Action::MoveToStartOfDocument { count, .. } => write!(f, "MoveToStartOfDoc({})", count),
             Action::MoveToEndOfDocument { count, .. } => write!(f, "MoveToEndOfDoc({})", count),
             Action::MoveToStartOfLine { count, .. } => write!(f, "MoveToStartOfLine({})", count),
@@ -196,11 +205,11 @@ impl std::fmt::Display for Action {
             Action::MoveDown { count, .. } => write!(f, "MoveDown({})", count),
             Action::MovePageUp { count, .. } => write!(f, "MovePageUp({})", count),
             Action::MovePageDown { count, .. } => write!(f, "MovePageDown({})", count),
-            Action::MoveToNextCharacter { count, ch, .. } => {
-                write!(f, "MoveToNextCharacter({} {})", count, ch)
+            Action::MoveToNextCharacter { count, ch, till, .. } => {
+                write!(f, "MoveToNextCharacter({} {} till={})", count, ch, till)
             }
-            Action::MoveToPreviousCharacter { count, ch, .. } => {
-                write!(f, "MoveToPreviousCharacter({} {})", count, ch)
+            Action::MoveToPreviousCharacter { count, ch, till, .. } => {
+                write!(f, "MoveToPreviousCharacter({} {} till={})", count, ch, till)
             }
             Action::MoveWithinCharacter { count, ch, .. } => {
                 write!(f, "MoveWithinCharacter({} {})", count, ch)
@@ -233,10 +242,15 @@ impl std::fmt::Display for Action {
             Action::ChangeCase { count } => write!(f, "ChangeCase({})", count),
             Action::SetToNormal => write!(f, "SetNormal"),
             Action::SetToInsert => write!(f, "SetInsert"),
+            Action::SetToAppend => write!(f, "SetAppend"),
+            Action::SetToAppendEndOfLine => write!(f, "SetAppendEOL"),
             Action::SetToVisual => write!(f, "SetVisual"),
             Action::SetToVisualLine => write!(f, "SetV-Line"),
             Action::SetToVisualBlock => write!(f, "SetV-Block"),
             Action::SetToCommand => write!(f, "SetCommand"),
+            Action::SetToInsertStartOfLineNonSpace => write!(f, "SetInsertStartNonSpace"),
+            Action::SetToOpenLineBelow { count } => write!(f, "SetOpenLineBelow({})", count),
+            Action::SetToOpenLineAbove { count } => write!(f, "SetOpenLineAbove({})", count),
             Action::InsertNewLine { count } => write!(f, "InsertNewLine({})", count),
             Action::InsertText(s) => write!(f, "InsertText({})", s),
             Action::InsertNewLineMotion { count, motion } => {
@@ -255,7 +269,33 @@ impl Action {
             Action::MoveRight { count, .. } => Action::MoveRight { count, select },
             Action::MoveUp { count, .. } => Action::MoveUp { count, select },
             Action::MoveDown { count, .. } => Action::MoveDown { count, select },
-            _ => Action::NoOp,
+            Action::MoveToWord { count, .. } => Action::MoveToWord { count, select },
+            Action::MoveToPreviousWord { count, .. } => Action::MoveToPreviousWord { count, select },
+            Action::MoveToWordEnd { count, .. } => Action::MoveToWordEnd { count, select },
+            Action::MoveToPreviousWordEnd { count, .. } => Action::MoveToPreviousWordEnd { count, select },
+            Action::MoveToBigWord { count, .. } => Action::MoveToBigWord { count, select },
+            Action::MoveToPreviousBigWord { count, .. } => Action::MoveToPreviousBigWord { count, select },
+            Action::MoveToBigWordEnd { count, .. } => Action::MoveToBigWordEnd { count, select },
+            Action::MoveToPreviousBigWordEnd { count, .. } => Action::MoveToPreviousBigWordEnd { count, select },
+            Action::MoveToStartOfDocument { count, .. } => Action::MoveToStartOfDocument { count, select },
+            Action::MoveToEndOfDocument { count, .. } => Action::MoveToEndOfDocument { count, select },
+            Action::MoveToStartOfLine { count, .. } => Action::MoveToStartOfLine { count, select },
+            Action::MoveToStartOfLineNonSpace { count, .. } => Action::MoveToStartOfLineNonSpace { count, select },
+            Action::MoveToEndOfLine { count, .. } => Action::MoveToEndOfLine { count, select },
+            Action::MoveToStartOfPreviousLine { count, .. } => Action::MoveToStartOfPreviousLine { count, select },
+            Action::MoveToEndOfPreviousLine { count, .. } => Action::MoveToEndOfPreviousLine { count, select },
+            Action::MoveToStartOfNextLine { count, .. } => Action::MoveToStartOfNextLine { count, select },
+            Action::MoveToEndOfNextLine { count, .. } => Action::MoveToEndOfNextLine { count, select },
+            Action::MoveToScreenTop { count, .. } => Action::MoveToScreenTop { count, select },
+            Action::MoveToScreenMiddle { count, .. } => Action::MoveToScreenMiddle { count, select },
+            Action::MoveToScreenBottom { count, .. } => Action::MoveToScreenBottom { count, select },
+            Action::MoveToPreviousParagraph { count, .. } => Action::MoveToPreviousParagraph { count, select },
+            Action::MoveToNextParagraph { count, .. } => Action::MoveToNextParagraph { count, select },
+            Action::MoveToPreviousSentence { count, .. } => Action::MoveToPreviousSentence { count, select },
+            Action::MoveToNextSentence { count, .. } => Action::MoveToNextSentence { count, select },
+            Action::MoveToNextCharacter { count, ch, till, .. } => Action::MoveToNextCharacter { count, ch, till, select },
+            Action::MoveToPreviousCharacter { count, ch, till, .. } => Action::MoveToPreviousCharacter { count, ch, till, select },
+            _ => self,
         }
     }
 
@@ -289,6 +329,10 @@ impl Action {
                 select: false,
             },
             Action::MoveToBigWordEnd { .. } => Action::MoveToBigWordEnd {
+                count,
+                select: false,
+            },
+            Action::MoveToPreviousBigWordEnd { .. } => Action::MoveToPreviousBigWordEnd {
                 count,
                 select: false,
             },
@@ -356,14 +400,16 @@ impl Action {
                 count,
                 select: false,
             },
-            Action::MoveToNextCharacter { ch, select, .. } => Action::MoveToNextCharacter {
+            Action::MoveToNextCharacter { ch, till, select, .. } => Action::MoveToNextCharacter {
                 count,
                 ch,
+                till,
                 select,
             },
-            Action::MoveToPreviousCharacter { ch, select, .. } => Action::MoveToPreviousCharacter {
+            Action::MoveToPreviousCharacter { ch, till, select, .. } => Action::MoveToPreviousCharacter {
                 count,
                 ch,
+                till,
                 select,
             },
             Action::MoveWithinCharacter { ch, .. } => Action::MoveWithinCharacter { count, ch },
@@ -427,10 +473,15 @@ impl Action {
             Action::YankMotion { motion, .. } => Action::YankMotion { count, motion },
             Action::SetToNormal => Action::SetToNormal,
             Action::SetToInsert => Action::SetToInsert,
+            Action::SetToAppend => Action::SetToAppend,
+            Action::SetToAppendEndOfLine => Action::SetToAppendEndOfLine,
             Action::SetToVisual => Action::SetToVisual,
             Action::SetToVisualLine => Action::SetToVisualLine,
             Action::SetToVisualBlock => Action::SetToVisualBlock,
             Action::SetToCommand => Action::SetToCommand,
+            Action::SetToInsertStartOfLineNonSpace => Action::SetToInsertStartOfLineNonSpace,
+            Action::SetToOpenLineBelow { .. } => Action::SetToOpenLineBelow { count },
+            Action::SetToOpenLineAbove { .. } => Action::SetToOpenLineAbove { count },
             Action::InsertNewLine { .. } => Action::InsertNewLine { count },
             Action::InsertText(s) => Action::InsertText(s),
             Action::InsertNewLineMotion { motion, .. } => Action::InsertNewLineMotion {
@@ -445,14 +496,16 @@ impl Action {
 
     pub fn with_char(self, ch: char, count: u32) -> Self {
         match self {
-            Action::MoveToNextCharacter { .. } => Action::MoveToNextCharacter {
+            Action::MoveToNextCharacter { till, .. } => Action::MoveToNextCharacter {
                 select: false,
                 ch,
+                till,
                 count,
             },
-            Action::MoveToPreviousCharacter { .. } => Action::MoveToPreviousCharacter {
+            Action::MoveToPreviousCharacter { till, .. } => Action::MoveToPreviousCharacter {
                 select: false,
                 ch,
+                till,
                 count,
             },
             Action::InsertText(_) => Action::InsertText(ch.to_string()),
@@ -472,6 +525,7 @@ impl Action {
             Action::MoveToBigWord { count, .. } => *count,
             Action::MoveToPreviousBigWord { count, .. } => *count,
             Action::MoveToBigWordEnd { count, .. } => *count,
+            Action::MoveToPreviousBigWordEnd { count, .. } => *count,
             Action::MoveToStartOfDocument { count, .. } => *count,
             Action::MoveToEndOfDocument { count, .. } => *count,
             Action::MoveToStartOfLine { count, .. } => *count,
@@ -524,6 +578,8 @@ impl Action {
             Action::YankMotion { count, .. } => *count,
             Action::InsertNewLine { count } => *count,
             Action::InsertNewLineMotion { count, .. } => *count,
+            Action::MoveToNextCharacter { count, .. } => *count,
+            Action::MoveToPreviousCharacter { count, .. } => *count,
             _ => 1,
         }
     }

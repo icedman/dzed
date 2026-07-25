@@ -256,6 +256,7 @@ mod tests {
             Action::MoveToNextCharacter {
                 count: 1,
                 select: false,
+                till: false,
                 ch: 'x'
             }
         );
@@ -267,6 +268,7 @@ mod tests {
             Action::MoveToPreviousCharacter {
                 count: 3,
                 select: false,
+                till: false,
                 ch: 'y'
             }
         );
@@ -278,6 +280,37 @@ mod tests {
 
         assert_eq!(vim.mode(), Mode::Normal);
         send_char(&mut vim, 'i');
+        assert_eq!(vim.mode(), Mode::Insert);
+
+        send_key(&mut vim, KeyCode::Esc, KeyModifiers::NONE);
+        assert_eq!(vim.mode(), Mode::Normal);
+
+        assert_eq!(send_char(&mut vim, 'a'), Action::SetToAppend);
+        assert_eq!(vim.mode(), Mode::Insert);
+
+        send_key(&mut vim, KeyCode::Esc, KeyModifiers::NONE);
+        assert_eq!(vim.mode(), Mode::Normal);
+
+        assert_eq!(send_char(&mut vim, 'A'), Action::SetToAppendEndOfLine);
+        assert_eq!(vim.mode(), Mode::Insert);
+
+        send_key(&mut vim, KeyCode::Esc, KeyModifiers::NONE);
+        assert_eq!(vim.mode(), Mode::Normal);
+
+        assert_eq!(send_char(&mut vim, 'o'), Action::SetToOpenLineBelow { count: 1 });
+        assert_eq!(vim.mode(), Mode::Insert);
+
+        send_key(&mut vim, KeyCode::Esc, KeyModifiers::NONE);
+        assert_eq!(vim.mode(), Mode::Normal);
+
+        send_char(&mut vim, '3');
+        assert_eq!(send_char(&mut vim, 'O'), Action::SetToOpenLineAbove { count: 3 });
+        assert_eq!(vim.mode(), Mode::Insert);
+
+        send_key(&mut vim, KeyCode::Esc, KeyModifiers::NONE);
+        assert_eq!(vim.mode(), Mode::Normal);
+
+        assert_eq!(send_char(&mut vim, 'I'), Action::SetToInsertStartOfLineNonSpace);
         assert_eq!(vim.mode(), Mode::Insert);
 
         send_key(&mut vim, KeyCode::Esc, KeyModifiers::NONE);
