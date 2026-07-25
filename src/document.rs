@@ -186,6 +186,8 @@ impl Document {
             | Action::ChangeMotion { .. } => next_action = Action::SetToInsert,
             _ => {}
         }
+
+        // These actions immediately elevates mode to Insert
         if self.mode == Mode::VisualBlock {
             match action {
                 Action::Delete { .. } | Action::DeleteMotion { .. } => {
@@ -194,6 +196,16 @@ impl Document {
                 _ => {}
             }
         }
+        // These actions immediately drops mode back to Normal
+        if self.mode.is_visual() {
+            match action {
+                Action::Yank { .. } | Action::YankLine { .. } | Action::YankMotion { .. } => {
+                    next_action = Action::SetToNormal
+                }
+                _ => {}
+            }
+        }
+
         match action {
             Action::Clear => {
                 self.clear_selections();

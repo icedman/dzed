@@ -169,7 +169,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let editor_inner_height = editor_rect.height.saturating_sub(2);
         let visible_rows = editor_inner_height as i32;
 
-        if !cursor_visible && last_activity.elapsed() >= Duration::from_secs(1) {
+        if !cursor_visible && last_activity.elapsed() >= Duration::from_millis(250) {
             cursor_visible = true;
             should_redraw = true;
         }

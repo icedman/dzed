@@ -1,4 +1,5 @@
 use crate::actions::{Action, Mode};
+use crate::search::{TextSearch, compile};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use smallvec::SmallVec;
 use std::collections::HashMap;
@@ -45,7 +46,7 @@ impl KeyCombo {
                 let part_lower = part.to_lowercase();
                 code = Some(match part_lower.as_str() {
                     "esc" | "escape" => KeyCode::Esc,
-                    "enter" | "return" => KeyCode::Enter,
+                    "cr" | "enter" | "return" => KeyCode::Enter,
                     "tab" => KeyCode::Tab,
                     "backtab" => KeyCode::BackTab,
                     "backspace" => KeyCode::Backspace,
@@ -69,7 +70,7 @@ impl KeyCombo {
                 let part_lower = part.to_lowercase();
                 match part_lower.as_str() {
                     "c" | "ctrl" | "control" => modifiers.insert(KeyModifiers::CONTROL),
-                    "m" | "alt" | "option" => modifiers.insert(KeyModifiers::ALT),
+                    "a" | "alt" | "option" => modifiers.insert(KeyModifiers::ALT),
                     "s" | "shift" => modifiers.insert(KeyModifiers::SHIFT),
                     _ => return Err(format!("Unknown modifier: {}", part)),
                 }
@@ -97,7 +98,7 @@ impl KeyCombo {
             s.push_str("C-");
         }
         if self.modifiers.contains(KeyModifiers::ALT) {
-            s.push_str("M-");
+            s.push_str("A-");
         }
         if self.modifiers.contains(KeyModifiers::SHIFT) {
             s.push_str("S-");
@@ -185,18 +186,45 @@ impl KeyComboSequence {
 
         if s == "{c}" {
             items.push(KeyPattern::AnyChar);
-        } else if s.ends_with("{c}") {
+            return Ok(Self { items });
+        }
+        if s.ends_with("{c}") {
             let prefix = &s[..s.len() - 3];
             let prefix_seq = Self::parse_sequence(prefix)?;
             items.extend(prefix_seq.items);
             items.push(KeyPattern::AnyChar);
-        } else if s.starts_with('-') || KeyCombo::parse(s).is_ok() {
+            return Ok(Self { items });
+        }
+
+        if s.starts_with('-') || KeyCombo::parse(s).is_ok() {
             let combo = KeyCombo::parse(s)?;
             items.push(KeyPattern::Exact(combo));
         } else {
-            for ch in s.chars() {
+            let mut i = 0;
+            let chars: Vec<char> = s.chars().collect();
+            while i < chars.len() {
+                if chars[i] == '<' {
+                    let mut found_close = None;
+                    for j in (i + 1)..chars.len() {
+                        if chars[j] == '>' {
+                            found_close = Some(j);
+                            break;
+                        }
+                    }
+                    if let Some(close_idx) = found_close {
+                        let inner: String = chars[(i + 1)..close_idx].iter().collect();
+                        if let Ok(combo) = KeyCombo::parse(&inner) {
+                            items.push(KeyPattern::Exact(combo));
+                            i = close_idx + 1;
+                            continue;
+                        }
+                    }
+                }
+
+                let ch = chars[i];
                 let combo = KeyCombo::parse(&ch.to_string())?;
                 items.push(KeyPattern::Exact(combo));
+                i += 1;
             }
         }
 
@@ -226,7 +254,16 @@ pub trait IntoKeyComboSequence {
 
 impl IntoKeyComboSequence for &str {
     fn into_seq(self) -> Result<KeyComboSequence, String> {
-        KeyComboSequence::parse_sequence(self)
+        let mut items = SmallVec::new();
+        if let Some(re) = compile(r"<[^<>]+>|.") {
+            for (offset, len, s) in self.find_pattern(&re) {
+                let seq = KeyComboSequence::parse_sequence(s)?;
+                items.extend(seq.items);
+            }
+        }
+
+        // KeyComboSequence::parse_sequence(self)
+        Ok(KeyComboSequence { items })
     }
 }
 
@@ -397,7 +434,7 @@ impl Keymap {
 
         motion_actions
             .bind(
-                ["Left"],
+                "<Left>",
                 Action::MoveLeft {
                     count: 1,
                     select: false,
@@ -406,7 +443,7 @@ impl Keymap {
             .expect("Valid binding");
         motion_actions
             .bind(
-                ["Right"],
+                "<Right>",
                 Action::MoveRight {
                     count: 1,
                     select: false,
@@ -415,7 +452,7 @@ impl Keymap {
             .expect("Valid binding");
         motion_actions
             .bind(
-                ["Up"],
+                "<Up>",
                 Action::MoveUp {
                     count: 1,
                     select: false,
@@ -424,7 +461,7 @@ impl Keymap {
             .expect("Valid binding");
         motion_actions
             .bind(
-                ["Down"],
+                "<Down>",
                 Action::MoveDown {
                     count: 1,
                     select: false,
@@ -803,7 +840,7 @@ impl Keymap {
             .bind("C-r", Action::Redo { count: 1 })
             .expect("Valid binding");
         normal_actions
-            .bind("C-q", Action::Quit)
+            .bind("<C-q>", Action::Quit)
             .expect("Valid binding");
         normal_actions
             .bind(".", Action::Repeat { count: 1 })
@@ -819,11 +856,11 @@ impl Keymap {
             .expect("Valid binding");
 
         normal_actions
-            .bind(["Delete"], Action::DeleteChar { count: 1 })
+            .bind("<Delete>", Action::DeleteChar { count: 1 })
             .expect("Valid binding");
         normal_actions
             .bind(
-                ["Backspace"],
+                "<Backspace>",
                 Action::MoveLeft {
                     count: 1,
                     select: false,
@@ -831,7 +868,7 @@ impl Keymap {
             )
             .expect("Valid binding");
         normal_actions
-            .bind(["Esc"], Action::Clear)
+            .bind("<Esc>", Action::Clear)
             .expect("Valid binding");
 
         // Mode Change
@@ -869,7 +906,7 @@ impl Keymap {
         // Insert Mode
         insert_actions
             .bind(
-                ["Left"],
+                "<Left>",
                 Action::MoveLeft {
                     count: 1,
                     select: false,
@@ -878,7 +915,7 @@ impl Keymap {
             .expect("Valid binding");
         insert_actions
             .bind(
-                ["Right"],
+                "<Right>",
                 Action::MoveRight {
                     count: 1,
                     select: false,
@@ -887,7 +924,7 @@ impl Keymap {
             .expect("Valid binding");
         insert_actions
             .bind(
-                ["Up"],
+                "<Up>",
                 Action::MoveUp {
                     count: 1,
                     select: false,
@@ -896,10 +933,46 @@ impl Keymap {
             .expect("Valid binding");
         insert_actions
             .bind(
-                ["Down"],
+                "<Down>",
                 Action::MoveDown {
                     count: 1,
                     select: false,
+                },
+            )
+            .expect("Valid binding");
+        insert_actions
+            .bind(
+                "<S-Left>",
+                Action::MoveLeft {
+                    count: 1,
+                    select: true,
+                },
+            )
+            .expect("Valid binding");
+        insert_actions
+            .bind(
+                "<S-Right>",
+                Action::MoveRight {
+                    count: 1,
+                    select: true,
+                },
+            )
+            .expect("Valid binding");
+        insert_actions
+            .bind(
+                "<S-Up>",
+                Action::MoveUp {
+                    count: 1,
+                    select: true,
+                },
+            )
+            .expect("Valid binding");
+        insert_actions
+            .bind(
+                "<S-Down>",
+                Action::MoveDown {
+                    count: 1,
+                    select: true,
                 },
             )
             .expect("Valid binding");
@@ -913,24 +986,24 @@ impl Keymap {
             )
             .expect("Valid binding");
         insert_actions
-            .bind(["Esc"], Action::Clear)
+            .bind("<Esc>", Action::Clear)
             .expect("Valid binding");
         insert_actions
-            .bind(["Enter"], Action::InsertNewLine { count: 1 })
+            .bind("<CR>", Action::InsertNewLine { count: 1 })
             .expect("Valid binding");
         insert_actions
-            .bind(["Tab"], Action::InsertTab)
+            .bind("<Tab>", Action::InsertTab)
             .expect("Valid binding");
         insert_actions
-            .bind(["Backspace"], Action::DeleteCharBefore { count: 1 })
+            .bind("<Backspace>", Action::DeleteCharBefore { count: 1 })
             .expect("Valid binding");
         insert_actions
-            .bind(["Delete"], Action::DeleteChar { count: 1 })
+            .bind("<Delete>", Action::DeleteChar { count: 1 })
             .expect("Valid binding");
 
         // Visual Mode
         visual_actions
-            .bind(["Esc"], Action::Clear)
+            .bind("<Esc>", Action::Clear)
             .expect("Valid binding");
 
         Self {
