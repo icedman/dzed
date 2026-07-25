@@ -1,6 +1,6 @@
 use crate::actions::{Action, Mode};
-use crate::keymap::{InputStateMachine, KeyCombo, Keymap};
 use crate::document::BufferText;
+use crate::keymap::{InputStateMachine, KeyCombo, Keymap};
 use crossterm::event::{Event, KeyCode, KeyEvent, MouseEventKind};
 
 pub enum HandleEvent {
@@ -30,20 +30,40 @@ pub fn handle_event(
                     return HandleEvent::Exit;
                 }
 
+                let reg_opt = editor.input.last_register;
+                if let Some(ch) = reg_opt {
+                    if let Some(r_name) = crate::clipboard::RegisterName::from_char(ch) {
+                        editor.clipboard.borrow_mut().grab(r_name);
+                    }
+                }
+
                 if editor.mode == Mode::Command {
                     if matches!(action, Action::InsertNewLine { .. }) {
-                        let cmd_text = editor.cmd.buffer().row_text(editor.cmd.buffer().row_count() - 1);
+                        let cmd_text = editor
+                            .cmd
+                            .buffer()
+                            .row_text(editor.cmd.buffer().row_count() - 1);
                         if cmd_text == "q" || cmd_text == "quit" {
                             return HandleEvent::Exit;
                         }
                         editor.cmd = crate::document::Document::new("").unwrap();
                         editor.input.set_mode(Mode::Normal);
-                        editor.buffer_manager.active_mut().doc.enter_mode(Mode::Normal);
+                        editor
+                            .buffer_manager
+                            .active_mut()
+                            .doc
+                            .enter_mode(Mode::Normal);
+                        editor.clipboard.borrow_mut().release();
                         return HandleEvent::RedrawAndSync;
                     } else if matches!(action, Action::Clear) {
                         editor.cmd = crate::document::Document::new("").unwrap();
                         editor.input.set_mode(Mode::Normal);
-                        editor.buffer_manager.active_mut().doc.enter_mode(Mode::Normal);
+                        editor
+                            .buffer_manager
+                            .active_mut()
+                            .doc
+                            .enter_mode(Mode::Normal);
+                        editor.clipboard.borrow_mut().release();
                         return HandleEvent::RedrawAndSync;
                     } else {
                         editor.apply_command_action(&action);
@@ -51,6 +71,8 @@ pub fn handle_event(
                 } else {
                     editor.apply_active_action(&action);
                 }
+
+                editor.clipboard.borrow_mut().release();
 
                 // After applying action, mode might have changed again
                 editor
@@ -101,6 +123,7 @@ pub struct VimInput {
     pub state_machine: InputStateMachine,
     pub keymap: Keymap,
     pub resolved_action: Action,
+    pub last_register: Option<char>,
 }
 
 impl VimInput {
@@ -109,6 +132,7 @@ impl VimInput {
             state_machine: InputStateMachine::new(),
             keymap: Keymap::new(),
             resolved_action: Action::NoOp,
+            last_register: None,
         }
     }
 
@@ -126,11 +150,13 @@ impl VimInput {
         !self.state_machine.count_buffer.is_empty()
             || !self.state_machine.key_sequence.is_empty()
             || self.state_machine.pending_op.is_some()
+            || self.state_machine.waiting_for_register
     }
 
     pub fn clear(&mut self) {
         self.state_machine.clear();
         self.resolved_action = Action::NoOp;
+        self.last_register = None;
     }
 
     pub fn handle_event(&mut self, key_event: &KeyEvent) -> Action {
@@ -140,7 +166,16 @@ impl VimInput {
         }
 
         let combo = KeyCombo::from(key_event);
+        let reg_before = self.state_machine.register;
+
         self.resolved_action = self.state_machine.process_key(combo, &self.keymap);
+
+        if self.resolved_action != Action::NoOp {
+            self.last_register = reg_before;
+        } else {
+            self.last_register = None;
+        }
+
         self.resolved_action.clone()
     }
 

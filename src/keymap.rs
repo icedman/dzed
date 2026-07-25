@@ -1025,6 +1025,8 @@ pub struct InputStateMachine {
     pub pending_op: Option<Action>,
     pub pending_op_sequence: SmallVec<[KeyCombo; 4]>,
     pub op_count: u32,
+    pub register: Option<char>,
+    pub waiting_for_register: bool,
 }
 
 impl InputStateMachine {
@@ -1036,6 +1038,8 @@ impl InputStateMachine {
             pending_op: None,
             pending_op_sequence: SmallVec::new(),
             op_count: 1,
+            register: None,
+            waiting_for_register: false,
         }
     }
 
@@ -1045,12 +1049,32 @@ impl InputStateMachine {
         self.pending_op = None;
         self.pending_op_sequence.clear();
         self.op_count = 1;
+        self.register = None;
+        self.waiting_for_register = false;
     }
 
     pub fn process_key(&mut self, combo: KeyCombo, keymap: &Keymap) -> Action {
         // 1. Insert & Command Mode Input
         if self.mode == Mode::Insert || self.mode == Mode::Command {
             return self.process_insert_mode(combo, keymap);
+        }
+
+        // If waiting for register name char, process it now
+        if self.waiting_for_register {
+            if let KeyCode::Char(c) = combo.code {
+                self.register = Some(c);
+            }
+            self.waiting_for_register = false;
+            return Action::NoOp;
+        }
+
+        // Clear register on new sequence start (i.e. if key_sequence is empty and not waiting for register name)
+        if self.key_sequence.is_empty() && self.pending_op.is_none() {
+            if combo.modifiers.is_empty() && combo.code == KeyCode::Char('"') {
+                self.register = None;
+                self.waiting_for_register = true;
+                return Action::NoOp;
+            }
         }
 
         // 2. Count Digits vs Standalone '0' Motion
@@ -1674,5 +1698,28 @@ mod tests {
                 select: false
             }
         );
+    }
+
+    #[test]
+    fn test_input_state_machine_registers() {
+        let keymap = Keymap::new();
+        let mut sm = InputStateMachine::new();
+
+        // Check if register prefix works: "ay
+        sm.process_key(KeyCombo::parse("\"").unwrap(), &keymap);
+        assert!(sm.waiting_for_register);
+
+        sm.process_key(KeyCombo::parse("a").unwrap(), &keymap);
+        assert!(!sm.waiting_for_register);
+        assert_eq!(sm.register, Some('a'));
+
+        // Typing something else should keep register name until resolved, then clear
+        sm.process_key(KeyCombo::parse("d").unwrap(), &keymap);
+        assert_eq!(sm.register, Some('a'));
+
+        let action = sm.process_key(KeyCombo::parse("d").unwrap(), &keymap);
+        assert_eq!(action, Action::DeleteLine { count: 1 });
+        // After resolved action, register name should be cleared
+        assert_eq!(sm.register, None);
     }
 }
