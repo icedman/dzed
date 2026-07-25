@@ -152,15 +152,15 @@ pub fn handle_event(
 //     Action::NoOp
 // }
 
-// pub fn peek_action(seq: &str, map: &HashMap<String, Action>) -> Action {
-//     let mut s = seq.to_string();
-//     resolve_action(&mut s, map)
-// }
+pub fn peek_action(seq: &KeyComboSequence, map: &HashMap<KeyComboSequence, Action>) -> Action {
+    let mut s = seq.clone();
+    resolve_action(&mut s, map)
+}
 
-// pub fn peek_count(seq: &str) -> u32 {
-//     let mut s = seq.to_string();
-//     resolve_count(&mut s)
-// }
+pub fn peek_count(seq: &KeyComboSequence) -> u32 {
+    let mut s = seq.clone();
+    resolve_count(&mut s)
+}
 
 pub fn resolve_count(seq: &mut KeyComboSequence) -> u32 {
     return seq.pop_trailing_digits();
@@ -337,10 +337,10 @@ impl VimInput {
                         self.sequence.clear();
                     } else {
                         // 4. If nothing resolved yet, peek for an operator to update UI
-                        // let op_action = peek_action(&self.sequence, &self.keymap.op_actions);
-                        // if op_action != Action::NoOp {
-                        //     self.resolved_op = op_action;
-                        // }
+                        let op_action = peek_action(&self.sequence, &self.keymap.op_actions);
+                        if op_action != Action::NoOp {
+                            self.resolved_op = op_action;
+                        }
                     }
                 }
             }
