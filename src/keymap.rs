@@ -1,8 +1,9 @@
 use crate::actions::Action;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::collections::HashMap;
+use std::ops::Deref;
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct KeyCombo {
     pub code: KeyCode,
     pub modifiers: KeyModifiers,
@@ -11,6 +12,62 @@ pub struct KeyCombo {
 impl KeyCombo {
     pub fn new(code: KeyCode, modifiers: KeyModifiers) -> Self {
         Self { code, modifiers }
+    }
+
+    pub fn parse(s: &str) -> Result<Self, String> {
+        let parts: Vec<&str> = s.split('-').collect();
+        let mut modifiers = KeyModifiers::empty();
+        let mut code = None;
+
+        for (i, part) in parts.iter().enumerate() {
+            if i == parts.len() - 1 {
+                let part_lower = part.to_lowercase();
+                code = Some(match part_lower.as_str() {
+                    "esc" | "escape" => KeyCode::Esc,
+                    "enter" | "return" => KeyCode::Enter,
+                    "tab" => KeyCode::Tab,
+                    "backtab" => KeyCode::BackTab,
+                    "backspace" => KeyCode::Backspace,
+                    "delete" | "del" => KeyCode::Delete,
+                    "insert" | "ins" => KeyCode::Insert,
+                    "left" => KeyCode::Left,
+                    "right" => KeyCode::Right,
+                    "up" => KeyCode::Up,
+                    "down" => KeyCode::Down,
+                    "pagup" | "pgup" => KeyCode::PageUp,
+                    "pagedown" | "pgdn" => KeyCode::PageDown,
+                    "home" => KeyCode::Home,
+                    "end" => KeyCode::End,
+                    _ if part.chars().count() == 1 => {
+                        let ch = part.chars().next().unwrap();
+                        KeyCode::Char(ch)
+                    }
+                    _ => return Err(format!("Unknown key code: {}", part)),
+                });
+            } else {
+                let part_lower = part.to_lowercase();
+                match part_lower.as_str() {
+                    "c" | "ctrl" | "control" => modifiers.insert(KeyModifiers::CONTROL),
+                    "m" | "alt" | "option" => modifiers.insert(KeyModifiers::ALT),
+                    "s" | "shift" => modifiers.insert(KeyModifiers::SHIFT),
+                    _ => return Err(format!("Unknown modifier: {}", part)),
+                }
+            }
+        }
+
+        if let Some(mut code) = code {
+            if modifiers.contains(KeyModifiers::SHIFT) {
+                if let KeyCode::Char(c) = code {
+                    if c.is_ascii_alphabetic() {
+                        code = KeyCode::Char(c.to_ascii_uppercase());
+                        modifiers.remove(KeyModifiers::SHIFT);
+                    }
+                }
+            }
+            Ok(Self { code, modifiers })
+        } else {
+            Err("Empty key binding".to_string())
+        }
     }
 
     pub fn to_string(&self) -> String {
@@ -22,10 +79,7 @@ impl KeyCombo {
             s.push_str("M-");
         }
         if self.modifiers.contains(KeyModifiers::SHIFT) {
-            match self.code {
-                KeyCode::Char(_) => {} // Shift is usually reflected in the char itself
-                _ => s.push_str("S-"),
-            }
+            s.push_str("S-");
         }
 
         match self.code {
@@ -42,13 +96,174 @@ impl KeyCombo {
             KeyCode::PageDown => s.push_str("PageDown"),
             KeyCode::Home => s.push_str("Home"),
             KeyCode::End => s.push_str("End"),
-            KeyCode::Delete => s.push_str("Delete"),
-            KeyCode::Insert => s.push_str("Insert"),
-            KeyCode::BackTab => s.push_str("BackTab"),
-            KeyCode::F(n) => s.push_str(&format!("F{}", n)),
             _ => s.push_str(&format!("{:?}", self.code)),
         }
         s
+    }
+
+    pub fn matches(&self, other: &Self) -> bool {
+        self.code == other.code && self.modifiers == other.modifiers
+    }
+}
+
+impl std::fmt::Display for KeyCombo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_string())
+    }
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct KeyComboSequence {
+    items: Vec<KeyCombo>,
+}
+
+impl KeyComboSequence {
+    pub fn new() -> Self {
+        Self { items: Vec::new() }
+    }
+
+    pub fn new_from_strings(keys: Vec<&str>) -> Self {
+        let mut items = Vec::new();
+        for s in keys {
+            if let Ok(combo) = KeyCombo::parse(s) {
+                items.push(combo);
+            }
+        }
+        Self { items }
+    }
+
+    /// Parses sequence strings into individual combos.
+    /// Handles single modifiers ("C-f") or plain key sequences ("gg", "dd", "ge").
+    pub fn parse_sequence(s: &str) -> Result<Self, String> {
+        let mut items = Vec::new();
+
+        if s.contains('-') {
+            let combo = KeyCombo::parse(s)?;
+            items.push(combo);
+        } else {
+            for ch in s.chars() {
+                let combo = KeyCombo::parse(&ch.to_string())?;
+                items.push(combo);
+            }
+        }
+
+        Ok(Self { items })
+    }
+
+    pub fn push(&mut self, item: KeyCombo) {
+        self.items.push(item);
+    }
+
+    pub fn pop(&mut self) -> Option<KeyCombo> {
+        self.items.pop()
+    }
+
+    pub fn len(&self) -> usize {
+        self.items.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.items.is_empty()
+    }
+
+    pub fn truncate_items(&mut self, n: usize) {
+        if n == 0 {
+            return;
+        }
+        let new_len = self.items.len().saturating_sub(n);
+        self.items.truncate(new_len);
+    }
+
+    pub fn pop_trailing_digits(&mut self) -> u32 {
+        let mut digits = String::new();
+
+        while let Some(combo) = self.items.last() {
+            if let KeyCode::Char(c) = combo.code {
+                if c.is_ascii_digit() {
+                    self.items.pop();
+                    digits.push(c);
+                    continue;
+                }
+            }
+            break;
+        }
+
+        if digits.is_empty() {
+            return 1;
+        }
+
+        digits
+            .chars()
+            .rev()
+            .collect::<String>()
+            .parse::<u32>()
+            .unwrap_or(1)
+    }
+
+    pub fn ends_with_seq(&self, target: &[KeyCombo]) -> bool {
+        if target.is_empty() || target.len() > self.items.len() {
+            return false;
+        }
+
+        self.items
+            .iter()
+            .rev()
+            .zip(target.iter().rev())
+            .all(|(a, b)| a.matches(b))
+    }
+
+    pub fn clear(&mut self) {
+        self.items.clear();
+    }
+}
+
+impl Deref for KeyComboSequence {
+    type Target = [KeyCombo];
+
+    fn deref(&self) -> &Self::Target {
+        &self.items
+    }
+}
+
+impl std::fmt::Display for KeyComboSequence {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut res = String::new();
+        for item in &self.items {
+            res.push_str(&item.to_string());
+        }
+        write!(f, "{}", res)
+    }
+}
+
+// Flexible binding helper trait supporting string slices or single str references
+pub trait IntoKeyComboSequence {
+    fn into_seq(self) -> Result<KeyComboSequence, String>;
+}
+
+impl IntoKeyComboSequence for &str {
+    fn into_seq(self) -> Result<KeyComboSequence, String> {
+        KeyComboSequence::parse_sequence(self)
+    }
+}
+
+impl<const N: usize> IntoKeyComboSequence for [&str; N] {
+    fn into_seq(self) -> Result<KeyComboSequence, String> {
+        Ok(KeyComboSequence::new_from_strings(self.to_vec()))
+    }
+}
+
+pub trait BindSequence {
+    fn bind<K: IntoKeyComboSequence>(&mut self, keys: K, action: Action) -> Result<(), String>;
+}
+
+impl BindSequence for HashMap<KeyComboSequence, Action> {
+    fn bind<K: IntoKeyComboSequence>(&mut self, keys: K, action: Action) -> Result<(), String> {
+        let seq = keys.into_seq()?;
+        if seq.is_empty() {
+            return Err("Failed to parse key combo sequence".to_string());
+        }
+        self.insert(seq, action);
+        Ok(())
     }
 }
 
@@ -59,10 +274,8 @@ impl From<&KeyEvent> for KeyCombo {
 
         if modifiers.contains(KeyModifiers::SHIFT) {
             if let KeyCode::Char(c) = code {
-                code = KeyCode::Char(c.to_ascii_uppercase());
-                // If it's a character and we have Shift, we've normalized the char
-                // so we can often consider Shift "consumed".
                 if c.is_ascii_alphabetic() {
+                    code = KeyCode::Char(c.to_ascii_uppercase());
                     modifiers.remove(KeyModifiers::SHIFT);
                 }
             }
@@ -73,12 +286,12 @@ impl From<&KeyEvent> for KeyCombo {
 }
 
 pub struct Keymap {
-    pub op_actions: HashMap<String, Action>,
-    pub motion_actions: HashMap<String, Action>,
-    pub mode_actions: HashMap<String, Action>,
-    pub normal_actions: HashMap<String, Action>,
-    pub insert_actions: HashMap<String, Action>,
-    pub visual_actions: HashMap<String, Action>,
+    pub op_actions: HashMap<KeyComboSequence, Action>,
+    pub motion_actions: HashMap<KeyComboSequence, Action>,
+    pub normal_actions: HashMap<KeyComboSequence, Action>,
+    pub mode_actions: HashMap<KeyComboSequence, Action>,
+    pub insert_actions: HashMap<KeyComboSequence, Action>,
+    pub visual_actions: HashMap<KeyComboSequence, Action>,
 }
 
 impl Keymap {
@@ -90,367 +303,110 @@ impl Keymap {
         let mut insert_actions = HashMap::new();
         let mut visual_actions = HashMap::new();
 
-        // operators
-        op_actions.insert("d".to_string(), Action::Delete { count: 1 });
-        op_actions.insert("c".to_string(), Action::Change { count: 1 });
-        op_actions.insert("y".to_string(), Action::Yank { count: 1 });
+        // Operators
+        let _ = op_actions.bind("d", Action::Delete { count: 1 });
+        let _ = op_actions.bind("c", Action::Change { count: 1 });
+        let _ = op_actions.bind("y", Action::Yank { count: 1 });
 
-        // motions
-        motion_actions.insert(
-            "w".to_string(),
-            Action::MoveToWord {
-                count: 1,
-                select: false,
-            },
-        );
-        motion_actions.insert(
-            "e".to_string(),
-            Action::MoveToWordEnd {
-                count: 1,
-                select: false,
-            },
-        );
-        motion_actions.insert(
-            "b".to_string(),
-            Action::MoveToPreviousWord {
-                count: 1,
-                select: false,
-            },
-        );
-        motion_actions.insert(
-            "ge".to_string(),
-            Action::MoveToPreviousWordEnd {
-                count: 1,
-                select: false,
-            },
-        );
-        motion_actions.insert(
-            "W".to_string(),
-            Action::MoveToBigWord {
-                count: 1,
-                select: false,
-            },
-        );
-        motion_actions.insert(
-            "B".to_string(),
-            Action::MoveToPreviousBigWord {
-                count: 1,
-                select: false,
-            },
-        );
-        motion_actions.insert(
-            "E".to_string(),
-            Action::MoveToBigWordEnd {
-                count: 1,
-                select: false,
-            },
-        );
-        motion_actions.insert(
-            "h".to_string(),
-            Action::MoveLeft {
-                count: 1,
-                select: false,
-            },
-        );
-        motion_actions.insert(
-            "l".to_string(),
-            Action::MoveRight {
-                count: 1,
-                select: false,
-            },
-        );
-        motion_actions.insert(
-            "k".to_string(),
-            Action::MoveUp {
-                count: 1,
-                select: false,
-            },
-        );
-        motion_actions.insert(
-            "j".to_string(),
-            Action::MoveDown {
-                count: 1,
-                select: false,
-            },
-        );
-        motion_actions.insert(
-            "Left".to_string(),
-            Action::MoveLeft {
-                count: 1,
-                select: false,
-            },
-        );
-        motion_actions.insert(
-            "Right".to_string(),
-            Action::MoveRight {
-                count: 1,
-                select: false,
-            },
-        );
-        motion_actions.insert(
-            "Up".to_string(),
-            Action::MoveUp {
-                count: 1,
-                select: false,
-            },
-        );
-        motion_actions.insert(
-            "Down".to_string(),
-            Action::MoveDown {
-                count: 1,
-                select: false,
-            },
-        );
-        motion_actions.insert(
-            "gg".to_string(),
-            Action::MoveToStartOfDocument {
-                count: 1,
-                select: false,
-            },
-        );
-        motion_actions.insert(
-            "G".to_string(),
-            Action::MoveToEndOfDocument {
-                count: 1,
-                select: false,
-            },
-        );
-        motion_actions.insert(
-            "0".to_string(),
-            Action::MoveToStartOfLine {
-                count: 1,
-                select: false,
-            },
-        );
-        motion_actions.insert(
-            "^".to_string(),
-            Action::MoveToStartOfLineNonSpace {
-                count: 1,
-                select: false,
-            },
-        );
-        motion_actions.insert(
-            "$".to_string(),
-            Action::MoveToEndOfLine {
-                count: 1,
-                select: false,
-            },
-        );
-        motion_actions.insert(
-            "-".to_string(),
-            Action::MoveToStartOfPreviousLine {
-                count: 1,
-                select: false,
-            },
-        );
-        motion_actions.insert(
-            "+".to_string(),
-            Action::MoveToStartOfNextLine {
-                count: 1,
-                select: false,
-            },
-        );
-        motion_actions.insert(
-            "g-".to_string(),
-            Action::MoveToEndOfPreviousLine {
-                count: 1,
-                select: false,
-            },
-        );
-        motion_actions.insert(
-            "g+".to_string(),
-            Action::MoveToEndOfNextLine {
-                count: 1,
-                select: false,
-            },
-        );
+        // Motions
+        let _ = motion_actions.bind("w", Action::MoveToWord { count: 1, select: false });
+        let _ = motion_actions.bind("e", Action::MoveToWordEnd { count: 1, select: false });
+        let _ = motion_actions.bind("b", Action::MoveToPreviousWord { count: 1, select: false });
+        let _ = motion_actions.bind("ge", Action::MoveToPreviousWordEnd { count: 1, select: false });
+        let _ = motion_actions.bind("W", Action::MoveToBigWord { count: 1, select: false });
+        let _ = motion_actions.bind("B", Action::MoveToPreviousBigWord { count: 1, select: false });
+        let _ = motion_actions.bind("E", Action::MoveToBigWordEnd { count: 1, select: false });
+        let _ = motion_actions.bind("h", Action::MoveLeft { count: 1, select: false });
+        let _ = motion_actions.bind("l", Action::MoveRight { count: 1, select: false });
+        let _ = motion_actions.bind("k", Action::MoveUp { count: 1, select: false });
+        let _ = motion_actions.bind("j", Action::MoveDown { count: 1, select: false });
 
-        motion_actions.insert(
-            "H".to_string(),
-            Action::MoveToScreenTop {
-                count: 1,
-                select: false,
-            },
-        );
-        motion_actions.insert(
-            "M".to_string(),
-            Action::MoveToScreenMiddle {
-                count: 1,
-                select: false,
-            },
-        );
-        motion_actions.insert(
-            "L".to_string(),
-            Action::MoveToScreenBottom {
-                count: 1,
-                select: false,
-            },
-        );
-        motion_actions.insert(
-            "{".to_string(),
-            Action::MoveToPreviousParagraph {
-                count: 1,
-                select: false,
-            },
-        );
-        motion_actions.insert(
-            "}".to_string(),
-            Action::MoveToNextParagraph {
-                count: 1,
-                select: false,
-            },
-        );
-        motion_actions.insert(
-            "(".to_string(),
-            Action::MoveToPreviousSentence {
-                count: 1,
-                select: false,
-            },
-        );
-        motion_actions.insert(
-            ")".to_string(),
-            Action::MoveToNextSentence {
-                count: 1,
-                select: false,
-            },
-        );
+        let _ = motion_actions.bind(["Left"], Action::MoveLeft { count: 1, select: false });
+        let _ = motion_actions.bind(["Right"], Action::MoveRight { count: 1, select: false });
+        let _ = motion_actions.bind(["Up"], Action::MoveUp { count: 1, select: false });
+        let _ = motion_actions.bind(["Down"], Action::MoveDown { count: 1, select: false });
 
-        motion_actions.insert(
-            "f{c}".to_string(),
-            Action::MoveToNextCharacter {
-                count: 1,
-                select: false,
-                ch: '?',
-            },
-        );
-        motion_actions.insert(
-            "F{c}".to_string(),
-            Action::MoveToPreviousCharacter {
-                count: 1,
-                select: false,
-                ch: '?',
-            },
-        );
+        let _ = motion_actions.bind("gg", Action::MoveToStartOfDocument { count: 1, select: false });
+        let _ = motion_actions.bind("G", Action::MoveToEndOfDocument { count: 1, select: false });
+        let _ = motion_actions.bind("0", Action::MoveToStartOfLine { count: 1, select: false });
+        let _ = motion_actions.bind("^", Action::MoveToStartOfLineNonSpace { count: 1, select: false });
+        let _ = motion_actions.bind("$", Action::MoveToEndOfLine { count: 1, select: false });
+        let _ = motion_actions.bind("-", Action::MoveToStartOfPreviousLine { count: 1, select: false });
+        let _ = motion_actions.bind("+", Action::MoveToStartOfNextLine { count: 1, select: false });
+        let _ = motion_actions.bind("g-", Action::MoveToEndOfPreviousLine { count: 1, select: false });
+        let _ = motion_actions.bind("g+", Action::MoveToEndOfNextLine { count: 1, select: false });
 
-        motion_actions.insert("C-f".to_string(), Action::ScrollForward { count: 1 });
-        motion_actions.insert("C-b".to_string(), Action::ScrollBackward { count: 1 });
-        motion_actions.insert("C-d".to_string(), Action::ScrollHalfPageDown { count: 1 });
-        motion_actions.insert("C-u".to_string(), Action::ScrollHalfPageUp { count: 1 });
-        motion_actions.insert("C-e".to_string(), Action::ScrollLineDown { count: 1 });
-        motion_actions.insert("C-y".to_string(), Action::ScrollLineUp { count: 1 });
+        let _ = motion_actions.bind("H", Action::MoveToScreenTop { count: 1, select: false });
+        let _ = motion_actions.bind("M", Action::MoveToScreenMiddle { count: 1, select: false });
+        let _ = motion_actions.bind("L", Action::MoveToScreenBottom { count: 1, select: false });
+        let _ = motion_actions.bind("{", Action::MoveToPreviousParagraph { count: 1, select: false });
+        let _ = motion_actions.bind("}", Action::MoveToNextParagraph { count: 1, select: false });
+        let _ = motion_actions.bind("(", Action::MoveToPreviousSentence { count: 1, select: false });
+        let _ = motion_actions.bind(")", Action::MoveToNextSentence { count: 1, select: false });
 
-        motion_actions.insert("|".to_string(), Action::MoveToColumn { count: 1 });
+        let _ = motion_actions.bind("f{c}", Action::MoveToNextCharacter { count: 1, select: false, ch: '?' });
+        let _ = motion_actions.bind("F{c}", Action::MoveToPreviousCharacter { count: 1, select: false, ch: '?' });
 
-        motion_actions.insert("/".to_string(), Action::SearchForward { count: 1 });
-        motion_actions.insert("?".to_string(), Action::SearchBackward { count: 1 });
-        motion_actions.insert("n".to_string(), Action::SearchNext { count: 1 });
-        motion_actions.insert("N".to_string(), Action::SearchPrevious { count: 1 });
+        let _ = motion_actions.bind("C-f", Action::ScrollForward { count: 1 });
+        let _ = motion_actions.bind("C-b", Action::ScrollBackward { count: 1 });
+        let _ = motion_actions.bind("C-d", Action::ScrollHalfPageDown { count: 1 });
+        let _ = motion_actions.bind("C-u", Action::ScrollHalfPageUp { count: 1 });
+        let _ = motion_actions.bind("C-e", Action::ScrollLineDown { count: 1 });
+        let _ = motion_actions.bind("C-y", Action::ScrollLineUp { count: 1 });
 
-        motion_actions.insert(
-            "End".to_string(),
-            Action::MoveToEndOfLine {
-                count: 1,
-                select: false,
-            },
-        );
-        motion_actions.insert(
-            "Home".to_string(),
-            Action::MoveToStartOfLine {
-                count: 1,
-                select: false,
-            },
-        );
+        let _ = motion_actions.bind("|", Action::MoveToColumn { count: 1 });
 
-        // normal
-        normal_actions.insert("dd".to_string(), Action::DeleteLine { count: 1 });
-        normal_actions.insert("cc".to_string(), Action::ChangeLine { count: 1 });
-        normal_actions.insert("yy".to_string(), Action::YankLine { count: 1 });
+        let _ = motion_actions.bind("/", Action::SearchForward { count: 1 });
+        let _ = motion_actions.bind("?", Action::SearchBackward { count: 1 });
+        let _ = motion_actions.bind("n", Action::SearchNext { count: 1 });
+        let _ = motion_actions.bind("N", Action::SearchPrevious { count: 1 });
 
-        normal_actions.insert("x".to_string(), Action::DeleteChar { count: 1 });
-        normal_actions.insert("X".to_string(), Action::DeleteCharBefore { count: 1 });
-        normal_actions.insert("p".to_string(), Action::Put { count: 1 });
-        normal_actions.insert("P".to_string(), Action::PutBefore { count: 1 });
-        normal_actions.insert("J".to_string(), Action::JoinLines { count: 1 });
-        normal_actions.insert("u".to_string(), Action::Undo { count: 1 });
-        normal_actions.insert("C-r".to_string(), Action::Redo { count: 1 });
-        normal_actions.insert(".".to_string(), Action::Repeat { count: 1 });
-        normal_actions.insert(">".to_string(), Action::Indent { count: 1 });
-        normal_actions.insert("<".to_string(), Action::Outdent { count: 1 });
-        normal_actions.insert("~".to_string(), Action::ChangeCase { count: 1 });
+        let _ = motion_actions.bind(["End"], Action::MoveToEndOfLine { count: 1, select: false });
+        let _ = motion_actions.bind(["Home"], Action::MoveToStartOfLine { count: 1, select: false });
 
-        normal_actions.insert("Delete".to_string(), Action::DeleteChar { count: 1 });
-        normal_actions.insert(
-            "Backspace".to_string(),
-            Action::MoveLeft {
-                count: 1,
-                select: false,
-            },
-        );
+        // Normal Mode
+        let _ = normal_actions.bind("dd", Action::DeleteLine { count: 1 });
+        let _ = normal_actions.bind("cc", Action::ChangeLine { count: 1 });
+        let _ = normal_actions.bind("yy", Action::YankLine { count: 1 });
 
-        normal_actions.insert("Esc".to_string(), Action::Clear);
+        let _ = normal_actions.bind("x", Action::DeleteChar { count: 1 });
+        let _ = normal_actions.bind("X", Action::DeleteCharBefore { count: 1 });
+        let _ = normal_actions.bind("p", Action::Put { count: 1 });
+        let _ = normal_actions.bind("P", Action::PutBefore { count: 1 });
+        let _ = normal_actions.bind("J", Action::JoinLines { count: 1 });
+        let _ = normal_actions.bind("u", Action::Undo { count: 1 });
+        let _ = normal_actions.bind("C-r", Action::Redo { count: 1 });
+        let _ = normal_actions.bind(".", Action::Repeat { count: 1 });
+        let _ = normal_actions.bind(">", Action::Indent { count: 1 });
+        let _ = normal_actions.bind("<", Action::Outdent { count: 1 });
+        let _ = normal_actions.bind("~", Action::ChangeCase { count: 1 });
 
-        // change mode -- only at normal
-        mode_actions.insert("i".to_string(), Action::SetToInsert);
-        mode_actions.insert(":".to_string(), Action::SetToCommand);
-        mode_actions.insert("v".to_string(), Action::SetToVisual);
-        mode_actions.insert("V".to_string(), Action::SetToVisualLine);
-        mode_actions.insert("C-v".to_string(), Action::SetToVisualBlock);
-        mode_actions.insert(":".to_string(), Action::SetToCommand);
+        let _ = normal_actions.bind(["Delete"], Action::DeleteChar { count: 1 });
+        let _ = normal_actions.bind(["Backspace"], Action::MoveLeft { count: 1, select: false });
+        let _ = normal_actions.bind(["Esc"], Action::Clear);
 
-        // insert mode
-        insert_actions.insert(
-            "Left".to_string(),
-            Action::MoveLeft {
-                count: 1,
-                select: false,
-            },
-        );
-        insert_actions.insert(
-            "Right".to_string(),
-            Action::MoveRight {
-                count: 1,
-                select: false,
-            },
-        );
-        insert_actions.insert(
-            "Up".to_string(),
-            Action::MoveUp {
-                count: 1,
-                select: false,
-            },
-        );
-        insert_actions.insert(
-            "Down".to_string(),
-            Action::MoveDown {
-                count: 1,
-                select: false,
-            },
-        );
-        insert_actions.insert(
-            "PageUp".to_string(),
-            Action::MovePageUp {
-                count: 1,
-                select: false,
-            },
-        );
-        insert_actions.insert(
-            "Down".to_string(),
-            Action::MoveDown {
-                count: 1,
-                select: false,
-            },
-        );
-        insert_actions.insert("Esc".to_string(), Action::Clear);
-        insert_actions.insert("Enter".to_string(), Action::InsertNewLine { count: 1 });
-        insert_actions.insert("Tab".to_string(), Action::InsertTab);
-        insert_actions.insert(
-            "Backspace".to_string(),
-            Action::DeleteCharBefore { count: 1 },
-        );
-        insert_actions.insert("Delete".to_string(), Action::DeleteChar { count: 1 });
-        insert_actions.insert("{c}".to_string(), Action::InsertText("".to_string()));
+        // Mode Change
+        let _ = mode_actions.bind("i", Action::SetToInsert);
+        let _ = mode_actions.bind("v", Action::SetToVisual);
+        let _ = mode_actions.bind("V", Action::SetToVisualLine);
+        let _ = mode_actions.bind("C-v", Action::SetToVisualBlock);
+        let _ = mode_actions.bind(":", Action::SetToCommand);
 
-        visual_actions.insert("Esc".to_string(), Action::Clear);
+        // Insert Mode
+        let _ = insert_actions.bind(["Left"], Action::MoveLeft { count: 1, select: false });
+        let _ = insert_actions.bind(["Right"], Action::MoveRight { count: 1, select: false });
+        let _ = insert_actions.bind(["Up"], Action::MoveUp { count: 1, select: false });
+        let _ = insert_actions.bind(["Down"], Action::MoveDown { count: 1, select: false });
+        let _ = insert_actions.bind(["PageUp"], Action::MovePageUp { count: 1, select: false });
+        let _ = insert_actions.bind(["Esc"], Action::Clear);
+        let _ = insert_actions.bind(["Enter"], Action::InsertNewLine { count: 1 });
+        let _ = insert_actions.bind(["Tab"], Action::InsertTab);
+        let _ = insert_actions.bind(["Backspace"], Action::DeleteCharBefore { count: 1 });
+        let _ = insert_actions.bind(["Delete"], Action::DeleteChar { count: 1 });
+        let _ = insert_actions.bind("{c}", Action::InsertText("".to_string()));
+
+        // Visual Mode
+        let _ = visual_actions.bind(["Esc"], Action::Clear);
 
         Self {
             op_actions,

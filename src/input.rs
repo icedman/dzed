@@ -1,5 +1,5 @@
 use crate::actions::{Action, Mode};
-use crate::keymap::{KeyCombo, Keymap};
+use crate::keymap::{KeyCombo, KeyComboSequence, Keymap};
 use crossterm::event::{Event, KeyEvent, MouseEventKind};
 use std::collections::HashMap;
 
@@ -67,99 +67,121 @@ pub fn handle_event(
     HandleEvent::NoRedraw
 }
 
-pub fn truncate_chars(s: &mut String, n: usize) {
-    let char_count = s.chars().count();
-    let new_len = char_count.saturating_sub(n);
-    if new_len == 0 {
-        s.clear();
-    } else {
-        if let Some((idx, _)) = s.char_indices().nth(new_len) {
-            s.truncate(idx);
-        }
-    }
+// pub fn truncate_chars(s: &mut String, n: usize) {
+//     let char_count = s.chars().count();
+//     let new_len = char_count.saturating_sub(n);
+//     if new_len == 0 {
+//         s.clear();
+//     } else {
+//         if let Some((idx, _)) = s.char_indices().nth(new_len) {
+//             s.truncate(idx);
+//         }
+//     }
+// }
+
+// pub fn resolve_count(seq: &mut String) -> u32 {
+//     let mut digits = String::new();
+//     while let Some(c) = seq.chars().last() {
+//         if c.is_ascii_digit() {
+//             digits.push(seq.pop().unwrap());
+//         } else {
+//             break;
+//         }
+//     }
+//     if digits.is_empty() {
+//         return 1;
+//     }
+//     digits
+//         .chars()
+//         .rev()
+//         .collect::<String>()
+//         .parse::<u32>()
+//         .unwrap_or(1)
+// }
+
+// pub fn resolve_action(seq: &mut String, map: &HashMap<String, Action>) -> Action {
+//     if let Some(lc) = seq.chars().last() {
+//         if lc.is_ascii_digit() {
+//             if peek_count(seq) > 0 {
+//                 return Action::NoOp;
+//             }
+//         }
+
+//         let last_char = lc.to_string();
+//         let mut matched: Option<(String, Action, bool, String)> = None;
+
+//         for (key, action) in map {
+//             let mut current_mk = key.as_str();
+//             let rk;
+//             let current_with_char;
+
+//             if key.ends_with("{c}") {
+//                 rk = key.replace("{c}", &last_char);
+//                 current_mk = rk.as_str();
+//                 current_with_char = true;
+//             } else {
+//                 current_with_char = false;
+//             }
+
+//             if seq.ends_with(current_mk) {
+//                 if matched.is_none()
+//                     || current_mk.chars().count() > matched.as_ref().unwrap().0.chars().count()
+//                 {
+//                     matched = Some((
+//                         current_mk.to_string(),
+//                         action.clone(),
+//                         current_with_char,
+//                         key.clone(),
+//                     ));
+//                 }
+//             }
+//         }
+
+//         if let Some((mk, action, with_char, _key)) = matched {
+//             if with_char {
+//                 truncate_chars(seq, mk.chars().count());
+//                 let count = resolve_count(seq);
+//                 return action.with_char(lc, count);
+//             }
+//             truncate_chars(seq, mk.chars().count());
+//             let count = resolve_count(seq);
+//             return action.with_count(count);
+//         }
+//     }
+
+//     Action::NoOp
+// }
+
+// pub fn peek_action(seq: &str, map: &HashMap<String, Action>) -> Action {
+//     let mut s = seq.to_string();
+//     resolve_action(&mut s, map)
+// }
+
+// pub fn peek_count(seq: &str) -> u32 {
+//     let mut s = seq.to_string();
+//     resolve_count(&mut s)
+// }
+
+pub fn resolve_count(seq: &mut KeyComboSequence) -> u32 {
+    return seq.pop_trailing_digits();
 }
 
-pub fn resolve_count(seq: &mut String) -> u32 {
-    let mut digits = String::new();
-    while let Some(c) = seq.chars().last() {
-        if c.is_ascii_digit() {
-            digits.push(seq.pop().unwrap());
-        } else {
+pub fn resolve_action(seq: &mut KeyComboSequence, map: &HashMap<KeyComboSequence, Action>) -> Action {
+    let mut matched: Option<(KeyComboSequence, Action)> = None;
+    for (key, action) in map {
+        if seq.ends_with(key) {
+            matched = Some((key.clone(), action.clone()));
             break;
         }
     }
-    if digits.is_empty() {
-        return 1;
-    }
-    digits
-        .chars()
-        .rev()
-        .collect::<String>()
-        .parse::<u32>()
-        .unwrap_or(1)
-}
 
-pub fn resolve_action(seq: &mut String, map: &HashMap<String, Action>) -> Action {
-    if let Some(lc) = seq.chars().last() {
-        if lc.is_ascii_digit() {
-            if peek_count(seq) > 0 {
-                return Action::NoOp;
-            }
-        }
-
-        let last_char = lc.to_string();
-        let mut matched: Option<(String, Action, bool, String)> = None;
-
-        for (key, action) in map {
-            let mut current_mk = key.as_str();
-            let rk;
-            let current_with_char;
-
-            if key.ends_with("{c}") {
-                rk = key.replace("{c}", &last_char);
-                current_mk = rk.as_str();
-                current_with_char = true;
-            } else {
-                current_with_char = false;
-            }
-
-            if seq.ends_with(current_mk) {
-                if matched.is_none()
-                    || current_mk.chars().count() > matched.as_ref().unwrap().0.chars().count()
-                {
-                    matched = Some((
-                        current_mk.to_string(),
-                        action.clone(),
-                        current_with_char,
-                        key.clone(),
-                    ));
-                }
-            }
-        }
-
-        if let Some((mk, action, with_char, _key)) = matched {
-            if with_char {
-                truncate_chars(seq, mk.chars().count());
-                let count = resolve_count(seq);
-                return action.with_char(lc, count);
-            }
-            truncate_chars(seq, mk.chars().count());
-            let count = resolve_count(seq);
-            return action.with_count(count);
-        }
+    if let Some((key, action)) = matched {
+        seq.truncate_items(key.len());
+        let count = resolve_count(seq);
+        return action.with_count(count);
     }
 
     Action::NoOp
-}
-
-pub fn peek_action(seq: &str, map: &HashMap<String, Action>) -> Action {
-    let mut s = seq.to_string();
-    resolve_action(&mut s, map)
-}
-
-pub fn peek_count(seq: &str) -> u32 {
-    let mut s = seq.to_string();
-    resolve_count(&mut s)
 }
 
 pub fn resolve_op_motion_action(motion: Action, action: Action) -> Action {
@@ -193,7 +215,7 @@ impl InputContext {
 
 pub struct VimInput {
     pub mode: Mode,
-    pub sequence: String,
+    pub sequence: KeyComboSequence,
     pub resolved_motion: Action,
     pub resolved_op: Action,
     pub resolved_action: Action,
@@ -204,7 +226,7 @@ impl VimInput {
     pub fn new() -> Self {
         Self {
             mode: Mode::Normal,
-            sequence: "".to_string(),
+            sequence: KeyComboSequence::new(), // "".to_string(),
             resolved_motion: Action::NoOp,
             resolved_op: Action::NoOp,
             resolved_action: Action::NoOp,
@@ -224,17 +246,19 @@ impl VimInput {
     }
 
     pub fn handle_sequence(&mut self, sequence: &str) -> Action {
-        self.sequence.clear();
-        self.handle_input(sequence)
+        // self.sequence.clear();
+        // self.handle_input(sequence)
+        Action::NoOp
     }
 
     pub fn handle_event(&mut self, key_event: &KeyEvent) -> Action {
         let combo = KeyCombo::from(key_event);
+        self.sequence.push(combo.clone());
         return self.handle_input(combo.to_string().as_str());
     }
 
     pub fn handle_input(&mut self, sequence: &str) -> Action {
-        self.sequence.push_str(sequence);
+        // self.sequence.push_str(sequence);
         self.clear_resolved();
 
         // insert mode
@@ -313,10 +337,10 @@ impl VimInput {
                         self.sequence.clear();
                     } else {
                         // 4. If nothing resolved yet, peek for an operator to update UI
-                        let op_action = peek_action(&self.sequence, &self.keymap.op_actions);
-                        if op_action != Action::NoOp {
-                            self.resolved_op = op_action;
-                        }
+                        // let op_action = peek_action(&self.sequence, &self.keymap.op_actions);
+                        // if op_action != Action::NoOp {
+                        //     self.resolved_op = op_action;
+                        // }
                     }
                 }
             }
