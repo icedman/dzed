@@ -19,6 +19,11 @@ pub trait TextSearch {
     fn find_previous_word(&self, position: usize) -> Option<(usize, usize, &str)>;
     fn find_next_word_end(&self, position: usize) -> Option<(usize, usize, &str)>;
     fn find_previous_word_end(&self, position: usize) -> Option<(usize, usize, &str)>;
+    fn find_big_words(&self) -> Vec<(usize, usize, &str)>;
+    fn find_next_big_word(&self, position: usize) -> Option<(usize, usize, &str)>;
+    fn find_previous_big_word(&self, position: usize) -> Option<(usize, usize, &str)>;
+    fn find_next_big_word_end(&self, position: usize) -> Option<(usize, usize, &str)>;
+    fn find_previous_big_word_end(&self, position: usize) -> Option<(usize, usize, &str)>;
     fn find_next_match(&self, search: &str, position: usize) -> Option<(usize, usize, &str)>;
     fn find_previous_match(&self, search: &str, position: usize) -> Option<(usize, usize, &str)>;
     fn find_next_pattern_match(
@@ -163,5 +168,55 @@ impl TextSearch for str {
             .into_iter()
             .rev()
             .find(|(start, _, _)| *start < position)
+    }
+
+    fn find_big_words(&self) -> Vec<(usize, usize, &str)> {
+        let mut words = Vec::new();
+        let mut current_start = None;
+
+        for (idx, ch) in self.char_indices() {
+            if ch.is_whitespace() {
+                if let Some(start) = current_start {
+                    words.push((start, idx, &self[start..idx]));
+                    current_start = None;
+                }
+            } else {
+                if current_start.is_none() {
+                    current_start = Some(idx);
+                }
+            }
+        }
+
+        if let Some(start) = current_start {
+            words.push((start, self.len(), &self[start..]));
+        }
+
+        words
+    }
+
+    fn find_next_big_word(&self, position: usize) -> Option<(usize, usize, &str)> {
+        self.find_big_words()
+            .into_iter()
+            .find(|(start, _, _)| *start > position)
+    }
+
+    fn find_previous_big_word(&self, position: usize) -> Option<(usize, usize, &str)> {
+        self.find_big_words()
+            .into_iter()
+            .rev()
+            .find(|(start, _, _)| *start < position)
+    }
+
+    fn find_next_big_word_end(&self, position: usize) -> Option<(usize, usize, &str)> {
+        self.find_big_words()
+            .into_iter()
+            .find(|(_, end, _)| (*end - 1) > position)
+    }
+
+    fn find_previous_big_word_end(&self, position: usize) -> Option<(usize, usize, &str)> {
+        self.find_big_words()
+            .into_iter()
+            .rev()
+            .find(|(_, end, _)| (*end - 1) < position)
     }
 }

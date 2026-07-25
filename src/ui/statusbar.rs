@@ -89,25 +89,15 @@ fn draw_statusbar_impl<W: Write>(w: &mut W, rect: Rect, editor: &Editor) -> std:
         });
 
     let status_text = format!(
-        "[{}/{}] {} {} {},{} rl:{} {} {} [{}] {}",
+        "[{}/{}] {} {} [seq: {}] [op: {:?}] [motion: {:?}] [action: {:?}]",
         active_idx + 1,
         buffer_count,
         active_buffer.file_path,
-        match editor.mode {
-            Mode::Normal => "NORMAL",
-            Mode::Insert => "INSERT",
-            Mode::Visual => "VISUAL",
-            Mode::VisualLine => "V-LINE",
-            Mode::VisualBlock => "V-BLOCK",
-            Mode::Command => "COMMAND",
-        },
-        active_buffer.doc.selection().head().offset,
-        active_buffer.doc.selection().tail().offset,
-        row_len,
-        active_buffer.hl.name(),
-        editor.pending_cmd,
-        editor.search_text,
-        syntax_context
+        editor.mode,
+        "", // editor.input.buffer,
+        "", // editor.input.resolved_op,
+        "", // editor.input.resolved_motion,
+        editor.input.resolved_action,
     );
 
     let truncated_text: String = status_text.chars().take(rect.width as usize).collect();

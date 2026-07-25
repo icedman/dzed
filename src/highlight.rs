@@ -1,5 +1,6 @@
 use std::{collections::HashMap, path::Path};
 
+use clock::Global;
 use rope::Point;
 use syntect::{
     easy::HighlightLines,
@@ -7,7 +8,6 @@ use syntect::{
     parsing::{ParseState, SyntaxReference, SyntaxSet},
 };
 use text::{BufferSnapshot, ToOffset};
-use clock::Global;
 
 const ENABLE_STATE_CACHE: bool = true;
 const CACHE_INTERVAL: u32 = 32;

@@ -91,7 +91,8 @@ impl LayoutNode {
                             SizeConstraint::Fixed(val) => val,
                             SizeConstraint::Percentage(weight) => {
                                 if percent_weight_sum > 0.0 {
-                                    ((weight / percent_weight_sum) * remaining_size as f32).round() as u16
+                                    ((weight / percent_weight_sum) * remaining_size as f32).round()
+                                        as u16
                                 } else {
                                     0
                                 }
