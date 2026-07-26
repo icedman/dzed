@@ -17,7 +17,7 @@ impl KeyCombo {
         Self { code, modifiers }
     }
 
-    /// Parses single key strings like "C-f", "M-x", "Esc", "a", or "S-Up".
+    /// Parses single key strings like "C-f", "A-x", "Esc", "a", or "S-Up".
     pub fn parse(s: &str) -> Result<Self, String> {
         if s == "-" {
             return Ok(Self {
@@ -70,7 +70,7 @@ impl KeyCombo {
                 let part_lower = part.to_lowercase();
                 match part_lower.as_str() {
                     "c" | "ctrl" | "control" => modifiers.insert(KeyModifiers::CONTROL),
-                    "a" | "alt" | "option" => modifiers.insert(KeyModifiers::ALT),
+                    "a" | "alt" | "option" | "m" | "meta" => modifiers.insert(KeyModifiers::ALT),
                     "s" | "shift" => modifiers.insert(KeyModifiers::SHIFT),
                     _ => return Err(format!("Unknown modifier: {}", part)),
                 }
@@ -255,7 +255,7 @@ pub trait IntoKeyComboSequence {
 impl IntoKeyComboSequence for &str {
     fn into_seq(self) -> Result<KeyComboSequence, String> {
         let mut items = SmallVec::new();
-        if let Some(re) = compile(r"<[^<>]+>|.") {
+        if let Some(re) = compile(r"\{c\}|<[^<>]+>|.") {
             for (offset, len, s) in self.find_pattern(&re) {
                 let seq = KeyComboSequence::parse_sequence(s)?;
                 items.extend(seq.items);
@@ -1434,7 +1434,7 @@ mod tests {
         assert_eq!(ctrl_f.code, KeyCode::Char('f'));
         assert_eq!(ctrl_f.modifiers, KeyModifiers::CONTROL);
 
-        let alt_x = KeyCombo::parse("M-x").unwrap();
+        let alt_x = KeyCombo::parse("A-x").unwrap();
         assert_eq!(alt_x.code, KeyCode::Char('x'));
         assert_eq!(alt_x.modifiers, KeyModifiers::ALT);
 
@@ -1447,7 +1447,7 @@ mod tests {
         assert_eq!(shift_up.modifiers, KeyModifiers::SHIFT);
 
         // Combined modifiers
-        let ctrl_alt_shift_down = KeyCombo::parse("C-M-S-down").unwrap();
+        let ctrl_alt_shift_down = KeyCombo::parse("C-A-S-down").unwrap();
         assert_eq!(ctrl_alt_shift_down.code, KeyCode::Down);
         assert_eq!(
             ctrl_alt_shift_down.modifiers,
@@ -1461,8 +1461,8 @@ mod tests {
 
     #[test]
     fn test_key_combo_to_string() {
-        let combo = KeyCombo::parse("C-M-f").unwrap();
-        assert_eq!(combo.to_string(), "C-M-f");
+        let combo = KeyCombo::parse("C-A-f").unwrap();
+        assert_eq!(combo.to_string(), "C-A-f");
 
         let shift_a = KeyCombo::parse("S-a").unwrap();
         // Since 'a' is alphabetic, shift modifier is normalized to uppercase char 'A'
