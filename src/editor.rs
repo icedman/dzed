@@ -114,6 +114,7 @@ pub struct Editor {
     pub syntax: bool,
     pub tree_sitter: bool,
     pub show_line_numbers: bool,
+    pub fold: bool,
 
     // commands
     pub command: crate::command::Command,
@@ -181,6 +182,7 @@ impl Editor {
             syntax: true,
             tree_sitter: true,
             show_line_numbers: true,
+            fold: true,
             bg_worker,
             clipboard: std::cell::RefCell::new(crate::clipboard::Clipboard::new()),
             keymap: crate::keymap::Keymap::new(),

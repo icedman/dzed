@@ -20,7 +20,11 @@ impl DisplayPoint {
 }
 
 pub struct DisplayMap {
+    original_buffer: BufferSnapshot,
+    folds: Vec<crate::display::fold_map::Fold>,
+    fold_map: crate::display::fold_map::FoldMap,
     wrap_map: WrapMap,
+    wrap_width: Option<u32>,
     pub scroll_x: u32,
     pub scroll_y: u32,
     pub visible_cols: u32,
@@ -32,6 +36,8 @@ pub struct DisplayMap {
 }
 
 pub struct DisplaySnapshot {
+    pub(crate) original_buffer: BufferSnapshot,
+    pub(crate) fold_map: crate::display::fold_map::FoldMap,
     pub(crate) wrap_snapshot: WrapSnapshot,
     pub scroll_x: u32,
     pub scroll_y: u32,
@@ -45,8 +51,14 @@ pub struct DisplaySnapshot {
 
 impl DisplayMap {
     pub fn new(buffer: BufferSnapshot, wrap_width: Option<u32>) -> Self {
+        let fold_map = crate::display::fold_map::FoldMap::new(&buffer, Vec::new());
+        let wrap_map = WrapMap::new(fold_map.folded_buffer().clone(), wrap_width);
         Self {
-            wrap_map: WrapMap::new(buffer, wrap_width),
+            original_buffer: buffer,
+            folds: Vec::new(),
+            fold_map,
+            wrap_map,
+            wrap_width,
             scroll_x: 0,
             scroll_y: 0,
             visible_cols: 240,
@@ -58,8 +70,17 @@ impl DisplayMap {
         }
     }
 
+    pub fn fold(&mut self, folds: Vec<crate::display::fold_map::Fold>, buffer: BufferSnapshot) {
+        self.folds = folds;
+        self.original_buffer = buffer.clone();
+        self.fold_map = crate::display::fold_map::FoldMap::new(&buffer, self.folds.clone());
+        self.wrap_map = WrapMap::new(self.fold_map.folded_buffer().clone(), self.wrap_width);
+    }
+
     pub fn snapshot(&self) -> DisplaySnapshot {
         DisplaySnapshot {
+            original_buffer: self.original_buffer.clone(),
+            fold_map: self.fold_map.clone(),
             wrap_snapshot: self.wrap_map.snapshot(),
             scroll_x: self.scroll_x,
             scroll_y: self.scroll_y,
@@ -73,6 +94,7 @@ impl DisplayMap {
     }
 
     pub fn set_wrap_width(&mut self, width: Option<u32>) {
+        self.wrap_width = width;
         self.wrap_map.set_wrap_width(width);
     }
 
@@ -81,7 +103,9 @@ impl DisplayMap {
     }
 
     pub fn sync(&mut self, buffer: BufferSnapshot) {
-        self.wrap_map.sync(buffer);
+        self.original_buffer = buffer.clone();
+        self.fold_map = crate::display::fold_map::FoldMap::new(&buffer, self.folds.clone());
+        self.wrap_map = WrapMap::new(self.fold_map.folded_buffer().clone(), self.wrap_width);
     }
 
     pub fn scroll_to_cursor(
@@ -139,7 +163,7 @@ impl DisplaySnapshot {
     }
 
     pub fn buffer_snapshot(&self) -> &BufferSnapshot {
-        self.wrap_snapshot.buffer_snapshot()
+        &self.original_buffer
     }
 
     pub fn row_count(&self) -> u32 {
@@ -155,11 +179,13 @@ impl DisplaySnapshot {
     }
 
     pub fn point_to_display_point(&self, point: Point) -> DisplayPoint {
-        DisplayPoint(self.wrap_snapshot.to_wrap_point(point))
+        let folded_point = self.fold_map.to_folded_point(point);
+        DisplayPoint(self.wrap_snapshot.to_wrap_point(folded_point))
     }
 
     pub fn display_point_to_point(&self, display_point: DisplayPoint) -> Point {
-        self.wrap_snapshot.from_wrap_point(display_point.0)
+        let folded_point = self.wrap_snapshot.from_wrap_point(display_point.0);
+        self.fold_map.from_folded_point(folded_point)
     }
 
     /// Returns the buffer row for a given display row.
@@ -178,13 +204,10 @@ impl DisplaySnapshot {
 
     /// Returns the text for a given display row.
     pub fn line_text(&self, display_row: u32) -> String {
-        let range = self.buffer_range_for_display_row(display_row);
-        if range.is_empty() || range.start.row != range.end.row {
-            return String::new();
-        }
-
-        self.buffer_snapshot()
-            .text_for_range(range)
+        let start_folded = self.wrap_snapshot.from_wrap_point(WrapPoint::new(display_row, 0));
+        let end_folded = self.wrap_snapshot.from_wrap_point(WrapPoint::new(display_row, self.line_len(display_row)));
+        self.fold_map.folded_buffer()
+            .text_for_range(start_folded..end_folded)
             .collect::<String>()
     }
 
@@ -225,5 +248,32 @@ mod tests {
         assert_eq!(display.line_text(0), "aé");
         assert_eq!(display.line_text(1), "øb");
         assert_eq!(display.line_text(2), "c");
+    }
+
+    #[test]
+    fn test_folding() {
+        let buffer = Buffer::new(
+            ReplicaId::LOCAL,
+            BufferId::new(1).unwrap(),
+            "first\nsecond\nthird\nfourth",
+        );
+        let mut display_map = DisplayMap::new(buffer.snapshot().clone(), None);
+        let folds = vec![crate::display::fold_map::Fold {
+            start: Point::new(1, 0),
+            end: Point::new(3, 0),
+        }];
+        display_map.fold(folds, buffer.snapshot().clone());
+
+        let snapshot = display_map.snapshot();
+        assert_eq!(snapshot.row_count(), 2);
+        assert_eq!(snapshot.line_text(0), "first");
+        assert_eq!(snapshot.line_text(1), "...fourth");
+
+        let display_point = snapshot.point_to_display_point(Point::new(3, 2));
+        assert_eq!(display_point.row(), 1);
+        assert_eq!(display_point.column(), 5);
+
+        let orig_point = snapshot.display_point_to_point(display_point);
+        assert_eq!(orig_point, Point::new(3, 2));
     }
 }

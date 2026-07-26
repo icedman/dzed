@@ -85,6 +85,28 @@ impl Command {
                 editor.apply_active_action(&action);
             }
             match resolved.op {
+                crate::ex::Ex::Set => {
+                    if let Some(args) = &resolved.arguments {
+                        for arg in args {
+                            match arg.as_str() {
+                                "wrap" => editor.wrap = true,
+                                "nowrap" => editor.wrap = false,
+                                "nu" => editor.show_line_numbers = true,
+                                "nonu" => editor.show_line_numbers = false,
+                                "number" => editor.show_line_numbers = true,
+                                "nonumber" => editor.show_line_numbers = false,
+                                "fold" => editor.fold = true,
+                                "nofold" => editor.fold = false,
+                                "tree" => editor.set_tree_sitter_enabled(true),
+                                "notree" => editor.set_tree_sitter_enabled(false),
+                                "treesitter" => editor.set_tree_sitter_enabled(true),
+                                "notreesitter" => editor.set_tree_sitter_enabled(false),
+                                _ => {}
+                            }
+                        }
+                    }
+                    None
+                }
                 crate::ex::Ex::Quit => Some(ExResult::Exit),
                 _ => None,
             }
@@ -129,5 +151,43 @@ mod tests {
                 end_line: 5
             }
         );
+    }
+
+    #[test]
+    fn test_ex_set() {
+        let mut editor = Editor::new(Vec::new()).unwrap();
+        let mut cmd = Command::new();
+
+        cmd.set("set wrap");
+        cmd.ex(&mut editor);
+        assert!(editor.wrap);
+
+        cmd.set("set nowrap");
+        cmd.ex(&mut editor);
+        assert!(!editor.wrap);
+
+        cmd.set("set nonu");
+        cmd.ex(&mut editor);
+        assert!(!editor.show_line_numbers);
+
+        cmd.set("set nu");
+        cmd.ex(&mut editor);
+        assert!(editor.show_line_numbers);
+
+        cmd.set("set nofold");
+        cmd.ex(&mut editor);
+        assert!(!editor.fold);
+
+        cmd.set("set fold");
+        cmd.ex(&mut editor);
+        assert!(editor.fold);
+
+        cmd.set("set notreesitter");
+        cmd.ex(&mut editor);
+        assert!(!editor.tree_sitter);
+
+        cmd.set("set treesitter");
+        cmd.ex(&mut editor);
+        assert!(editor.tree_sitter);
     }
 }
