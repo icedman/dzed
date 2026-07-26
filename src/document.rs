@@ -136,6 +136,61 @@ impl Document {
         }
     }
 
+    pub fn snap_selections_to_folds(&mut self, action: &Action) {
+        if self.folds.is_empty() {
+            return;
+        }
+
+        // Detect direction based on motion/action
+        let moving_right = match action {
+            Action::MoveRight { .. }
+            | Action::MoveToWord { .. }
+            | Action::MoveToWordEnd { .. }
+            | Action::MoveToBigWord { .. }
+            | Action::MoveToEndOfLine { .. }
+            | Action::MoveToEndOfDocument { .. }
+            | Action::MoveToEndOfNextLine { .. } => true,
+            _ => false,
+        };
+
+        let mut updated_selections = Vec::new();
+        for selection in &self.selections.selections {
+            let head = selection.head().to_point(&self.buffer);
+            let mut new_head = head;
+            for fold in &self.folds {
+                if head > fold.start && head < fold.end {
+                    new_head = if moving_right { fold.end } else { fold.start };
+                    break;
+                }
+            }
+
+            if new_head != head {
+                let anchor_pos = selection.tail().to_point(&self.buffer);
+                let mut new_anchor = anchor_pos;
+                if anchor_pos == head {
+                    new_anchor = new_head;
+                }
+
+                let new_sel = Selection {
+                    id: selection.id,
+                    start: self.buffer.anchor_at(&new_anchor, Bias::Left),
+                    end: self.buffer.anchor_at(&new_head, Bias::Left),
+                    reversed: new_head < new_anchor,
+                    goal: selection.goal,
+                };
+                updated_selections.push(new_sel);
+            }
+        }
+
+        for new_sel in updated_selections {
+            self.selections.update(&self.buffer, &new_sel);
+        }
+
+        if let Some(first) = self.selections.first() {
+            self.selections.point = first.head().to_point(&self.buffer);
+        }
+    }
+
     pub fn enter_mode(&mut self, mode: Mode) {
         if self.mode == mode {
             self.clear_selections();
@@ -1087,6 +1142,7 @@ impl Document {
         }
 
         self.apply_action(&next_action, editor);
+        self.snap_selections_to_folds(action);
     }
 
     fn yank_motion(&mut self, count: u32, motion: &Action, editor: &Editor) {
