@@ -33,6 +33,7 @@ pub struct Document {
     buffer: Buffer,
     selections: SelectionCollection,
     mode: Mode,
+    pub folds: Vec<crate::display::fold_map::Fold>,
 }
 
 impl Document {
@@ -49,6 +50,7 @@ impl Document {
             buffer,
             selections,
             mode: Mode::Normal,
+            folds: Vec::new(),
         }
     }
 
@@ -69,6 +71,7 @@ impl Document {
             buffer,
             selections,
             mode: Mode::Normal,
+            folds: Vec::new(),
         })
     }
 
@@ -89,6 +92,47 @@ impl Document {
     pub fn redo(&mut self, count: u32) {
         for _ in 0..count {
             self.buffer.redo();
+        }
+    }
+
+    pub fn fold(&mut self, _count: u32, editor: &Editor) {
+        let active_idx = editor.buffer_manager.active_idx;
+        let buffer = &editor.buffer_manager.buffers[active_idx];
+        if let Some(syntax_tree) = &buffer.syntax_tree {
+            let mut seen_ranges = std::collections::HashSet::new();
+            for selection in self.selections.selections.iter() {
+                let head_point = selection.head().to_point(&self.buffer);
+                let head_offset = head_point.to_offset(&self.buffer);
+                if let Some(block) = syntax_tree.enclosing_block_at_byte(head_offset) {
+                    let range = block.byte_range.clone();
+                    if seen_ranges.insert(range) {
+                        let fold = crate::display::fold_map::Fold {
+                            start: Point::new(block.start_position.row as u32, block.start_position.column as u32),
+                            end: Point::new(block.end_position.row as u32, block.end_position.column as u32),
+                        };
+                        if !self.folds.contains(&fold) {
+                            self.folds.push(fold);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn unfold(&mut self, _count: u32, editor: &Editor) {
+        let mut to_remove = Vec::new();
+        for selection in self.selections.selections.iter() {
+            let head_point = selection.head().to_point(&self.buffer);
+            for (idx, fold) in self.folds.iter().enumerate() {
+                if head_point >= fold.start && head_point <= fold.end {
+                    to_remove.push(idx);
+                }
+            }
+        }
+        to_remove.sort_unstable();
+        to_remove.dedup();
+        for idx in to_remove.into_iter().rev() {
+            self.folds.remove(idx);
         }
     }
 
@@ -1028,8 +1072,14 @@ impl Document {
             Action::Put { count } => {
                 self.paste(*count, editor);
             }
-            Action::Undo { count } => self.undo(*count),
+             Action::Undo { count } => self.undo(*count),
             Action::Redo { count } => self.redo(*count),
+            Action::Fold { count } => {
+                self.fold(*count, editor);
+            }
+            Action::Unfold { count } => {
+                self.unfold(*count, editor);
+            }
             Action::NoOp | Action::Quit => {
                 return;
             }
@@ -1691,5 +1741,31 @@ mod tests {
 
         let document = &editor.buffer_manager.active().doc;
         assert_eq!(document.buffer().row_text(0), "abc ghi");
+    }
+
+    #[test]
+    fn test_treesitter_folding() {
+        let mut editor = Editor::new(Vec::new()).unwrap();
+        let text = "fn main() {\n    let x = 1;\n    let y = 2;\n}";
+        editor.buffer_manager.active_mut().doc = Document::new_with_text(text);
+        editor.buffer_manager.active_mut().grammar = Some(Grammar::Rust);
+        
+        let mut parser = TreeSitterParser::new(Grammar::Rust).unwrap();
+        let tree = parser.parse(editor.buffer_manager.active().doc.buffer().snapshot(), None).unwrap();
+        editor.buffer_manager.active_mut().syntax_tree = Some(tree);
+
+        editor.apply_active_action(&Action::MoveDown { select: false, count: 1 });
+
+        editor.apply_active_action(&Action::Fold { count: 1 });
+
+        let active_buffer = editor.buffer_manager.active();
+        assert_eq!(active_buffer.doc.folds.len(), 1);
+        let fold = &active_buffer.doc.folds[0];
+        assert_eq!(fold.start.row, 0);
+        assert_eq!(fold.end.row, 3);
+
+        editor.apply_active_action(&Action::Unfold { count: 1 });
+        let active_buffer = editor.buffer_manager.active();
+        assert_eq!(active_buffer.doc.folds.len(), 0);
     }
 }

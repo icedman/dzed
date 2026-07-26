@@ -873,6 +873,12 @@ impl Keymap {
         normal_actions
             .bind("~", Action::ChangeCase { count: 1 })
             .expect("Valid binding");
+        normal_actions
+            .bind("zc", Action::Fold { count: 1 })
+            .expect("Valid binding");
+        normal_actions
+            .bind("zo", Action::Unfold { count: 1 })
+            .expect("Valid binding");
 
         normal_actions
             .bind("<Delete>", Action::DeleteChar { count: 1 })

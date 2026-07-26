@@ -33,6 +33,7 @@ pub enum BackgroundTask {
         owner_id: usize,
         file_path: String,
         snapshot: BufferSnapshot,
+        folds: Vec<crate::display::fold_map::Fold>,
         wrap_width: Option<u32>,
         task_id: TaskId,
         latest_task_id: Arc<AtomicU64>,
@@ -130,6 +131,7 @@ impl BackgroundWorker {
                         owner_id,
                         file_path,
                         snapshot,
+                        folds,
                         wrap_width,
                         task_id,
                         latest_task_id,
@@ -139,8 +141,12 @@ impl BackgroundWorker {
                             continue;
                         }
 
-                        // Compute wrap coordinates under a temporary WrapMap
-                        let wrap_map = WrapMap::new(snapshot, wrap_width);
+                        // Compute folded buffer snapshot in the background
+                        let fold_map = crate::display::fold_map::FoldMap::new(&snapshot, folds);
+                        let folded_buffer = fold_map.folded_buffer();
+
+                        // Compute wrap coordinates under a temporary WrapMap using the folded buffer
+                        let wrap_map = WrapMap::new(folded_buffer.clone(), wrap_width);
                         let wrap_snapshot = wrap_map.snapshot();
 
                         // Final cancellation check

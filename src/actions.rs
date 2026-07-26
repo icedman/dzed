@@ -45,6 +45,12 @@ pub enum Action {
     Yank {
         count: u32,
     },
+    Fold {
+        count: u32,
+    },
+    Unfold {
+        count: u32,
+    },
 
     // MOTIONS
     StandBy {
@@ -383,6 +389,8 @@ impl std::fmt::Display for Action {
             Action::Delete { count } => write!(f, "Delete({})", count),
             Action::Change { count } => write!(f, "Change({})", count),
             Action::Yank { count } => write!(f, "Yank({})", count),
+            Action::Fold { count } => write!(f, "Fold({})", count),
+            Action::Unfold { count } => write!(f, "Unfold({})", count),
             Action::MoveToWord { count, .. } => write!(f, "MoveToWord({})", count),
             Action::MoveToPreviousWord { count, .. } => write!(f, "MoveToPreviousWord({})", count),
             Action::MoveToWordEnd { count, .. } => write!(f, "MoveToWordEnd({})", count),
@@ -644,6 +652,8 @@ impl Action {
             Action::Delete { .. } => Action::Delete { count },
             Action::Change { .. } => Action::Change { count },
             Action::Yank { .. } => Action::Yank { count },
+            Action::Fold { .. } => Action::Fold { count },
+            Action::Unfold { .. } => Action::Unfold { count },
             Action::MoveToWord { .. } => Action::MoveToWord {
                 count,
                 select: false,
@@ -902,6 +912,8 @@ impl Action {
             Action::Delete { count } => *count,
             Action::Change { count } => *count,
             Action::Yank { count } => *count,
+            Action::Fold { count } => *count,
+            Action::Unfold { count } => *count,
             Action::MoveToWord { count, .. } => *count,
             Action::MoveToPreviousWord { count, .. } => *count,
             Action::MoveToWordEnd { count, .. } => *count,

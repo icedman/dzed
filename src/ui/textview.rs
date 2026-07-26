@@ -87,7 +87,7 @@ impl View for TextView {
         if *should_sync {
             active_buffer
                 .display_map
-                .sync(active_buffer.doc.buffer().snapshot().clone());
+                .fold(active_buffer.doc.folds.clone(), active_buffer.doc.buffer().snapshot().clone());
 
             let (start, _) = active_buffer
                 .doc
@@ -125,6 +125,7 @@ impl View for TextView {
                     owner_id: self.window_id,
                     file_path: active_buffer.file_path.clone(),
                     snapshot: active_buffer.doc.buffer().snapshot().clone(),
+                    folds: active_buffer.doc.folds.clone(),
                     wrap_width,
                     task_id: crate::background::TaskId(wrap_task_id),
                     latest_task_id: active_buffer.latest_wrap_task_id.clone(),
