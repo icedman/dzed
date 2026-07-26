@@ -13,7 +13,6 @@ pub enum HandleEvent {
 pub fn handle_event(
     editor: &mut crate::editor::Editor,
     event: Event,
-    _visible_rows: i32,
 ) -> HandleEvent {
     match event {
         Event::Key(key_event) => {
@@ -39,14 +38,10 @@ pub fn handle_event(
 
                 if editor.mode == Mode::Command {
                     if matches!(action, Action::InsertNewLine { .. }) {
-                        let cmd_text = editor
-                            .cmd
-                            .buffer()
-                            .row_text(editor.cmd.buffer().row_count() - 1);
-                        if cmd_text == "q" || cmd_text == "quit" {
+                        if let Some(crate::command::ExResult::Exit) = editor.command.ex() {
                             return HandleEvent::Exit;
                         }
-                        editor.cmd = crate::document::Document::new("").unwrap();
+                        editor.command.clear();
                         editor.input.set_mode(Mode::Normal);
                         editor
                             .buffer_manager
@@ -56,7 +51,7 @@ pub fn handle_event(
                         editor.clipboard.borrow_mut().release();
                         return HandleEvent::RedrawAndSync;
                     } else if matches!(action, Action::Clear) {
-                        editor.cmd = crate::document::Document::new("").unwrap();
+                        editor.command.clear();
                         editor.input.set_mode(Mode::Normal);
                         editor
                             .buffer_manager

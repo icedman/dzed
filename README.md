@@ -52,6 +52,7 @@ DZed is currently a proof of concept and an active learning project rather than 
 - Motion-based and linewise yank support.
 - Characterwise and linewise paste behavior.
 - Paste counts and cursor restoration after yank operations.
+- Support for registers.
 
 ### Display and Terminal UI
 

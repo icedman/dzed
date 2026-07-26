@@ -343,13 +343,15 @@ pub enum Action {
 
     // MODE SELECT
     SetToNormal,
+    SetToCommand,
     SetToInsert,
-    SetToAppend,
-    SetToAppendEndOfLine,
     SetToVisual,
     SetToVisualLine,
     SetToVisualBlock,
-    SetToCommand,
+
+    // TO INSERT MODE
+    SetToAppend,
+    SetToAppendEndOfLine,
     SetToInsertStartOfLineNonSpace,
     SetToOpenLineBelow {
         count: u32,

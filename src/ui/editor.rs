@@ -52,8 +52,7 @@ impl View for EditorView {
 
         Some(crate::input::handle_event(
             editor,
-            event.clone(),
-            visible_rows,
+            event.clone()
         ))
     }
 
@@ -256,16 +255,16 @@ pub fn render_editor_content<W: Write>(
         let text = display_snapshot.line_text(row) + " ";
 
         let mut matches = Vec::<(usize, usize, &str)>::new();
-        if editor.pattern {
-            if editor.search_text != editor.regex_string {
-                editor.regex_string = editor.search_text.clone();
-                editor.regex = compile(editor.regex_string.as_str());
+        if editor.command.pattern {
+            if editor.command.search_text != editor.command.regex_string {
+                editor.command.regex_string = editor.command.search_text.clone();
+                editor.command.regex = compile(editor.command.regex_string.as_str());
             }
-            if let Some(ref regex) = editor.regex {
+            if let Some(ref regex) = editor.command.regex {
                 matches = text.as_str().find_pattern(&regex);
             }
-        } else if !editor.search_text.is_empty() {
-            matches = text.as_str().find_string(&editor.search_text);
+        } else if !editor.command.search_text.is_empty() {
+            matches = text.as_str().find_string(&editor.command.search_text);
         }
 
         // Convert byte-indexed matches into character-indexed ranges for rendering
@@ -484,11 +483,10 @@ pub fn update_cursor_position<W: Write>(
         *last_cursor_style = Some(needed_style);
     }
 
+    let (ox, oy) = (1, 1);
+
     if editor.mode == Mode::Command {
-        let cmd_text = editor
-            .cmd
-            .buffer()
-            .row_text(editor.cmd.buffer().row_count() - 1);
+        let cmd_text = editor.command.get_text();
         let cmd_col = (cmd_text.chars().count()) as u16;
         // Command line is drawn at statusbar rect y position
         execute!(
@@ -500,8 +498,8 @@ pub fn update_cursor_position<W: Write>(
         execute!(
             stdout,
             MoveTo(
-                inner_rect.x + gutter_width as u16 + cursor_screen_col as u16,
-                inner_rect.y + cursor_screen_row as u16
+                inner_rect.x - ox + gutter_width as u16 + cursor_screen_col as u16,
+                inner_rect.y - oy + cursor_screen_row as u16
             ),
         )
         .unwrap();

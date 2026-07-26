@@ -1,6 +1,7 @@
 mod actions;
 mod background;
 mod clipboard;
+mod command;
 mod display;
 mod document;
 mod editor;
@@ -203,7 +204,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             cursor_visible = false;
             let event_res = ui
                 .handle_event(&event, &mut editor)
-                .unwrap_or_else(|| handle_event(&mut editor, event, visible_rows));
+                .unwrap_or_else(|| handle_event(&mut editor, event));
             match event_res {
                 HandleEvent::Exit => break,
                 HandleEvent::Redraw => should_redraw = true,

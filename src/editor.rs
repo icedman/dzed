@@ -106,25 +106,23 @@ impl BufferManager {
 
 pub struct Editor {
     pub buffer_manager: BufferManager,
-    pub cmd: Document,
     pub mode: Mode,
+    
+    // global settings
     pub theme: Theme,
-    pub command_history: Vec<String>,
-    pub search_history: Vec<String>,
-    pub history_idx: usize,
-
-    pub search: bool,
-    pub pattern: bool,
-    pub search_text: String,
-    pub regex_string: String,
-    pub regex: Option<Regex>,
-
     pub wrap: bool,
     pub syntax: bool,
     pub tree_sitter: bool,
     pub show_line_numbers: bool,
+    
+    // commands
+    pub command: crate::command::VimCommand,
+
+    // services
     pub bg_worker: crate::background::BackgroundWorker,
     pub clipboard: std::cell::RefCell<crate::clipboard::Clipboard>,
+
+    // input
     pub keymap: crate::keymap::Keymap,
     pub input: crate::input::VimInput,
 }
@@ -153,9 +151,9 @@ impl Editor {
     }
 
     pub fn apply_command_action(&mut self, action: &crate::actions::Action) {
-        let mut command = std::mem::replace(&mut self.cmd, Document::new("").unwrap());
+        let mut command = std::mem::replace(&mut self.command.cmd, Document::new("").unwrap());
         command.apply_action(action, self);
-        self.cmd = command;
+        self.command.cmd = command;
     }
 
     pub fn new(file_paths: Vec<String>) -> Result<Self, Box<dyn std::error::Error>> {
@@ -170,28 +168,19 @@ impl Editor {
             buffer_manager.add_buffer(EditorBuffer::new(next_id, "")?);
         }
 
-        let cmd = Document::new("")?;
         // let theme = Theme::new("base16-ocean.dark");
         let theme = Theme::new("test/themes/Dracula.tmTheme");
         let bg_worker = crate::background::BackgroundWorker::new();
 
         Ok(Self {
             buffer_manager,
-            cmd,
-            command_history: Vec::new(),
-            search_history: Vec::new(),
-            history_idx: 0,
-            search: false,
-            pattern: false,
-            search_text: "".to_string(),
-            regex: None,
-            regex_string: "".to_string(),
+            command: crate::command::VimCommand::new(),
             mode: Mode::Normal,
             theme,
             wrap: false,
             syntax: true,
             tree_sitter: true,
-            show_line_numbers: false,
+            show_line_numbers: true,
             bg_worker,
             clipboard: std::cell::RefCell::new(crate::clipboard::Clipboard::new()),
             keymap: crate::keymap::Keymap::new(),

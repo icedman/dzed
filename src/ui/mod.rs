@@ -32,6 +32,7 @@ impl Ui {
         let main_win_id = 0;
         let mut main_win = window::Window::new(main_win_id, "Editor".to_string());
         main_win.set_view(Box::new(editor::EditorView::new()));
+        main_win.draw_border = false;
         windows.insert(main_win_id, main_win);
 
         // Create tabs window
@@ -245,19 +246,16 @@ pub fn render_command_line(
     execute!(stdout, MoveTo(rect.x, rect.y))?;
 
     let mut cmd_char = ':';
-    if editor.search {
+    if editor.command.search {
         cmd_char = '/';
-        if editor.pattern {
+        if editor.command.pattern {
             cmd_char = '?';
         }
     }
     print!(
         "{}{}",
         cmd_char,
-        editor
-            .cmd
-            .buffer()
-            .row_text(editor.cmd.buffer().row_count() - 1)
+        editor.command.get_text()
     );
     Ok(())
 }
