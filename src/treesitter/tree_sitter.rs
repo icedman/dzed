@@ -237,8 +237,8 @@ pub const BLOCK_KINDS: &[&str] = &[
 ];
 
 /// Anonymous delimiter tokens recognized as structural boundaries.
-pub const OPEN_DELIMITERS: &[&str] = &["{", "(", "[", "<"];
-pub const CLOSE_DELIMITERS: &[&str] = &["}", ")", "]", ">"];
+pub const OPEN_DELIMITERS: &[&str] = &["{", "(", "[", "<", "\"", "'", "`", "start_tag", "jsx_opening_element"];
+pub const CLOSE_DELIMITERS: &[&str] = &["}", ")", "]", ">", "\"", "'", "`", "end_tag", "jsx_closing_element"];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SyntaxNode {
@@ -600,13 +600,42 @@ impl SyntaxTree {
     }
 
     fn delimiter_boundaries(node: Node<'_>) -> Option<(Node<'_>, Node<'_>)> {
+        let count = node.child_count();
+        if count < 2 {
+            return None;
+        }
         let first = node.child(0)?;
-        let last_index = u32::try_from(node.child_count().checked_sub(1)?).ok()?;
-        let last = node.child(last_index)?;
-        let opening_index = OPEN_DELIMITERS
-            .iter()
-            .position(|kind| *kind == first.kind())?;
-        (last.kind() == CLOSE_DELIMITERS[opening_index]).then_some((first, last))
+        let last_idx = u32::try_from(count.checked_sub(1)?).ok()?;
+        let last = node.child(last_idx)?;
+
+        let fk = first.kind();
+        let lk = last.kind();
+
+        // 1. Standard braces, parentheses, brackets, angle brackets
+        if (fk == "{" && lk == "}")
+            || (fk == "(" && lk == ")")
+            || (fk == "[" && lk == "]")
+            || (fk == "<" && lk == ">")
+        {
+            return Some((first, last));
+        }
+
+        // 2. HTML/JSX Elements & Tags
+        if (fk == "start_tag" && lk == "end_tag")
+            || (fk == "jsx_opening_element" && lk == "jsx_closing_element")
+            || (node.kind() == "element" || node.kind() == "jsx_element" || node.kind() == "jsx_fragment")
+        {
+            return Some((first, last));
+        }
+
+        // 3. String quotes
+        if (node.kind().contains("string") || node.kind().contains("literal"))
+            && ((fk == "\"" && lk == "\"") || (fk == "'" && lk == "'") || (fk == "`" && lk == "`"))
+        {
+            return Some((first, last));
+        }
+
+        None
     }
 
     fn node_info(node: Node<'_>) -> SyntaxNode {

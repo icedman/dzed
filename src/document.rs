@@ -409,11 +409,89 @@ impl Document {
             }
             Action::MoveWithinCharacter { count, ch } => {
                 let select = self.current_mode().is_visual();
-                self.selections.move_within_character(select, *count, *ch, &self.buffer);
+                let cursors = self.selections.selections.clone();
+                for cursor in cursors.iter() {
+                    let mut updated = false;
+                    if editor.tree_sitter {
+                        if let Some(syntax_tree) = editor.buffer_manager.active().syntax_tree.as_ref() {
+                            let byte = self.buffer.offset_for_anchor(&cursor.head());
+                            if let Some((start_node, end_node)) = syntax_tree.delimiter_boundaries_at_byte(byte) {
+                                let matches_ch = match ch {
+                                    '{' | '}' => start_node.kind == "{",
+                                    '(' | ')' => start_node.kind == "(",
+                                    '[' | ']' => start_node.kind == "[",
+                                    '"' => start_node.kind == "\"",
+                                    '\'' => start_node.kind == "'",
+                                    '`' => start_node.kind == "`",
+                                    't' | '<' | '>' => start_node.kind == "<" || start_node.kind == "start_tag" || start_node.kind == "jsx_opening_element",
+                                    _ => false,
+                                };
+                                if matches_ch {
+                                    let start_offset = start_node.byte_range.end;
+                                    let end_offset = end_node.byte_range.start.saturating_sub(1);
+                                    let start_anchor = self.buffer.anchor_at(start_offset, Bias::Left);
+                                    let end_anchor = self.buffer.anchor_at(end_offset, Bias::Right);
+                                    let next = Selection {
+                                        id: cursor.id,
+                                        start: start_anchor,
+                                        end: end_anchor,
+                                        reversed: false,
+                                        goal: SelectionGoal::None,
+                                    };
+                                    self.selections.update(&self.buffer, &next);
+                                    updated = true;
+                                }
+                            }
+                        }
+                    }
+                    if !updated {
+                        let next = cursor.move_within_character(select, *count, *ch, &self.buffer);
+                        self.selections.update(&self.buffer, &next);
+                    }
+                }
             }
             Action::MoveAroundCharacter { count, ch } => {
                 let select = self.current_mode().is_visual();
-                self.selections.move_around_character(select, *count, *ch, &self.buffer);
+                let cursors = self.selections.selections.clone();
+                for cursor in cursors.iter() {
+                    let mut updated = false;
+                    if editor.tree_sitter {
+                        if let Some(syntax_tree) = editor.buffer_manager.active().syntax_tree.as_ref() {
+                            let byte = self.buffer.offset_for_anchor(&cursor.head());
+                            if let Some((start_node, end_node)) = syntax_tree.delimiter_boundaries_at_byte(byte) {
+                                let matches_ch = match ch {
+                                    '{' | '}' => start_node.kind == "{",
+                                    '(' | ')' => start_node.kind == "(",
+                                    '[' | ']' => start_node.kind == "[",
+                                    '"' => start_node.kind == "\"",
+                                    '\'' => start_node.kind == "'",
+                                    '`' => start_node.kind == "`",
+                                    't' | '<' | '>' => start_node.kind == "<" || start_node.kind == "start_tag" || start_node.kind == "jsx_opening_element",
+                                    _ => false,
+                                };
+                                if matches_ch {
+                                    let start_offset = start_node.byte_range.start;
+                                    let end_offset = end_node.byte_range.end.saturating_sub(1);
+                                    let start_anchor = self.buffer.anchor_at(start_offset, Bias::Left);
+                                    let end_anchor = self.buffer.anchor_at(end_offset, Bias::Right);
+                                    let next = Selection {
+                                        id: cursor.id,
+                                        start: start_anchor,
+                                        end: end_anchor,
+                                        reversed: false,
+                                        goal: SelectionGoal::None,
+                                    };
+                                    self.selections.update(&self.buffer, &next);
+                                    updated = true;
+                                }
+                            }
+                        }
+                    }
+                    if !updated {
+                        let next = cursor.move_around_character(select, *count, *ch, &self.buffer);
+                        self.selections.update(&self.buffer, &next);
+                    }
+                }
             }
 
             Action::MoveToNextFunction { select, count } => {
