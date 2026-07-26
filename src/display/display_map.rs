@@ -267,11 +267,11 @@ mod tests {
         let snapshot = display_map.snapshot();
         assert_eq!(snapshot.row_count(), 2);
         assert_eq!(snapshot.line_text(0), "first");
-        assert_eq!(snapshot.line_text(1), "...fourth");
+        assert_eq!(snapshot.line_text(1), "{..}fourth");
 
         let display_point = snapshot.point_to_display_point(Point::new(3, 2));
         assert_eq!(display_point.row(), 1);
-        assert_eq!(display_point.column(), 5);
+        assert_eq!(display_point.column(), 6);
 
         let orig_point = snapshot.display_point_to_point(display_point);
         assert_eq!(orig_point, Point::new(3, 2));

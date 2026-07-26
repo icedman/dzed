@@ -63,8 +63,8 @@ impl FoldMap {
                 current_fold = next_fold;
             }
 
-            // Insert fold placeholder "..."
-            let placeholder = "...";
+            // Insert fold placeholder "{..}"
+            let placeholder = "{..}";
             folded_text.push_str(placeholder);
             let next_fold = current_fold + Point::new(0, placeholder.len() as u32);
             mappings.push(PointMapping {
