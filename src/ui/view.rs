@@ -18,4 +18,11 @@ pub trait View {
     ) -> std::io::Result<()> {
         Ok(())
     }
+    fn handle_task(
+        &mut self,
+        _result: &crate::background::BackgroundResult,
+        _editor: &mut Editor,
+    ) -> std::io::Result<()> {
+        Ok(())
+    }
 }

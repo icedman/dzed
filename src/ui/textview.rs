@@ -10,15 +10,17 @@ use std::io::Write;
 use text::ToPoint;
 
 /// A standard view that renders the active text editor buffer.
-pub struct EditorView;
+pub struct TextView {
+    pub window_id: usize,
+}
 
-impl EditorView {
-    pub fn new() -> Self {
-        EditorView
+impl TextView {
+    pub fn new(window_id: usize) -> Self {
+        TextView { window_id }
     }
 }
 
-impl View for EditorView {
+impl View for TextView {
     fn draw(
         &mut self,
         mut w: &mut dyn Write,
@@ -104,6 +106,7 @@ impl View for EditorView {
             editor
                 .bg_worker
                 .spawn_task(crate::background::BackgroundTask::Highlight {
+                    owner_id: self.window_id,
                     file_path: active_buffer.file_path.clone(),
                     snapshot: active_buffer.doc.buffer().snapshot().clone(),
                     start_row: start,
@@ -122,6 +125,7 @@ impl View for EditorView {
             editor
                 .bg_worker
                 .spawn_task(crate::background::BackgroundTask::Wrap {
+                    owner_id: self.window_id,
                     file_path: active_buffer.file_path.clone(),
                     snapshot: active_buffer.doc.buffer().snapshot().clone(),
                     wrap_width,
@@ -139,6 +143,7 @@ impl View for EditorView {
                 editor
                     .bg_worker
                     .spawn_task(crate::background::BackgroundTask::Parse {
+                        owner_id: self.window_id,
                         file_path: active_buffer.file_path.clone(),
                         snapshot: active_buffer.doc.buffer().snapshot().clone(),
                         grammar,
@@ -162,6 +167,73 @@ impl View for EditorView {
             rect.width as i32,
         );
 
+        Ok(())
+    }
+
+    fn handle_task(
+        &mut self,
+        result: &crate::background::BackgroundResult,
+        editor: &mut Editor,
+    ) -> std::io::Result<()> {
+        match result {
+            crate::background::BackgroundResult::HighlightComplete {
+                file_path,
+                style_cache,
+                task_id,
+                ..
+            } => {
+                if let Some(buf) = editor
+                    .buffer_manager
+                    .buffers
+                    .iter_mut()
+                    .find(|b| &b.file_path == file_path)
+                {
+                    if *task_id >= crate::background::TaskId(buf.current_hl_task_id) {
+                        buf.current_hl_task_id = task_id.0;
+                        buf.hl
+                            .merge_caches(style_cache.clone(), std::collections::HashMap::new());
+                    }
+                }
+            }
+            crate::background::BackgroundResult::WrapComplete {
+                file_path,
+                wrap_snapshot,
+                task_id,
+                ..
+            } => {
+                if let Some(buf) = editor
+                    .buffer_manager
+                    .buffers
+                    .iter_mut()
+                    .find(|b| &b.file_path == file_path)
+                {
+                    if *task_id >= crate::background::TaskId(buf.current_wrap_task_id) {
+                        buf.current_wrap_task_id = task_id.0;
+                        buf.display_map.apply_wrap_snapshot(wrap_snapshot.clone());
+                    }
+                }
+            }
+            crate::background::BackgroundResult::ParseComplete {
+                file_path,
+                syntax_tree,
+                task_id,
+                ..
+            } => {
+                if editor.tree_sitter {
+                    if let Some(buf) = editor
+                        .buffer_manager
+                        .buffers
+                        .iter_mut()
+                        .find(|b| &b.file_path == file_path)
+                    {
+                        if *task_id >= crate::background::TaskId(buf.current_parse_task_id) {
+                            buf.current_parse_task_id = task_id.0;
+                            buf.syntax_tree = Some(syntax_tree.clone());
+                        }
+                    }
+                }
+            }
+        }
         Ok(())
     }
 }

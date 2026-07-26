@@ -1,4 +1,4 @@
-pub mod editor;
+pub mod textview;
 pub mod layout;
 pub mod statusbar;
 pub mod tabs;
@@ -31,7 +31,7 @@ impl Ui {
         // Create initial default window
         let main_win_id = 0;
         let mut main_win = window::Window::new(main_win_id, "Editor".to_string());
-        main_win.set_view(Box::new(editor::EditorView::new()));
+        main_win.set_view(Box::new(textview::TextView::new(main_win_id)));
         main_win.draw_border = false;
         windows.insert(main_win_id, main_win);
 
@@ -207,7 +207,7 @@ impl Ui {
         let cursor_screen_row = cursor_row - display_snapshot.scroll_y as i32;
         let cursor_screen_col = cursor_col - display_snapshot.scroll_x as i32;
 
-        editor::update_cursor_position(
+        textview::update_cursor_position(
             stdout,
             editor,
             &display_snapshot,

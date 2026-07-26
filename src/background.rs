@@ -19,6 +19,7 @@ pub struct TaskId(pub u64);
 pub enum BackgroundTask {
     /// Incremental or full-file syntax highlighting task.
     Highlight {
+        owner_id: usize,
         file_path: String,
         snapshot: BufferSnapshot,
         start_row: u32,
@@ -29,6 +30,7 @@ pub enum BackgroundTask {
     },
     /// Soft-wrap mapping recalculation task.
     Wrap {
+        owner_id: usize,
         file_path: String,
         snapshot: BufferSnapshot,
         wrap_width: Option<u32>,
@@ -37,6 +39,7 @@ pub enum BackgroundTask {
     },
     /// Full Tree-sitter parse of an immutable buffer snapshot.
     Parse {
+        owner_id: usize,
         file_path: String,
         snapshot: BufferSnapshot,
         grammar: Grammar,
@@ -49,18 +52,21 @@ pub enum BackgroundTask {
 pub enum BackgroundResult {
     /// Syntax highlighting calculations completed successfully.
     HighlightComplete {
+        owner_id: usize,
         file_path: String,
         style_cache: HashMap<u32, StyleCache>,
         task_id: TaskId,
     },
     /// Wrapping layout calculations completed successfully.
     WrapComplete {
+        owner_id: usize,
         file_path: String,
         wrap_snapshot: WrapSnapshot,
         task_id: TaskId,
     },
     /// Tree-sitter parse completed successfully.
     ParseComplete {
+        owner_id: usize,
         file_path: String,
         syntax_tree: SyntaxTree,
         task_id: TaskId,
@@ -85,6 +91,7 @@ impl BackgroundWorker {
             while let Ok(task) = task_rx.recv() {
                 match task {
                     BackgroundTask::Highlight {
+                        owner_id,
                         file_path,
                         snapshot,
                         start_row,
@@ -113,12 +120,14 @@ impl BackgroundWorker {
                         }
 
                         let _ = worker_tx.send(BackgroundResult::HighlightComplete {
+                            owner_id,
                             file_path,
                             style_cache,
                             task_id,
                         });
                     }
                     BackgroundTask::Wrap {
+                        owner_id,
                         file_path,
                         snapshot,
                         wrap_width,
@@ -140,12 +149,14 @@ impl BackgroundWorker {
                         }
 
                         let _ = worker_tx.send(BackgroundResult::WrapComplete {
+                            owner_id,
                             file_path,
                             wrap_snapshot,
                             task_id,
                         });
                     }
                     BackgroundTask::Parse {
+                        owner_id,
                         file_path,
                         snapshot,
                         grammar,
@@ -168,6 +179,7 @@ impl BackgroundWorker {
                         }
 
                         let _ = worker_tx.send(BackgroundResult::ParseComplete {
+                            owner_id,
                             file_path,
                             syntax_tree,
                             task_id,
@@ -205,6 +217,7 @@ mod tests {
         let latest_task_id = Arc::new(AtomicU64::new(1));
 
         worker.spawn_task(BackgroundTask::Parse {
+            owner_id: 42,
             file_path: "main.rs".into(),
             snapshot: buffer.snapshot().clone(),
             grammar: Grammar::Rust,
@@ -215,11 +228,13 @@ mod tests {
         let deadline = Instant::now() + Duration::from_secs(2);
         loop {
             if let Some(BackgroundResult::ParseComplete {
+                owner_id,
                 file_path,
                 syntax_tree,
                 task_id,
             }) = worker.try_recv()
             {
+                assert_eq!(owner_id, 42);
                 assert_eq!(file_path, "main.rs");
                 assert_eq!(task_id, TaskId(1));
                 assert_eq!(syntax_tree.root_kind(), "source_file");

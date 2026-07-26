@@ -88,60 +88,15 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
         // Drain any incoming background worker results
         while let Some(result) = editor.bg_worker.try_recv() {
-            match result {
-                background::BackgroundResult::HighlightComplete {
-                    file_path,
-                    style_cache,
-                    task_id,
-                } => {
-                    if let Some(buf) = editor
-                        .buffer_manager
-                        .buffers
-                        .iter_mut()
-                        .find(|b| b.file_path == file_path)
-                    {
-                        if task_id >= background::TaskId(buf.current_hl_task_id) {
-                            buf.current_hl_task_id = task_id.0;
-                            buf.hl
-                                .merge_caches(style_cache, std::collections::HashMap::new());
-                            should_redraw = true;
-                        }
-                    }
-                }
-                background::BackgroundResult::WrapComplete {
-                    file_path,
-                    wrap_snapshot,
-                    task_id,
-                } => {
-                    if let Some(buf) = editor
-                        .buffer_manager
-                        .buffers
-                        .iter_mut()
-                        .find(|b| b.file_path == file_path)
-                    {
-                        if task_id >= background::TaskId(buf.current_wrap_task_id) {
-                            buf.current_wrap_task_id = task_id.0;
-                            buf.display_map.apply_wrap_snapshot(wrap_snapshot);
-                            should_redraw = true;
-                        }
-                    }
-                }
-                background::BackgroundResult::ParseComplete {
-                    file_path,
-                    syntax_tree,
-                    task_id,
-                } => {
-                    if editor.tree_sitter
-                        && let Some(buf) = editor
-                            .buffer_manager
-                            .buffers
-                            .iter_mut()
-                            .find(|b| b.file_path == file_path)
-                        && task_id >= background::TaskId(buf.current_parse_task_id)
-                    {
-                        buf.current_parse_task_id = task_id.0;
-                        buf.syntax_tree = Some(syntax_tree);
-                    }
+            let owner_id = match &result {
+                background::BackgroundResult::HighlightComplete { owner_id, .. } => *owner_id,
+                background::BackgroundResult::WrapComplete { owner_id, .. } => *owner_id,
+                background::BackgroundResult::ParseComplete { owner_id, .. } => *owner_id,
+            };
+            if let Some(win) = ui.windows.get_mut(&owner_id) {
+                if let Some(ref mut view) = win.view {
+                    let _ = view.handle_task(&result, &mut editor);
+                    should_redraw = true;
                 }
             }
         }
@@ -162,15 +117,6 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         }
 
         ui.update(&mut editor, &mut should_sync)?;
-
-        let editor_rect = ui
-            .cached_layouts
-            .iter()
-            .find(|(id, _)| *id == 0)
-            .map(|(_, rect)| *rect)
-            .unwrap_or(parent_rect);
-        let editor_inner_height = editor_rect.height.saturating_sub(2);
-        let visible_rows = editor_inner_height as i32;
 
         if !cursor_visible && last_activity.elapsed() >= Duration::from_millis(250) {
             cursor_visible = true;
