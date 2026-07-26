@@ -15,6 +15,7 @@ mod selections;
 mod theme;
 mod treesitter;
 mod ui;
+mod colorscheme;
 
 use std::{
     io::{Write, stdout},
