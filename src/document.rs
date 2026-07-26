@@ -412,7 +412,43 @@ impl Document {
                 let cursors = self.selections.selections.clone();
                 for cursor in cursors.iter() {
                     let mut updated = false;
-                    if editor.tree_sitter {
+                    if *ch == 'w' {
+                        let start_sel = cursor.move_to_word(false, &self.buffer);
+                        let end_sel = cursor.move_to_word_end(false, &self.buffer);
+                        let next = Selection {
+                            id: cursor.id,
+                            start: start_sel.head(),
+                            end: end_sel.head(),
+                            reversed: false,
+                            goal: SelectionGoal::None,
+                        };
+                        self.selections.update(&self.buffer, &next);
+                        updated = true;
+                    } else if *ch == 'p' {
+                        let prev_p = cursor.move_to_previous_paragraph(false, &self.buffer).head().to_point(&self.buffer);
+                        let next_p = cursor.move_to_next_paragraph(false, &self.buffer).head().to_point(&self.buffer);
+                        let start_row = if prev_p.row < self.buffer.row_count() && self.buffer.line_len(prev_p.row) == 0 {
+                            prev_p.row + 1
+                        } else {
+                            prev_p.row
+                        };
+                        let end_row = if next_p.row > 0 && self.buffer.line_len(next_p.row) == 0 {
+                            next_p.row - 1
+                        } else {
+                            next_p.row
+                        };
+                        let start_offset = Point { row: start_row, column: 0 }.to_offset(&self.buffer);
+                        let end_offset = Point { row: end_row, column: self.buffer.line_len(end_row) }.to_offset(&self.buffer).saturating_sub(1);
+                        let next = Selection {
+                            id: cursor.id,
+                            start: self.buffer.anchor_at(start_offset, Bias::Left),
+                            end: self.buffer.anchor_at(end_offset, Bias::Right),
+                            reversed: false,
+                            goal: SelectionGoal::None,
+                        };
+                        self.selections.update(&self.buffer, &next);
+                        updated = true;
+                    } else if editor.tree_sitter {
                         if let Some(syntax_tree) = editor.buffer_manager.active().syntax_tree.as_ref() {
                             let byte = self.buffer.offset_for_anchor(&cursor.head());
                             if let Some((start_node, end_node)) = syntax_tree.delimiter_boundaries_at_byte(byte) {
@@ -455,7 +491,41 @@ impl Document {
                 let cursors = self.selections.selections.clone();
                 for cursor in cursors.iter() {
                     let mut updated = false;
-                    if editor.tree_sitter {
+                    if *ch == 'w' {
+                        let start_sel = cursor.move_to_word(false, &self.buffer);
+                        let next_word_head = cursor.move_to_next_word(false, &self.buffer).head();
+                        let next_word_offset = self.buffer.offset_for_anchor(&next_word_head);
+                        let end_offset = self.buffer.clip_offset(next_word_offset.saturating_sub(1), Bias::Left);
+                        let next = Selection {
+                            id: cursor.id,
+                            start: start_sel.head(),
+                            end: self.buffer.anchor_at(end_offset, Bias::Right),
+                            reversed: false,
+                            goal: SelectionGoal::None,
+                        };
+                        self.selections.update(&self.buffer, &next);
+                        updated = true;
+                    } else if *ch == 'p' {
+                        let prev_p = cursor.move_to_previous_paragraph(false, &self.buffer).head().to_point(&self.buffer);
+                        let next_p = cursor.move_to_next_paragraph(false, &self.buffer).head().to_point(&self.buffer);
+                        let start_row = if prev_p.row < self.buffer.row_count() && self.buffer.line_len(prev_p.row) == 0 {
+                            prev_p.row + 1
+                        } else {
+                            prev_p.row
+                        };
+                        let end_row = next_p.row;
+                        let start_offset = Point { row: start_row, column: 0 }.to_offset(&self.buffer);
+                        let end_offset = Point { row: end_row, column: self.buffer.line_len(end_row) }.to_offset(&self.buffer);
+                        let next = Selection {
+                            id: cursor.id,
+                            start: self.buffer.anchor_at(start_offset, Bias::Left),
+                            end: self.buffer.anchor_at(end_offset, Bias::Right),
+                            reversed: false,
+                            goal: SelectionGoal::None,
+                        };
+                        self.selections.update(&self.buffer, &next);
+                        updated = true;
+                    } else if editor.tree_sitter {
                         if let Some(syntax_tree) = editor.buffer_manager.active().syntax_tree.as_ref() {
                             let byte = self.buffer.offset_for_anchor(&cursor.head());
                             if let Some((start_node, end_node)) = syntax_tree.delimiter_boundaries_at_byte(byte) {
@@ -1575,5 +1645,51 @@ mod tests {
 
         let document = &editor.buffer_manager.active().doc;
         assert_eq!(document.buffer().row_text(0), "def");
+    }
+
+    #[test]
+    fn test_delete_inner_word() {
+        let mut editor = Editor::new(Vec::new()).unwrap();
+        editor.apply_active_action(&Action::InsertText("abc def ghi".into()));
+        // Move to 'e' in 'def'
+        editor.apply_active_action(&Action::MoveLeft {
+            select: false,
+            count: 6,
+        });
+
+        // diw
+        editor.apply_active_action(&Action::DeleteMotion {
+            count: 1,
+            motion: Box::new(Action::MoveWithinCharacter {
+                count: 1,
+                ch: 'w',
+            }),
+        });
+
+        let document = &editor.buffer_manager.active().doc;
+        assert_eq!(document.buffer().row_text(0), "abc  ghi");
+    }
+
+    #[test]
+    fn test_delete_around_word() {
+        let mut editor = Editor::new(Vec::new()).unwrap();
+        editor.apply_active_action(&Action::InsertText("abc def ghi".into()));
+        // Move to 'e' in 'def'
+        editor.apply_active_action(&Action::MoveLeft {
+            select: false,
+            count: 6,
+        });
+
+        // daw
+        editor.apply_active_action(&Action::DeleteMotion {
+            count: 1,
+            motion: Box::new(Action::MoveAroundCharacter {
+                count: 1,
+                ch: 'w',
+            }),
+        });
+
+        let document = &editor.buffer_manager.active().doc;
+        assert_eq!(document.buffer().row_text(0), "abc ghi");
     }
 }

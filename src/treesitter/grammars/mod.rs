@@ -14,10 +14,22 @@ pub enum Grammar {
     TypeScript,
     Tsx,
     Zig,
+    Java,
+    CSharp,
+    Cpp,
+    PowerShell,
+    Php,
+    Lua,
+    Assembly,
+    Ruby,
+    Dart,
+    Swift,
+    R,
+    Groovy,
 }
 
 impl Grammar {
-    pub const ALL: [Self; 12] = [
+    pub const ALL: [Self; 24] = [
         Self::Bash,
         Self::C,
         Self::Css,
@@ -30,6 +42,18 @@ impl Grammar {
         Self::TypeScript,
         Self::Tsx,
         Self::Zig,
+        Self::Java,
+        Self::CSharp,
+        Self::Cpp,
+        Self::PowerShell,
+        Self::Php,
+        Self::Lua,
+        Self::Assembly,
+        Self::Ruby,
+        Self::Dart,
+        Self::Swift,
+        Self::R,
+        Self::Groovy,
     ];
 
     pub fn from_path(path: &str) -> Option<Self> {
@@ -65,6 +89,18 @@ impl Grammar {
             "ts" | "mts" | "cts" => Some(Self::TypeScript),
             "tsx" => Some(Self::Tsx),
             "zig" => Some(Self::Zig),
+            "java" => Some(Self::Java),
+            "cs" => Some(Self::CSharp),
+            "cpp" | "cc" | "cxx" | "hpp" | "h++" => Some(Self::Cpp),
+            "ps1" | "psm1" | "psd1" => Some(Self::PowerShell),
+            "php" | "phtml" => Some(Self::Php),
+            "lua" => Some(Self::Lua),
+            "asm" | "s" => Some(Self::Assembly),
+            "rb" | "ru" => Some(Self::Ruby),
+            "dart" => Some(Self::Dart),
+            "swift" => Some(Self::Swift),
+            "r" | "rmd" => Some(Self::R),
+            "groovy" | "gvy" | "gy" | "gsh" => Some(Self::Groovy),
             _ => None,
         }
     }
@@ -83,6 +119,18 @@ impl Grammar {
             Self::TypeScript => "TypeScript",
             Self::Tsx => "TSX",
             Self::Zig => "Zig",
+            Self::Java => "Java",
+            Self::CSharp => "C#",
+            Self::Cpp => "C++",
+            Self::PowerShell => "PowerShell",
+            Self::Php => "PHP",
+            Self::Lua => "Lua",
+            Self::Assembly => "Assembly",
+            Self::Ruby => "Ruby",
+            Self::Dart => "Dart",
+            Self::Swift => "Swift",
+            Self::R => "R",
+            Self::Groovy => "Groovy",
         }
     }
 
@@ -100,6 +148,18 @@ impl Grammar {
             Self::TypeScript => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
             Self::Tsx => tree_sitter_typescript::LANGUAGE_TSX.into(),
             Self::Zig => tree_sitter_zig::LANGUAGE.into(),
+            Self::Java => tree_sitter_java::LANGUAGE.into(),
+            Self::CSharp => tree_sitter_c_sharp::LANGUAGE.into(),
+            Self::Cpp => tree_sitter_cpp::LANGUAGE.into(),
+            Self::PowerShell => tree_sitter_powershell::LANGUAGE.into(),
+            Self::Php => tree_sitter_php::LANGUAGE_PHP.into(),
+            Self::Lua => tree_sitter_lua::LANGUAGE.into(),
+            Self::Assembly => tree_sitter_asm::LANGUAGE.into(),
+            Self::Ruby => tree_sitter_ruby::LANGUAGE.into(),
+            Self::Dart => tree_sitter_dart::LANGUAGE.into(),
+            Self::Swift => tree_sitter_swift::LANGUAGE.into(),
+            Self::R => tree_sitter_r::LANGUAGE.into(),
+            Self::Groovy => tree_sitter_groovy::LANGUAGE.into(),
         }
     }
 }

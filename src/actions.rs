@@ -218,12 +218,6 @@ pub enum Action {
         select: bool,
         count: u32,
     },
-    SelectInPair {
-        kind: char,
-    },
-    SelectAroundPair {
-        kind: char,
-    },
 
     MoveToNextCharacter {
         count: u32,
@@ -481,8 +475,6 @@ impl std::fmt::Display for Action {
             Action::MoveToPreviousArgument { count, .. } => {
                 write!(f, "MoveToPreviousArgument({})", count)
             }
-            Action::SelectInPair { kind } => write!(f, "SelectInPair({})", kind),
-            Action::SelectAroundPair { kind } => write!(f, "SelectAroundPair({})", kind),
             Action::DeleteMotion { count, motion } => {
                 write!(f, "DeleteMotion({}, {})", count, motion)
             }
@@ -878,8 +870,6 @@ impl Action {
                 end_line,
             },
 
-            Action::SelectInPair { .. } | Action::SelectAroundPair { .. } => todo!(),
-
             Action::Clear => Action::Clear,
             Action::NoOp => Action::NoOp,
             Action::Quit => Action::Quit,
@@ -900,14 +890,8 @@ impl Action {
                 till,
                 count,
             },
-            Action::MoveWithinCharacter { .. } => Action::MoveWithinCharacter {
-                count,
-                ch,
-            },
-            Action::MoveAroundCharacter { .. } => Action::MoveAroundCharacter {
-                count,
-                ch,
-            },
+            Action::MoveWithinCharacter { .. } => Action::MoveWithinCharacter { count, ch },
+            Action::MoveAroundCharacter { .. } => Action::MoveAroundCharacter { count, ch },
             Action::InsertText(_) => Action::InsertText(ch.to_string()),
             _ => Action::NoOp,
         }
