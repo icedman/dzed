@@ -2,13 +2,20 @@
 import sys
 import os
 import json
+import re
 
-def convert_json_to_toml(json_path, toml_path):
+def convert_json_to_toml(json_path, toml_path, repo_url=None):
     with open(json_path, 'r', encoding='utf-8') as f:
         data = json.load(f)
         
+    if os.path.exists(json_path):
+        os.remove(json_path)
+        
     metadata_in = data.get("metadata", {})
-    name = metadata_in.get("name", "Converted Theme")
+    name = metadata_in.get("name")
+    if not name or name == "unknown":
+        print("Error: Metadata name is unknown or missing.", file=sys.stderr)
+        sys.exit(1)
     bg_type = metadata_in.get("background", "dark")
     
     highlights = data.get("highlights", {})
@@ -86,11 +93,21 @@ def convert_json_to_toml(json_path, toml_path):
     if "caret" not in ui and "foreground" in ui:
         ui["caret"] = "foreground"
         
+    author = ""
+    github = ""
+    if repo_url:
+        github = repo_url
+        match = re.search(r'(?:github\.com[:/])([^/]+)', repo_url)
+        if match:
+            author = f"github/{match.group(1)}"
+            
     with open(toml_path, 'w', encoding='utf-8') as f:
         f.write("[metadata]\n")
         f.write(f'name = "{name}"\n')
         f.write(f'description = ""\n')
-        f.write(f'author = ""\n')
+        f.write(f'author = "{author}"\n')
+        if github:
+            f.write(f'github = "{github}"\n')
         f.write(f'type = "{bg_type}"\n\n')
         
         f.write("[colors]\n")
@@ -111,12 +128,23 @@ def convert_json_to_toml(json_path, toml_path):
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: convert_json_to_toml.py <path_to_theme_json> [<output_toml_path>]")
+        print("Usage: convert_json_to_toml.py <path_to_theme_json> [<output_toml_path>] [<github_repo_url>]")
         sys.exit(1)
         
     json_path = sys.argv[1]
-    if len(sys.argv) > 2:
+    toml_path = None
+    repo_url = None
+    
+    if len(sys.argv) == 3:
+        arg = sys.argv[2]
+        if arg.startswith("http") or arg.startswith("git@"):
+            repo_url = arg
+            toml_path = json_path.replace(".json", ".toml")
+        else:
+            toml_path = arg
+    elif len(sys.argv) >= 4:
         toml_path = sys.argv[2]
+        repo_url = sys.argv[3]
     else:
         toml_path = json_path.replace(".json", ".toml")
         
@@ -124,7 +152,7 @@ def main():
         print(f"Error: File '{json_path}' not found.")
         sys.exit(1)
         
-    convert_json_to_toml(json_path, toml_path)
+    convert_json_to_toml(json_path, toml_path, repo_url=repo_url)
 
 if __name__ == "__main__":
     main()

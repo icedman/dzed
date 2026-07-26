@@ -4,13 +4,20 @@ import os
 import subprocess
 import tempfile
 import json
+import re
 
-def convert_json_to_toml(json_path, toml_path):
+def convert_json_to_toml(json_path, toml_path, repo_url=None):
     with open(json_path, 'r', encoding='utf-8') as f:
         data = json.load(f)
         
+    if os.path.exists(json_path):
+        os.remove(json_path)
+        
     metadata_in = data.get("metadata", {})
-    name = metadata_in.get("name", "Converted Theme")
+    name = metadata_in.get("name")
+    if not name or name == "unknown":
+        print("Error: Metadata name is unknown or missing.", file=sys.stderr)
+        sys.exit(1)
     bg_type = metadata_in.get("background", "dark")
     
     highlights = data.get("highlights", {})
@@ -88,11 +95,21 @@ def convert_json_to_toml(json_path, toml_path):
     if "caret" not in ui and "foreground" in ui:
         ui["caret"] = "foreground"
         
+    author = ""
+    github = ""
+    if repo_url:
+        github = repo_url
+        match = re.search(r'(?:github\.com[:/])([^/]+)', repo_url)
+        if match:
+            author = f"github/{match.group(1)}"
+            
     with open(toml_path, 'w', encoding='utf-8') as f:
         f.write("[metadata]\n")
         f.write(f'name = "{name}"\n')
         f.write(f'description = ""\n')
-        f.write(f'author = ""\n')
+        f.write(f'author = "{author}"\n')
+        if github:
+            f.write(f'github = "{github}"\n')
         f.write(f'type = "{bg_type}"\n\n')
         
         f.write("[colors]\n")
@@ -145,10 +162,7 @@ def main():
         
         toml_path = os.path.join(output_dir, f"{scheme_name}.toml")
         print(f"Converting JSON to TOML color scheme format...")
-        convert_json_to_toml(json_path, toml_path)
-        
-        if os.path.exists(json_path):
-            os.remove(json_path)
+        convert_json_to_toml(json_path, toml_path, repo_url=repo_url)
             
         print(f"\nSuccessfully unified export completed! Generated theme: {toml_path}")
 
