@@ -38,7 +38,10 @@ pub fn handle_event(
 
                 if editor.mode == Mode::Command {
                     if matches!(action, Action::InsertNewLine { .. }) {
-                        if let Some(crate::command::ExResult::Exit) = editor.command.ex() {
+                        let mut command = std::mem::replace(&mut editor.command, crate::command::Command::new());
+                        let ex_res = command.ex(editor);
+                        editor.command = command;
+                        if let Some(crate::command::ExResult::Exit) = ex_res {
                             return HandleEvent::Exit;
                         }
                         editor.command.clear();

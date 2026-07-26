@@ -5,6 +5,8 @@ mod command;
 mod display;
 mod document;
 mod editor;
+mod ex;
+mod exmap;
 mod highlight;
 mod input;
 mod keymap;

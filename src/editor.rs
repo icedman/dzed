@@ -116,7 +116,7 @@ pub struct Editor {
     pub show_line_numbers: bool,
     
     // commands
-    pub command: crate::command::VimCommand,
+    pub command: crate::command::Command,
 
     // services
     pub bg_worker: crate::background::BackgroundWorker,
@@ -174,7 +174,7 @@ impl Editor {
 
         Ok(Self {
             buffer_manager,
-            command: crate::command::VimCommand::new(),
+            command: crate::command::Command::new(),
             mode: Mode::Normal,
             theme,
             wrap: false,
