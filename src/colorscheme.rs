@@ -22,6 +22,7 @@ pub struct ColorSchemeFile {
 #[derive(Debug, Clone)]
 pub struct ColorScheme {
     pub metadata: Metadata,
+    pub colors: HashMap<String, crossterm::style::Color>,
     pub ui: HashMap<String, crossterm::style::Color>,
     pub syntax: HashMap<String, crossterm::style::Color>,
 }
@@ -30,6 +31,13 @@ impl ColorScheme {
     pub fn load_from_file<P: AsRef<Path>>(path: P) -> Result<Self, Box<dyn std::error::Error>> {
         let contents = fs::read_to_string(path)?;
         let parsed: ColorSchemeFile = toml::from_str(&contents)?;
+
+        let mut colors = HashMap::new();
+        for (k, v) in &parsed.colors {
+            if let Some(color) = parse_hex_color(v) {
+                colors.insert(k.clone(), color);
+            }
+        }
 
         let mut ui = HashMap::new();
         for (k, v) in &parsed.ui {
@@ -47,6 +55,7 @@ impl ColorScheme {
 
         Ok(Self {
             metadata: parsed.metadata,
+            colors,
             ui,
             syntax,
         })
@@ -146,6 +155,13 @@ mod tests {
         let selection_color = scheme.ui.get("selection").unwrap();
         let comment_color = scheme.syntax.get("comment").unwrap();
         let function_color = scheme.syntax.get("function").unwrap();
+
+        // Verify resolved palette colors map
+        let base_palette = scheme.colors.get("base").unwrap();
+        assert_eq!(
+            base_palette,
+            &crossterm::style::Color::Rgb { r: 30, g: 30, b: 46 }
+        );
 
         assert_eq!(
             bg_color,
