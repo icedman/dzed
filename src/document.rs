@@ -144,6 +144,7 @@ impl Document {
         // Detect direction based on motion/action
         let moving_right = match action {
             Action::MoveRight { .. }
+            | Action::MoveDown { .. }
             | Action::MoveToWord { .. }
             | Action::MoveToWordEnd { .. }
             | Action::MoveToBigWord { .. }
@@ -226,8 +227,6 @@ impl Document {
             self.selections.sync_line(&self.buffer);
         }
     }
-
-
 
     pub fn select_similar(&mut self) {
         // if !self.has_selection() {

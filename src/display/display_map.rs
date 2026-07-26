@@ -71,6 +71,9 @@ impl DisplayMap {
     }
 
     pub fn fold(&mut self, folds: Vec<crate::display::fold_map::Fold>, buffer: BufferSnapshot) {
+        if self.folds == folds && self.original_buffer.version == buffer.version {
+            return;
+        }
         self.folds = folds;
         self.original_buffer = buffer.clone();
         self.fold_map = crate::display::fold_map::FoldMap::new(&buffer, self.folds.clone());
@@ -103,6 +106,9 @@ impl DisplayMap {
     }
 
     pub fn sync(&mut self, buffer: BufferSnapshot) {
+        if self.original_buffer.version == buffer.version {
+            return;
+        }
         self.original_buffer = buffer.clone();
         self.fold_map = crate::display::fold_map::FoldMap::new(&buffer, self.folds.clone());
         self.wrap_map = WrapMap::new(self.fold_map.folded_buffer().clone(), self.wrap_width);
@@ -267,11 +273,11 @@ mod tests {
         let snapshot = display_map.snapshot();
         assert_eq!(snapshot.row_count(), 2);
         assert_eq!(snapshot.line_text(0), "first");
-        assert_eq!(snapshot.line_text(1), "{..}fourth");
+        assert_eq!(snapshot.line_text(1), "⋯fourth");
 
         let display_point = snapshot.point_to_display_point(Point::new(3, 2));
         assert_eq!(display_point.row(), 1);
-        assert_eq!(display_point.column(), 6);
+        assert_eq!(display_point.column(), 5);
 
         let orig_point = snapshot.display_point_to_point(display_point);
         assert_eq!(orig_point, Point::new(3, 2));

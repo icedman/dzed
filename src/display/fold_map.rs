@@ -24,6 +24,13 @@ pub struct FoldMap {
 
 impl FoldMap {
     pub fn new(buffer: &BufferSnapshot, mut folds: Vec<Fold>) -> Self {
+        if folds.is_empty() {
+            return Self {
+                folds: Vec::new(),
+                folded_buffer: buffer.clone(),
+                mappings: Vec::new(),
+            };
+        }
         folds.sort();
         // Remove nested or overlapping folds (keep outermost)
         let mut clean_folds: Vec<Fold> = Vec::new();
@@ -39,7 +46,7 @@ impl FoldMap {
             }
         }
 
-        let mut folded_text = String::new();
+        let mut folded_text = String::with_capacity(buffer.len());
         let mut mappings = Vec::new();
         
         let mut current_orig = Point::zero();
@@ -49,8 +56,9 @@ impl FoldMap {
             // Text before fold
             if fold.start > current_orig {
                 let chunk_range = current_orig..fold.start;
-                let chunk: String = buffer.text_for_range(chunk_range.clone()).collect();
-                folded_text.push_str(&chunk);
+                for chunk in buffer.text_for_range(chunk_range.clone()) {
+                    folded_text.push_str(chunk);
+                }
 
                 let len_point = chunk_range.end - chunk_range.start;
                 let next_fold = current_fold + len_point;
@@ -80,8 +88,9 @@ impl FoldMap {
         let max_orig = buffer.max_point();
         if max_orig > current_orig {
             let chunk_range = current_orig..max_orig;
-            let chunk: String = buffer.text_for_range(chunk_range.clone()).collect();
-            folded_text.push_str(&chunk);
+            for chunk in buffer.text_for_range(chunk_range.clone()) {
+                folded_text.push_str(chunk);
+            }
 
             let len_point = chunk_range.end - chunk_range.start;
             let next_fold = current_fold + len_point;
@@ -107,30 +116,62 @@ impl FoldMap {
     }
 
     pub fn to_folded_point(&self, point: Point) -> Point {
-        for mapping in &self.mappings {
-            if point >= mapping.original_range.start && point <= mapping.original_range.end {
+        if self.mappings.is_empty() {
+            return point;
+        }
+        match self.mappings.binary_search_by(|mapping| {
+            if point < mapping.original_range.start {
+                std::cmp::Ordering::Greater
+            } else if point > mapping.original_range.end {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Equal
+            }
+        }) {
+            Ok(idx) => {
+                let mut matched_idx = idx;
+                while matched_idx > 0 && point >= self.mappings[matched_idx - 1].original_range.start && point <= self.mappings[matched_idx - 1].original_range.end {
+                    matched_idx -= 1;
+                }
+                let mapping = &self.mappings[matched_idx];
                 if mapping.is_fold {
-                    return mapping.folded_range.start;
+                    mapping.folded_range.start
                 } else {
                     let offset = point - mapping.original_range.start;
-                    return mapping.folded_range.start + offset;
+                    mapping.folded_range.start + offset
                 }
             }
+            Err(_) => Point::zero(),
         }
-        Point::zero()
     }
 
     pub fn from_folded_point(&self, point: Point) -> Point {
-        for mapping in &self.mappings {
-            if point >= mapping.folded_range.start && point <= mapping.folded_range.end {
+        if self.mappings.is_empty() {
+            return point;
+        }
+        match self.mappings.binary_search_by(|mapping| {
+            if point < mapping.folded_range.start {
+                std::cmp::Ordering::Greater
+            } else if point > mapping.folded_range.end {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Equal
+            }
+        }) {
+            Ok(idx) => {
+                let mut matched_idx = idx;
+                while matched_idx > 0 && point >= self.mappings[matched_idx - 1].folded_range.start && point <= self.mappings[matched_idx - 1].folded_range.end {
+                    matched_idx -= 1;
+                }
+                let mapping = &self.mappings[matched_idx];
                 if mapping.is_fold {
-                    return mapping.original_range.start;
+                    mapping.original_range.start
                 } else {
                     let offset = point - mapping.folded_range.start;
-                    return mapping.original_range.start + offset;
+                    mapping.original_range.start + offset
                 }
             }
+            Err(_) => Point::zero(),
         }
-        Point::zero()
     }
 }

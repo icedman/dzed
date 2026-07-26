@@ -13,8 +13,6 @@ clock = { path = "./crates/zed/crates/clock" }
 language = { path = "./crates/zed/crates/language" }
 multi_buffer = { path = "./crates/zed/crates/multi_buffer" }
 collections = { path = "./crates/zed/crates/collections" }
-project = { package = "project_mock", path = "./crates/project_mock" }
-lsp = { package = "lsp_mock", path = "./crates/lsp_mock" }
 settings = { path = "./crates/zed/crates/settings" }
 theme = { path = "./crates/zed/crates/theme" }
 util = { path = "./crates/zed/crates/util" }
@@ -27,6 +25,8 @@ rand = "0.8.5"
 log = "0.4"
 unicode-segmentation = "1.12.0"
 ui = { path = "./crates/zed/crates/ui" }
+smallvec = "1.13"
+libloading = "0.9.0"
 tree-sitter = "0.26"
 tree-sitter-bash = "0.25.1"
 tree-sitter-c = "0.24.1"
@@ -39,8 +39,6 @@ tree-sitter-python = "0.25"
 tree-sitter-rust = "0.24"
 tree-sitter-typescript = "0.23"
 tree-sitter-zig = "1.1.2"
-smallvec = "1.13"
-libloading = "0.9.0"
 tree-sitter-java = "0.23.5"
 tree-sitter-c-sharp = "0.23.5"
 tree-sitter-cpp = "0.23.4"

@@ -5,7 +5,6 @@ use syntect::{easy::HighlightLines, highlighting::ThemeSet, parsing::SyntaxSet};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Metadata {
