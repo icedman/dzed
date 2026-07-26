@@ -1270,6 +1270,7 @@ impl Document {
 
             if start != end {
                 delete_count += 1;
+                self.remove_overlapping_folds(start, end);
                 self.buffer.edit([(start..end, "")]);
             }
         }
@@ -1336,10 +1337,19 @@ impl Document {
                     (start, end)
                 };
                 if start != end {
+                    self.remove_overlapping_folds(start, end);
                     self.buffer.edit([(start..end, "")]);
                 }
             }
         }
+    }
+
+    fn remove_overlapping_folds(&mut self, start: usize, end: usize) {
+        let start_point = start.to_point(&self.buffer);
+        let end_point = end.to_point(&self.buffer);
+        self.folds.retain(|fold| {
+            !(fold.end > start_point && fold.start < end_point)
+        });
     }
 
     pub fn selection(&self) -> Selection<Anchor> {
@@ -1823,5 +1833,24 @@ mod tests {
         editor.apply_active_action(&Action::Unfold { count: 1 });
         let active_buffer = editor.buffer_manager.active();
         assert_eq!(active_buffer.doc.folds.len(), 0);
+    }
+
+    #[test]
+    fn test_fold_deletion() {
+        let mut editor = Editor::new(Vec::new()).unwrap();
+        let text = "line 1\nline 2\nline 3\nline 4";
+        editor.buffer_manager.active_mut().doc = Document::new_with_text(text);
+        
+        let fold = crate::display::fold_map::Fold {
+            start: Point::new(1, 0),
+            end: Point::new(2, 6),
+        };
+        editor.buffer_manager.active_mut().doc.folds.push(fold);
+        assert_eq!(editor.buffer_manager.active().doc.folds.len(), 1);
+
+        editor.apply_active_action(&Action::MoveDown { select: false, count: 1 });
+        editor.apply_active_action(&Action::Delete { count: 1 });
+
+        assert_eq!(editor.buffer_manager.active().doc.folds.len(), 0);
     }
 }
