@@ -370,6 +370,14 @@ pub enum Action {
         motion: Box<Action>,
     },
     InsertTab,
+    DeleteLines {
+        start_line: u32,
+        end_line: u32,
+    },
+    YankLines {
+        start_line: u32,
+        end_line: u32,
+    },
 }
 
 impl std::fmt::Display for Action {
@@ -515,6 +523,12 @@ impl std::fmt::Display for Action {
                 write!(f, "InsertNewLineMotion({}, {})", count, motion)
             }
             Action::InsertTab => write!(f, "InsertTab"),
+            Action::DeleteLines { start_line, end_line } => {
+                write!(f, "DeleteLines({}, {})", start_line, end_line)
+            }
+            Action::YankLines { start_line, end_line } => {
+                write!(f, "YankLines({}, {})", start_line, end_line)
+            }
         }
     }
 }
@@ -843,6 +857,8 @@ impl Action {
                 motion: motion,
             },
             Action::InsertTab => Action::InsertTab,
+            Action::DeleteLines { start_line, end_line } => Action::DeleteLines { start_line, end_line },
+            Action::YankLines { start_line, end_line } => Action::YankLines { start_line, end_line },
 
             Action::SelectInPair { .. } | Action::SelectAroundPair { .. } => todo!(),
 

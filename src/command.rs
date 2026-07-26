@@ -11,6 +11,7 @@ pub struct Command {
     pub search_text: String,
     pub regex_string: String,
     pub regex: Option<Regex>,
+    pub exmap: crate::exmap::ExMap,
 }
 
 impl Command {
@@ -25,6 +26,7 @@ impl Command {
             search_text: String::new(),
             regex_string: String::new(),
             regex: None,
+            exmap: crate::exmap::ExMap::new(),
         }
     }
 
@@ -47,10 +49,36 @@ impl Command {
         rope.chunks_in_range(0..rope.len()).collect()
     }
 
-    pub fn ex(&mut self, _editor: &mut crate::editor::Editor) -> Option<ExResult> {
+    pub fn try_resolve_action(&self, cmd: &crate::ex::ExCommand, _editor: &mut crate::editor::Editor) -> crate::actions::Action {
+        if let Some(range) = &cmd.range {
+            if let (Some(start), Some(end)) = (range.start_line, range.end_line) {
+                match cmd.op {
+                    crate::ex::Ex::Delete => {
+                        return crate::actions::Action::DeleteLines {
+                            start_line: start,
+                            end_line: end,
+                        };
+                    }
+                    crate::ex::Ex::Yank => {
+                        return crate::actions::Action::YankLines {
+                            start_line: start,
+                            end_line: end,
+                        };
+                    }
+                    _ => {}
+                }
+            }
+        }
+        crate::actions::Action::NoOp
+    }
+
+    pub fn ex(&mut self, editor: &mut crate::editor::Editor) -> Option<ExResult> {
         let cmd_text = self.get_text();
-        let map = crate::exmap::ExMap::new();
-        if let Some(resolved) = map.try_resolve(&cmd_text) {
+        if let Some(resolved) = self.exmap.try_resolve(&cmd_text) {
+            let action = self.try_resolve_action(&resolved, editor);
+            if action != crate::actions::Action::NoOp {
+                editor.apply_active_action(&action);
+            }
             match resolved.op {
                 crate::ex::Ex::Quit => Some(ExResult::Exit),
                 _ => None,
@@ -64,4 +92,25 @@ impl Command {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExResult {
     Exit,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::editor::Editor;
+    use crate::actions::Action;
+
+    #[test]
+    fn test_try_resolve_action() {
+        let mut editor = Editor::new(Vec::new()).unwrap();
+        let cmd = Command::new();
+        
+        let resolved = cmd.exmap.try_resolve("1,10d").unwrap();
+        let act = cmd.try_resolve_action(&resolved, &mut editor);
+        assert_eq!(act, Action::DeleteLines { start_line: 1, end_line: 10 });
+
+        let resolved2 = cmd.exmap.try_resolve("5y").unwrap();
+        let act2 = cmd.try_resolve_action(&resolved2, &mut editor);
+        assert_eq!(act2, Action::YankLines { start_line: 5, end_line: 5 });
+    }
 }

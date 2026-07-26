@@ -623,6 +623,46 @@ impl Document {
                     }
                 }
             }
+            Action::DeleteLines { start_line, end_line } => {
+                let start_row = start_line.saturating_sub(1);
+                let end_row = end_line.saturating_sub(1);
+                
+                let max_row = self.buffer.row_count().saturating_sub(1);
+                let start_row = std::cmp::min(start_row, max_row);
+                let end_row = std::cmp::min(end_row, max_row);
+                let start_row = std::cmp::min(start_row, end_row);
+
+                let start_offset = Point::new(start_row, 0).to_offset(&self.buffer);
+                let end_offset = if end_row + 1 < self.buffer.row_count() {
+                    Point::new(end_row + 1, 0).to_offset(&self.buffer)
+                } else {
+                    Point::new(end_row, self.buffer.line_len(end_row)).to_offset(&self.buffer)
+                };
+
+                let text: String = self.buffer.as_rope().chunks_in_range(start_offset..end_offset).collect();
+                editor.clipboard.borrow_mut().set_lines(text);
+
+                self.buffer.edit([(start_offset..end_offset, "")]);
+            }
+            Action::YankLines { start_line, end_line } => {
+                let start_row = start_line.saturating_sub(1);
+                let end_row = end_line.saturating_sub(1);
+                
+                let max_row = self.buffer.row_count().saturating_sub(1);
+                let start_row = std::cmp::min(start_row, max_row);
+                let end_row = std::cmp::min(end_row, max_row);
+                let start_row = std::cmp::min(start_row, end_row);
+
+                let start_offset = Point::new(start_row, 0).to_offset(&self.buffer);
+                let end_offset = if end_row + 1 < self.buffer.row_count() {
+                    Point::new(end_row + 1, 0).to_offset(&self.buffer)
+                } else {
+                    Point::new(end_row, self.buffer.line_len(end_row)).to_offset(&self.buffer)
+                };
+
+                let text: String = self.buffer.as_rope().chunks_in_range(start_offset..end_offset).collect();
+                editor.clipboard.borrow_mut().set_lines(text);
+            }
             Action::DeleteLine { count } | Action::ChangeLine { count } => {
                 let selections = self.selections.selections.clone();
                 let point = self.selections.point;
