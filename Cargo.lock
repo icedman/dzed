@@ -5514,6 +5514,7 @@ dependencies = [
  "syntect",
  "text",
  "theme",
+ "toml",
  "tree-sitter",
  "tree-sitter-asm",
  "tree-sitter-bash",
