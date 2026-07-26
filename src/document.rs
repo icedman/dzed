@@ -104,14 +104,33 @@ impl Document {
                 let head_point = selection.head().to_point(&self.buffer);
                 let head_offset = head_point.to_offset(&self.buffer);
                 if let Some(block) = syntax_tree.enclosing_block_at_byte(head_offset) {
-                    let range = block.byte_range.clone();
-                    if seen_ranges.insert(range) {
-                        let fold = crate::display::fold_map::Fold {
-                            start: Point::new(block.start_position.row as u32, block.start_position.column as u32),
-                            end: Point::new(block.end_position.row as u32, block.end_position.column as u32),
+                    if !editor.fold_multiline_only || block.end_position.row > block.start_position.row {
+                        let mut start_offset = block.byte_range.start;
+                        let mut end_offset = block.byte_range.end;
+                        
+                        let first_char = self.buffer.text_for_range(start_offset..start_offset + 1).next().and_then(|s| s.chars().next());
+                        let last_char = if end_offset > 0 {
+                            self.buffer.text_for_range(end_offset - 1..end_offset).next().and_then(|s| s.chars().next())
+                        } else {
+                            None
                         };
-                        if !self.folds.contains(&fold) {
-                            self.folds.push(fold);
+
+                        if let (Some(fc), Some(lc)) = (first_char, last_char) {
+                            if (fc == '{' && lc == '}') || (fc == '[' && lc == ']') || (fc == '(' && lc == ')') {
+                                start_offset += 1;
+                                end_offset -= 1;
+                            }
+                        }
+
+                        let range = block.byte_range.clone();
+                        if seen_ranges.insert(range) {
+                            let fold = crate::display::fold_map::Fold {
+                                start: start_offset.to_point(&self.buffer),
+                                end: end_offset.to_point(&self.buffer),
+                            };
+                            if !self.folds.contains(&fold) {
+                                self.folds.push(fold);
+                            }
                         }
                     }
                 }
@@ -820,6 +839,51 @@ impl Document {
             Action::MoveToEndOfNextLine { select, count } => self
                 .selections
                 .move_to_end_of_next_line(*select, &self.buffer),
+            Action::MovePageUp { count, select } => {
+                let page_size = (editor.screen_rows - 4).max(1) as u32;
+                self.selections.move_up(*select, page_size * *count, &self.buffer)
+            }
+            Action::MovePageDown { count, select } => {
+                let page_size = (editor.screen_rows - 4).max(1) as u32;
+                self.selections.move_down(*select, page_size * *count, &self.buffer)
+            }
+            Action::ScrollHalfPageUp { count } => {
+                let half_page_size = ((editor.screen_rows - 4).max(1) / 2).max(1) as u32;
+                self.selections.move_up(false, half_page_size * *count, &self.buffer)
+            }
+            Action::ScrollHalfPageDown { count } => {
+                let half_page_size = ((editor.screen_rows - 4).max(1) / 2).max(1) as u32;
+                self.selections.move_down(false, half_page_size * *count, &self.buffer)
+            }
+            Action::MoveToScreenTop { select, count } => {
+                let active_idx = editor.buffer_manager.active_idx;
+                let buffer = &editor.buffer_manager.buffers[active_idx];
+                let display_snapshot = buffer.display_map.snapshot();
+                let target_point = display_snapshot.display_point_to_point(
+                    crate::display::display_map::DisplayPoint::new(display_snapshot.scroll_y, 0)
+                );
+                self.selections.move_to_line(*select, target_point.row, &self.buffer)
+            }
+            Action::MoveToScreenMiddle { select, count } => {
+                let active_idx = editor.buffer_manager.active_idx;
+                let buffer = &editor.buffer_manager.buffers[active_idx];
+                let display_snapshot = buffer.display_map.snapshot();
+                let middle_display_row = display_snapshot.scroll_y + display_snapshot.visible_rows / 2;
+                let target_point = display_snapshot.display_point_to_point(
+                    crate::display::display_map::DisplayPoint::new(middle_display_row, 0)
+                );
+                self.selections.move_to_line(*select, target_point.row, &self.buffer)
+            }
+            Action::MoveToScreenBottom { select, count } => {
+                let active_idx = editor.buffer_manager.active_idx;
+                let buffer = &editor.buffer_manager.buffers[active_idx];
+                let display_snapshot = buffer.display_map.snapshot();
+                let bottom_display_row = display_snapshot.scroll_y + display_snapshot.visible_rows.saturating_sub(1);
+                let target_point = display_snapshot.display_point_to_point(
+                    crate::display::display_map::DisplayPoint::new(bottom_display_row, 0)
+                );
+                self.selections.move_to_line(*select, target_point.row, &self.buffer)
+            }
             Action::InsertText(text) => {
                 self.delete_text(0);
                 self.insert_text(text);
@@ -1827,7 +1891,9 @@ mod tests {
         assert_eq!(active_buffer.doc.folds.len(), 1);
         let fold = &active_buffer.doc.folds[0];
         assert_eq!(fold.start.row, 0);
+        assert_eq!(fold.start.column, 11);
         assert_eq!(fold.end.row, 3);
+        assert_eq!(fold.end.column, 0);
 
         editor.apply_active_action(&Action::Unfold { count: 1 });
         let active_buffer = editor.buffer_manager.active();

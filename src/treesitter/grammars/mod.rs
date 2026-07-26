@@ -26,10 +26,11 @@ pub enum Grammar {
     Swift,
     R,
     Groovy,
+    Markdown,
 }
 
 impl Grammar {
-    pub const ALL: [Self; 24] = [
+    pub const ALL: [Self; 25] = [
         Self::Bash,
         Self::C,
         Self::Css,
@@ -54,6 +55,7 @@ impl Grammar {
         Self::Swift,
         Self::R,
         Self::Groovy,
+        Self::Markdown,
     ];
 
     pub fn from_path(path: &str) -> Option<Self> {
@@ -101,6 +103,7 @@ impl Grammar {
             "swift" => Some(Self::Swift),
             "r" | "rmd" => Some(Self::R),
             "groovy" | "gvy" | "gy" | "gsh" => Some(Self::Groovy),
+            "md" | "markdown" => Some(Self::Markdown),
             _ => None,
         }
     }
@@ -131,6 +134,7 @@ impl Grammar {
             Self::Swift => "Swift",
             Self::R => "R",
             Self::Groovy => "Groovy",
+            Self::Markdown => "Markdown",
         }
     }
 
@@ -160,6 +164,7 @@ impl Grammar {
             Self::Swift => tree_sitter_swift::LANGUAGE.into(),
             Self::R => tree_sitter_r::LANGUAGE.into(),
             Self::Groovy => tree_sitter_groovy::LANGUAGE.into(),
+            Self::Markdown => tree_sitter_md::LANGUAGE.into(),
         }
     }
 }
@@ -183,6 +188,7 @@ mod tests {
             ("types.pyi", Grammar::Python),
             ("app.ts", Grammar::TypeScript),
             ("component.tsx", Grammar::Tsx),
+            ("README.md", Grammar::Markdown),
         ];
 
         for (path, expected) in cases {

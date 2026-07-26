@@ -470,6 +470,24 @@ impl Keymap {
                 },
             )
             .expect("Valid binding");
+        motion_actions
+            .bind(
+                "<PageUp>",
+                Action::MovePageUp {
+                    count: 1,
+                    select: false,
+                },
+            )
+            .expect("Valid binding");
+        motion_actions
+            .bind(
+                "<PageDown>",
+                Action::MovePageDown {
+                    count: 1,
+                    select: false,
+                },
+            )
+            .expect("Valid binding");
 
         motion_actions
             .bind(
@@ -1005,6 +1023,15 @@ impl Keymap {
             .bind(
                 "<PageUp>",
                 Action::MovePageUp {
+                    count: 1,
+                    select: false,
+                },
+            )
+            .expect("Valid binding");
+        insert_actions
+            .bind(
+                "<PageDown>",
+                Action::MovePageDown {
                     count: 1,
                     select: false,
                 },

@@ -102,6 +102,8 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             let (cols, rows) = crossterm::terminal::size().unwrap();
             (cols as i32, rows as i32)
         };
+        editor.screen_rows = screen_rows;
+        editor.screen_cols = screen_cols;
         // dimensions has changed
         if prev_screen_cols != screen_cols || prev_screen_rows != screen_rows {
             should_redraw = true;

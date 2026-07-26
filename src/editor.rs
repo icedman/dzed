@@ -115,6 +115,9 @@ pub struct Editor {
     pub tree_sitter: bool,
     pub show_line_numbers: bool,
     pub fold: bool,
+    pub fold_multiline_only: bool,
+    pub screen_rows: i32,
+    pub screen_cols: i32,
 
     // commands
     pub command: crate::command::Command,
@@ -173,6 +176,8 @@ impl Editor {
         let theme = Theme::new("test/themes/Dracula.tmTheme");
         let bg_worker = crate::background::BackgroundWorker::new();
 
+        let (cols, rows) = crossterm::terminal::size().unwrap_or((80, 24));
+
         Ok(Self {
             buffer_manager,
             command: crate::command::Command::new(),
@@ -183,6 +188,9 @@ impl Editor {
             tree_sitter: true,
             show_line_numbers: true,
             fold: true,
+            fold_multiline_only: true,
+            screen_rows: rows as i32,
+            screen_cols: cols as i32,
             bg_worker,
             clipboard: std::cell::RefCell::new(crate::clipboard::Clipboard::new()),
             keymap: crate::keymap::Keymap::new(),

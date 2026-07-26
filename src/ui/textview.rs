@@ -7,6 +7,7 @@ use crate::search::{TextSearch, compile};
 use crate::theme::{ColorAdjust, ToCrossTerm};
 use crossterm::{cursor::MoveTo, execute};
 use std::io::Write;
+use crate::display::display_map::DisplayPoint;
 use text::ToPoint;
 
 /// A standard view that renders the active text editor buffer.
@@ -252,8 +253,9 @@ pub fn render_editor_content<W: Write>(
     if editor.syntax && end_line > display_snapshot.scroll_y {
         let start_buffer_row =
             display_snapshot.buffer_row_for_display_row(display_snapshot.scroll_y);
-        let end_buffer_row =
-            display_snapshot.buffer_row_for_display_row(end_line.saturating_sub(1));
+        let last_visible_display_row = end_line.saturating_sub(1);
+        let end_point = display_snapshot.display_point_to_point(DisplayPoint::new(last_visible_display_row, display_snapshot.line_len(last_visible_display_row)));
+        let end_buffer_row = end_point.row;
         let end_buffer_row_exclusive = end_buffer_row + 1;
 
         if !active_buffer
@@ -349,32 +351,15 @@ pub fn render_editor_content<W: Write>(
             .collect();
         let mut match_idx = 0usize;
 
-        let buffer_row = display_snapshot.buffer_row_for_display_row(row);
-        let buffer_range = display_snapshot.buffer_range_for_display_row(row);
-        let start_col = buffer_range.start.column;
-
-        let ranges = if editor.syntax {
-            active_buffer
-                .hl
-                .render_row(buffer_row)
-                .map(|style_cache| style_cache.styles.as_slice())
-                .unwrap_or(&[])
-        } else {
-            &[]
-        };
-
-        let mut range_idx = ranges.partition_point(|(_, _, end)| *end <= start_col);
-
         let mut x_scroll = display_snapshot.scroll_x;
         let mut cols_remaining = (inner_rect.width as usize).saturating_sub(gutter_width);
 
-        let mut byte_column = start_col;
         let mut curr_x = inner_rect.x + gutter_width as u16;
         let relative_row = (screen_row - inner_rect.y) as u32;
         let is_handle = relative_row >= start_y && relative_row < start_y + handle_h;
 
         for (column, ch) in text.chars().enumerate() {
-            let rc = byte_column;
+            let orig_point = display_snapshot.display_point_to_point(DisplayPoint::new(row, column as u32));
             // Determine if current column is within a search match range
             let mut in_match = false;
             while match_idx < match_ranges.len() && column >= match_ranges[match_idx].1 {
@@ -387,21 +372,20 @@ pub fn render_editor_content<W: Write>(
                 }
             }
 
-            while range_idx < ranges.len() && ranges[range_idx].2 <= rc {
-                range_idx += 1;
-            }
-
             let mut fg = editor.theme.fg;
             let mut bg = editor.theme.bg;
 
-            if editor.syntax
-                && let Some((style, start, end)) = ranges.get(range_idx)
-                && *start <= rc
-                && rc < *end
-            {
-                fg = style.foreground.rgb();
-                bg = style.background.darken(10).rgb();
+            if editor.syntax {
+                if let Some(style_cache) = active_buffer.hl.render_row(orig_point.row) {
+                    if let Some(&(style, _, _)) = style_cache.styles.iter().find(|(_, start, end)| {
+                        orig_point.column >= *start && orig_point.column < *end
+                    }) {
+                        fg = style.foreground.rgb();
+                        bg = style.background.darken(10).rgb();
+                    }
+                }
             }
+
             // Apply search match background if not in a selection
             if in_match {
                 fg = editor.theme.find_fg;
@@ -411,7 +395,7 @@ pub fn render_editor_content<W: Write>(
             let (selected, mut selected_line, at_cursor) = active_buffer
                 .doc
                 .selections()
-                .is_selected(buffer_row, rc, &buffer);
+                .is_selected(orig_point.row, orig_point.column, &buffer);
             if selected && (editor.mode != Mode::Command) {
                 bg = editor.theme.select;
             }
@@ -466,8 +450,6 @@ pub fn render_editor_content<W: Write>(
                     }
                 }
             }
-
-            byte_column += ch.len_utf8() as u32;
 
             if cols_remaining <= 0 {
                 break;

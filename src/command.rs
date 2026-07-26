@@ -97,6 +97,8 @@ impl Command {
                                 "nonumber" => editor.show_line_numbers = false,
                                 "fold" => editor.fold = true,
                                 "nofold" => editor.fold = false,
+                                "foldmultiline" => editor.fold_multiline_only = true,
+                                "nofoldmultiline" => editor.fold_multiline_only = false,
                                 "tree" => editor.set_tree_sitter_enabled(true),
                                 "notree" => editor.set_tree_sitter_enabled(false),
                                 "treesitter" => editor.set_tree_sitter_enabled(true),
@@ -181,6 +183,14 @@ mod tests {
         cmd.set("set fold");
         cmd.ex(&mut editor);
         assert!(editor.fold);
+
+        cmd.set("set nofoldmultiline");
+        cmd.ex(&mut editor);
+        assert!(!editor.fold_multiline_only);
+
+        cmd.set("set foldmultiline");
+        cmd.ex(&mut editor);
+        assert!(editor.fold_multiline_only);
 
         cmd.set("set notreesitter");
         cmd.ex(&mut editor);
