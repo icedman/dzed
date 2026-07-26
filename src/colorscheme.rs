@@ -32,16 +32,16 @@ impl ColorScheme {
         let parsed: ColorSchemeFile = toml::from_str(&contents)?;
 
         let mut ui = HashMap::new();
-        for (k, v) in parsed.ui {
-            if let Some(color) = resolve_color(&v, &parsed.colors) {
-                ui.insert(k, color);
+        for (k, v) in &parsed.ui {
+            if let Some(color) = resolve_color(v, &parsed.colors, &parsed.ui) {
+                ui.insert(k.clone(), color);
             }
         }
 
         let mut syntax = HashMap::new();
-        for (k, v) in parsed.syntax {
-            if let Some(color) = resolve_color(&v, &parsed.colors) {
-                syntax.insert(k, color);
+        for (k, v) in &parsed.syntax {
+            if let Some(color) = resolve_color(v, &parsed.colors, &parsed.syntax) {
+                syntax.insert(k.clone(), color);
             }
         }
 
@@ -76,9 +76,24 @@ fn parse_hex_color(hex: &str) -> Option<crossterm::style::Color> {
 fn resolve_color(
     val: &str,
     palette: &HashMap<String, String>,
+    fallback_map: &HashMap<String, String>,
 ) -> Option<crossterm::style::Color> {
+    resolve_color_recursive(val, palette, fallback_map, 0)
+}
+
+fn resolve_color_recursive(
+    val: &str,
+    palette: &HashMap<String, String>,
+    fallback_map: &HashMap<String, String>,
+    depth: usize,
+) -> Option<crossterm::style::Color> {
+    if depth > 10 {
+        return None;
+    }
     if let Some(resolved) = palette.get(val) {
         parse_hex_color(resolved)
+    } else if let Some(linked_val) = fallback_map.get(val) {
+        resolve_color_recursive(linked_val, palette, fallback_map, depth + 1)
     } else {
         parse_hex_color(val)
     }
@@ -108,11 +123,13 @@ mod tests {
             foreground = "text"
             background = "base"
             caret = "rosewater"
+            selection = "foreground"
 
             [syntax]
             comment = "#6c7086"
             keyword = "mauve"
             operator = "sky"
+            function = "keyword"
         "##;
 
         let path = "temp_colorscheme_test.toml";
@@ -126,7 +143,9 @@ mod tests {
         // Verify resolved color values
         let fg_color = scheme.ui.get("foreground").unwrap();
         let bg_color = scheme.ui.get("background").unwrap();
+        let selection_color = scheme.ui.get("selection").unwrap();
         let comment_color = scheme.syntax.get("comment").unwrap();
+        let function_color = scheme.syntax.get("function").unwrap();
 
         assert_eq!(
             bg_color,
@@ -137,8 +156,16 @@ mod tests {
             &crossterm::style::Color::Rgb { r: 205, g: 214, b: 244 }
         );
         assert_eq!(
+            selection_color,
+            &crossterm::style::Color::Rgb { r: 205, g: 214, b: 244 }
+        );
+        assert_eq!(
             comment_color,
             &crossterm::style::Color::Rgb { r: 108, g: 112, b: 134 }
+        );
+        assert_eq!(
+            function_color,
+            &crossterm::style::Color::Rgb { r: 203, g: 166, b: 247 }
         );
 
         std::fs::remove_file(path).unwrap();
