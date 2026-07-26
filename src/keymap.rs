@@ -300,6 +300,7 @@ pub struct Keymap {
     pub mode_actions: HashMap<KeyComboSequence, Action>,
     pub insert_actions: HashMap<KeyComboSequence, Action>,
     pub visual_actions: HashMap<KeyComboSequence, Action>,
+    pub text_object_actions: HashMap<KeyComboSequence, Action>,
 }
 
 impl Keymap {
@@ -310,6 +311,7 @@ impl Keymap {
         let mut mode_actions = HashMap::new();
         let mut insert_actions = HashMap::new();
         let mut visual_actions = HashMap::new();
+        let mut text_object_actions = HashMap::new();
 
         // Operators
         op_actions
@@ -659,24 +661,41 @@ impl Keymap {
                 },
             )
             .expect("Valid binding");
-
-        motion_actions
-            .bind("C-f", Action::ScrollForward { count: 1 })
+        text_object_actions
+            .bind(
+                "i{c}",
+                Action::MoveWithinCharacter {
+                    count: 1,
+                    ch: '?',
+                },
+            )
+            .expect("Valid binding");
+        text_object_actions
+            .bind(
+                "a{c}",
+                Action::MoveAroundCharacter {
+                    count: 1,
+                    ch: '?',
+                },
+            )
             .expect("Valid binding");
         motion_actions
-            .bind("C-b", Action::ScrollBackward { count: 1 })
+            .bind("<C-f>", Action::ScrollForward { count: 1 })
             .expect("Valid binding");
         motion_actions
-            .bind("C-d", Action::ScrollHalfPageDown { count: 1 })
+            .bind("<C-b>", Action::ScrollBackward { count: 1 })
             .expect("Valid binding");
         motion_actions
-            .bind("C-u", Action::ScrollHalfPageUp { count: 1 })
+            .bind("<C-d>", Action::ScrollHalfPageDown { count: 1 })
             .expect("Valid binding");
         motion_actions
-            .bind("C-e", Action::ScrollLineDown { count: 1 })
+            .bind("<C-u>", Action::ScrollHalfPageUp { count: 1 })
             .expect("Valid binding");
         motion_actions
-            .bind("C-y", Action::ScrollLineUp { count: 1 })
+            .bind("<C-e>", Action::ScrollLineDown { count: 1 })
+            .expect("Valid binding");
+        motion_actions
+            .bind("<C-y>", Action::ScrollLineUp { count: 1 })
             .expect("Valid binding");
 
         motion_actions
@@ -698,7 +717,7 @@ impl Keymap {
 
         motion_actions
             .bind(
-                ["End"],
+                "<End>",
                 Action::MoveToEndOfLine {
                     count: 1,
                     select: false,
@@ -707,7 +726,7 @@ impl Keymap {
             .expect("Valid binding");
         motion_actions
             .bind(
-                ["Home"],
+                "<Home>",
                 Action::MoveToStartOfLine {
                     count: 1,
                     select: false,
@@ -837,7 +856,7 @@ impl Keymap {
             .bind("u", Action::Undo { count: 1 })
             .expect("Valid binding");
         normal_actions
-            .bind("C-r", Action::Redo { count: 1 })
+            .bind("<C-r>", Action::Redo { count: 1 })
             .expect("Valid binding");
         normal_actions
             .bind("<C-q>", Action::Quit)
@@ -897,7 +916,7 @@ impl Keymap {
             .bind("V", Action::SetToVisualLine)
             .expect("Valid binding");
         mode_actions
-            .bind("C-v", Action::SetToVisualBlock)
+            .bind("<C-v>", Action::SetToVisualBlock)
             .expect("Valid binding");
         mode_actions
             .bind(":", Action::SetToCommand)
@@ -978,7 +997,7 @@ impl Keymap {
             .expect("Valid binding");
         insert_actions
             .bind(
-                ["PageUp"],
+                "<PageUp>",
                 Action::MovePageUp {
                     count: 1,
                     select: false,
@@ -1006,13 +1025,14 @@ impl Keymap {
             .bind("<Esc>", Action::Clear)
             .expect("Valid binding");
 
-        Self {
+         Self {
             op_actions,
             motion_actions,
             mode_actions,
             normal_actions,
             insert_actions,
             visual_actions,
+            text_object_actions,
         }
     }
 }
@@ -1234,6 +1254,12 @@ impl InputStateMachine {
         // Visual Mode overrides
         if self.mode.is_visual() {
             if let Some(res) = match_two_slices_in_map(slice1, slice2, &keymap.visual_actions) {
+                return res;
+            }
+        }
+        // Check Text Objects (only if visual mode or pending operator)
+        if self.mode.is_visual() || self.pending_op.is_some() {
+            if let Some(res) = match_two_slices_in_map(slice1, slice2, &keymap.text_object_actions) {
                 return res;
             }
         }

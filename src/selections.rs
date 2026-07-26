@@ -1,5 +1,5 @@
 use crate::document::BufferText;
-use crate::search::{compile, TextSearch};
+use crate::search::{TextSearch, compile};
 use onig::Regex;
 use rope::Point;
 use std::cmp::Ordering;
@@ -92,6 +92,22 @@ pub trait Motions {
     ) -> Option<Selection<Anchor>>
     where
         F: Fn(&crate::treesitter::SyntaxTree, usize) -> Option<crate::treesitter::SyntaxNode>;
+
+    fn move_within_character(
+        &self,
+        anchor: bool,
+        count: u32,
+        ch: char,
+        buffer: &Buffer,
+    ) -> Selection<Anchor>;
+
+    fn move_around_character(
+        &self,
+        anchor: bool,
+        count: u32,
+        ch: char,
+        buffer: &Buffer,
+    ) -> Selection<Anchor>;
 }
 
 impl Motions for Selection<Anchor> {
@@ -594,7 +610,10 @@ impl Motions for Selection<Anchor> {
         use crate::search::TextSearch;
         let mut point = self.head().to_point(buffer);
         let text = buffer.row_text(point.row);
-        if let Some(word) = text.as_str().find_previous_big_word_end(point.column as usize) {
+        if let Some(word) = text
+            .as_str()
+            .find_previous_big_word_end(point.column as usize)
+        {
             point.column = (word.1 - 1) as u32;
         } else {
             point.column = 0;
@@ -853,6 +872,92 @@ impl Motions for Selection<Anchor> {
             reversed: false,
             goal: SelectionGoal::None,
         })
+    }
+
+    fn move_within_character(
+        &self,
+        anchor: bool,
+        _count: u32,
+        ch: char,
+        buffer: &Buffer,
+    ) -> Selection<Anchor> {
+        let (start_ch, end_ch) = match ch {
+            '{' | '}' => ('{', '}'),
+            '[' | ']' => ('[', ']'),
+            '(' | ')' => ('(', ')'),
+            '"' => ('"', '"'),
+            _ => ('`', '`'),
+        };
+
+        let start_sel = self.find_character(false, 1, start_ch, false, false, buffer);
+        let start_pos = start_sel.head().to_point(buffer);
+
+        let end_sel = start_sel.find_character(true, 1, end_ch, true, false, buffer);
+        let end_pos = end_sel.head().to_point(buffer);
+
+        if start_pos == self.head().to_point(buffer) || end_pos == start_pos || start_pos.row != end_pos.row {
+            return self.clone();
+        }
+
+        let start_col = start_pos.column + 1;
+        let end_col = end_pos.column.saturating_sub(1);
+
+        let start_offset = buffer.clip_point(Point { row: start_pos.row, column: start_col }, Bias::Right).to_offset(buffer);
+        let end_offset = buffer.clip_point(Point { row: end_pos.row, column: end_col }, Bias::Left).to_offset(buffer);
+
+        let start_anchor = buffer.anchor_at(start_offset, Bias::Left);
+        let end_anchor = buffer.anchor_at(end_offset, Bias::Right);
+
+        Selection {
+            id: self.id,
+            start: start_anchor,
+            end: end_anchor,
+            reversed: false,
+            goal: SelectionGoal::None,
+        }
+    }
+
+    fn move_around_character(
+        &self,
+        anchor: bool,
+        _count: u32,
+        ch: char,
+        buffer: &Buffer,
+    ) -> Selection<Anchor> {
+        let (start_ch, end_ch) = match ch {
+            '{' | '}' => ('{', '}'),
+            '[' | ']' => ('[', ']'),
+            '(' | ')' => ('(', ')'),
+            '"' => ('"', '"'),
+            _ => ('`', '`'),
+        };
+
+        let start_sel = self.find_character(false, 1, start_ch, false, false, buffer);
+        let start_pos = start_sel.head().to_point(buffer);
+
+        let end_sel = start_sel.find_character(true, 1, end_ch, true, false, buffer);
+        let end_pos = end_sel.head().to_point(buffer);
+
+        if start_pos == self.head().to_point(buffer) || end_pos == start_pos || start_pos.row != end_pos.row {
+            return self.clone();
+        }
+
+        let start_col = start_pos.column;
+        let end_col = end_pos.column;
+
+        let start_offset = buffer.clip_point(Point { row: start_pos.row, column: start_col }, Bias::Right).to_offset(buffer);
+        let end_offset = buffer.clip_point(Point { row: end_pos.row, column: end_col }, Bias::Left).to_offset(buffer);
+
+        let start_anchor = buffer.anchor_at(start_offset, Bias::Left);
+        let end_anchor = buffer.anchor_at(end_offset, Bias::Right);
+
+        Selection {
+            id: self.id,
+            start: start_anchor,
+            end: end_anchor,
+            reversed: false,
+            goal: SelectionGoal::None,
+        }
     }
 }
 
@@ -1302,6 +1407,26 @@ impl SelectionCollection {
         }
     }
 
+    pub fn move_within_character(&mut self, anchor: bool, count: u32, ch: char, buffer: &Buffer) {
+        let cursors = self.selections.clone();
+        for cursor in cursors.iter() {
+            let next = cursor
+                .clone()
+                .move_within_character(anchor, count, ch, buffer);
+            self.update(buffer, &next);
+        }
+    }
+
+    pub fn move_around_character(&mut self, anchor: bool, count: u32, ch: char, buffer: &Buffer) {
+        let cursors = self.selections.clone();
+        for cursor in cursors.iter() {
+            let next = cursor
+                .clone()
+                .move_around_character(anchor, count, ch, buffer);
+            self.update(buffer, &next);
+        }
+    }
+
     pub fn find_character(
         &mut self,
         anchor: bool,
@@ -1648,13 +1773,45 @@ mod tests {
         );
         let mut cursor = selection(&buffer, 0, 0, 0, false);
 
-        assert!(cursor
-            .move_to_next_match_within("target", &buffer, 1)
-            .is_none());
+        assert!(
+            cursor
+                .move_to_next_match_within("target", &buffer, 1)
+                .is_none()
+        );
 
         let matched = cursor
             .move_to_next_match_within("target", &buffer, 2)
             .expect("match should be found two rows below");
         assert_eq!(matched.head().to_point(&buffer), Point::new(2, 0));
+    }
+
+    #[test]
+    fn test_move_within_character() {
+        let buffer = Buffer::new(ReplicaId::LOCAL, BufferId::new(1).unwrap(), "a {hello} b");
+        let cursor = selection(&buffer, 0, 4, 4, false);
+        let result = cursor.move_within_character(false, 1, '{', &buffer);
+        assert_eq!(result.text(&buffer), "hello");
+    }
+
+    #[test]
+    fn test_move_around_character() {
+        let buffer = Buffer::new(ReplicaId::LOCAL, BufferId::new(1).unwrap(), "a {hello} b");
+        let cursor = selection(&buffer, 0, 4, 4, false);
+        let result = cursor.move_around_character(false, 1, '{', &buffer);
+        assert_eq!(result.text(&buffer), "{hello}");
+    }
+
+    #[test]
+    fn test_move_within_character_visual() {
+        let buffer = Buffer::new(ReplicaId::LOCAL, BufferId::new(1).unwrap(), "a {hello} b");
+        let cursor = Selection {
+            id: 0,
+            start: buffer.anchor_at(4, Bias::Left),
+            end: buffer.anchor_at(0, Bias::Left),
+            reversed: true,
+            goal: SelectionGoal::None,
+        };
+        let result = cursor.move_within_character(true, 1, '{', &buffer);
+        assert_eq!(result.text(&buffer), "hello");
     }
 }

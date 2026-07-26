@@ -47,7 +47,8 @@ impl Clipboard {
 
     pub fn text(&self) -> String {
         let curr = self.current_register.get();
-        let res = self.registers
+        let res = self
+            .registers
             .get(curr)
             .map(|r| r.text())
             .unwrap_or_default();
@@ -75,8 +76,16 @@ impl Clipboard {
 
     pub fn take(&mut self) -> (String, ClipboardKind) {
         let curr = self.current_register.get();
-        let text = self.registers.get(curr).map(|r| r.text()).unwrap_or_default();
-        let kind = self.registers.get(curr).map(|r| r.kind).unwrap_or(ClipboardKind::Character);
+        let text = self
+            .registers
+            .get(curr)
+            .map(|r| r.text())
+            .unwrap_or_default();
+        let kind = self
+            .registers
+            .get(curr)
+            .map(|r| r.kind)
+            .unwrap_or(ClipboardKind::Character);
         self.registers.clear(curr);
         self.current_register.set(RegisterName::Unnamed);
         (text, kind)

@@ -523,10 +523,16 @@ impl std::fmt::Display for Action {
                 write!(f, "InsertNewLineMotion({}, {})", count, motion)
             }
             Action::InsertTab => write!(f, "InsertTab"),
-            Action::DeleteLines { start_line, end_line } => {
+            Action::DeleteLines {
+                start_line,
+                end_line,
+            } => {
                 write!(f, "DeleteLines({}, {})", start_line, end_line)
             }
-            Action::YankLines { start_line, end_line } => {
+            Action::YankLines {
+                start_line,
+                end_line,
+            } => {
                 write!(f, "YankLines({}, {})", start_line, end_line)
             }
         }
@@ -857,8 +863,20 @@ impl Action {
                 motion: motion,
             },
             Action::InsertTab => Action::InsertTab,
-            Action::DeleteLines { start_line, end_line } => Action::DeleteLines { start_line, end_line },
-            Action::YankLines { start_line, end_line } => Action::YankLines { start_line, end_line },
+            Action::DeleteLines {
+                start_line,
+                end_line,
+            } => Action::DeleteLines {
+                start_line,
+                end_line,
+            },
+            Action::YankLines {
+                start_line,
+                end_line,
+            } => Action::YankLines {
+                start_line,
+                end_line,
+            },
 
             Action::SelectInPair { .. } | Action::SelectAroundPair { .. } => todo!(),
 
@@ -881,6 +899,14 @@ impl Action {
                 ch,
                 till,
                 count,
+            },
+            Action::MoveWithinCharacter { .. } => Action::MoveWithinCharacter {
+                count,
+                ch,
+            },
+            Action::MoveAroundCharacter { .. } => Action::MoveAroundCharacter {
+                count,
+                ch,
             },
             Action::InsertText(_) => Action::InsertText(ch.to_string()),
             _ => Action::NoOp,

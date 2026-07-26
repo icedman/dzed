@@ -10,10 +10,7 @@ pub enum HandleEvent {
     Exit,
 }
 
-pub fn handle_event(
-    editor: &mut crate::editor::Editor,
-    event: Event,
-) -> HandleEvent {
+pub fn handle_event(editor: &mut crate::editor::Editor, event: Event) -> HandleEvent {
     match event {
         Event::Key(key_event) => {
             let action = editor.input.handle_event(&key_event);
@@ -38,7 +35,8 @@ pub fn handle_event(
 
                 if editor.mode == Mode::Command {
                     if matches!(action, Action::InsertNewLine { .. }) {
-                        let mut command = std::mem::replace(&mut editor.command, crate::command::Command::new());
+                        let mut command =
+                            std::mem::replace(&mut editor.command, crate::command::Command::new());
                         let ex_res = command.ex(editor);
                         editor.command = command;
                         if let Some(crate::command::ExResult::Exit) = ex_res {

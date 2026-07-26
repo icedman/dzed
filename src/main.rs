@@ -74,19 +74,11 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     loop {
         let start = Instant::now();
 
-        // get screen dimensions
-        let (screen_cols, screen_rows) = {
-            let (cols, rows) = crossterm::terminal::size().unwrap();
-            (cols as i32, rows as i32)
-        };
-        // dimensions has changed
-        if prev_screen_cols != screen_cols || prev_screen_rows != screen_rows {
-            should_redraw = true;
-        }
-        prev_screen_rows = screen_rows;
-        prev_screen_cols = screen_cols;
+        editor.mode = editor.buffer_manager.active().doc.current_mode();
 
+        //------------------
         // Drain any incoming background worker results
+        //------------------
         while let Some(result) = editor.bg_worker.try_recv() {
             let owner_id = match &result {
                 background::BackgroundResult::HighlightComplete { owner_id, .. } => *owner_id,
@@ -101,8 +93,20 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        let active_buffer = editor.buffer_manager.active_mut();
-        editor.mode = active_buffer.doc.current_mode();
+        //------------------
+        // layout
+        //------------------
+        // get screen dimensions
+        let (screen_cols, screen_rows) = {
+            let (cols, rows) = crossterm::terminal::size().unwrap();
+            (cols as i32, rows as i32)
+        };
+        // dimensions has changed
+        if prev_screen_cols != screen_cols || prev_screen_rows != screen_rows {
+            should_redraw = true;
+        }
+        prev_screen_rows = screen_rows;
+        prev_screen_cols = screen_cols;
 
         let parent_rect = ui::layout::Rect {
             x: 0,
@@ -116,6 +120,9 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             ui.dirty = false;
         }
 
+        //------------------
+        // update
+        //------------------
         ui.update(&mut editor, &mut should_sync)?;
 
         if !cursor_visible && last_activity.elapsed() >= Duration::from_millis(250) {

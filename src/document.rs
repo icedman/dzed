@@ -37,7 +37,11 @@ pub struct Document {
 
 impl Document {
     pub fn new_with_text(contents: &str) -> Self {
-        let buffer = Buffer::new(ReplicaId::default(), BufferId::new(1).unwrap(), contents.to_string());
+        let buffer = Buffer::new(
+            ReplicaId::default(),
+            BufferId::new(1).unwrap(),
+            contents.to_string(),
+        );
         let mut selections = SelectionCollection::new();
         selections.add(&buffer, 0);
 
@@ -124,19 +128,7 @@ impl Document {
         }
     }
 
-    // todo -- use treesitter
-    pub fn select_in_pair(&mut self, kind: char) {
-        let (start, end) = match kind {
-            '{' | '}' => ('{', '}'),
-            '[' | ']' => ('[', ']'),
-            '(' | ')' => ('(', ')'),
-            _ => ('~', '~'),
-        };
-        self.selections
-            .find_character(false, 1, start, false, false, &self.buffer);
-        self.selections
-            .find_character(true, 1, end, true, false, &self.buffer);
-    }
+
 
     pub fn select_similar(&mut self) {
         // if !self.has_selection() {
@@ -415,6 +407,14 @@ impl Document {
                     self.selections.move_to_next_match("", false, &self.buffer);
                 }
             }
+            Action::MoveWithinCharacter { count, ch } => {
+                let select = self.current_mode().is_visual();
+                self.selections.move_within_character(select, *count, *ch, &self.buffer);
+            }
+            Action::MoveAroundCharacter { count, ch } => {
+                let select = self.current_mode().is_visual();
+                self.selections.move_around_character(select, *count, *ch, &self.buffer);
+            }
 
             Action::MoveToNextFunction { select, count } => {
                 if editor.tree_sitter && *count > 0 {
@@ -579,16 +579,19 @@ impl Document {
                 self.insert_text(text);
             }
             Action::DeleteChar { count } | Action::Delete { count } => {
-                let mut text = String::new();
-                if self.selections.has_selection(&self.buffer) {
-                    text = self.selections.text(&self.buffer);
-                    editor.clipboard.borrow_mut().set_text(&text);
+                let text = if self.selections.has_selection(&self.buffer) {
+                    self.selections.text(&self.buffer)
                 } else {
                     let head_offset = self.buffer.offset_for_anchor(&self.selection().head());
-                    let end_offset = self.buffer.clip_offset(head_offset + *count as usize, Bias::Right);
-                    text = self.buffer.as_rope().chunks_in_range(head_offset..end_offset).collect();
-                    editor.clipboard.borrow_mut().set_text(&text);
-                }
+                    let end_offset = self
+                        .buffer
+                        .clip_offset(head_offset + *count as usize, Bias::Right);
+                    self.buffer
+                        .as_rope()
+                        .chunks_in_range(head_offset..end_offset)
+                        .collect()
+                };
+                editor.clipboard.borrow_mut().set_text(&text);
 
                 if self.delete_text(0) {
                     //
@@ -599,10 +602,8 @@ impl Document {
                 }
             }
             Action::DeleteCharBefore { count } => {
-                let mut text = String::new();
-                if self.selections.has_selection(&self.buffer) {
-                    text = self.selections.text(&self.buffer);
-                    editor.clipboard.borrow_mut().set_text(&text);
+                let text = if self.selections.has_selection(&self.buffer) {
+                    self.selections.text(&self.buffer)
                 } else {
                     let head_offset = self.buffer.offset_for_anchor(&self.selection().head());
                     let start_offset = if head_offset >= *count as usize {
@@ -610,9 +611,12 @@ impl Document {
                     } else {
                         0
                     };
-                    text = self.buffer.as_rope().chunks_in_range(start_offset..head_offset).collect();
-                    editor.clipboard.borrow_mut().set_text(&text);
-                }
+                    self.buffer
+                        .as_rope()
+                        .chunks_in_range(start_offset..head_offset)
+                        .collect()
+                };
+                editor.clipboard.borrow_mut().set_text(&text);
 
                 if self.delete_text(0) {
                     //
@@ -623,10 +627,13 @@ impl Document {
                     }
                 }
             }
-            Action::DeleteLines { start_line, end_line } => {
+            Action::DeleteLines {
+                start_line,
+                end_line,
+            } => {
                 let start_row = start_line.saturating_sub(1);
                 let end_row = end_line.saturating_sub(1);
-                
+
                 let max_row = self.buffer.row_count().saturating_sub(1);
                 let start_row = std::cmp::min(start_row, max_row);
                 let end_row = std::cmp::min(end_row, max_row);
@@ -639,15 +646,22 @@ impl Document {
                     Point::new(end_row, self.buffer.line_len(end_row)).to_offset(&self.buffer)
                 };
 
-                let text: String = self.buffer.as_rope().chunks_in_range(start_offset..end_offset).collect();
+                let text: String = self
+                    .buffer
+                    .as_rope()
+                    .chunks_in_range(start_offset..end_offset)
+                    .collect();
                 editor.clipboard.borrow_mut().set_lines(text);
 
                 self.buffer.edit([(start_offset..end_offset, "")]);
             }
-            Action::YankLines { start_line, end_line } => {
+            Action::YankLines {
+                start_line,
+                end_line,
+            } => {
                 let start_row = start_line.saturating_sub(1);
                 let end_row = end_line.saturating_sub(1);
-                
+
                 let max_row = self.buffer.row_count().saturating_sub(1);
                 let start_row = std::cmp::min(start_row, max_row);
                 let end_row = std::cmp::min(end_row, max_row);
@@ -660,7 +674,11 @@ impl Document {
                     Point::new(end_row, self.buffer.line_len(end_row)).to_offset(&self.buffer)
                 };
 
-                let text: String = self.buffer.as_rope().chunks_in_range(start_offset..end_offset).collect();
+                let text: String = self
+                    .buffer
+                    .as_rope()
+                    .chunks_in_range(start_offset..end_offset)
+                    .collect();
                 editor.clipboard.borrow_mut().set_lines(text);
             }
             Action::DeleteLine { count } | Action::ChangeLine { count } => {
@@ -767,42 +785,39 @@ impl Document {
                 let is_textobject = match &motion {
                     Action::MoveToWord { .. }
                     | Action::MoveToNextParagraph { .. }
-                    | Action::MoveToEndOfLine { .. } => true,
+                    | Action::MoveToEndOfLine { .. }
+                    | Action::MoveWithinCharacter { .. }
+                    | Action::MoveAroundCharacter { .. } => true,
                     _ => false,
                 };
+
+                match &mut motion {
+                    Action::MoveUp { select, .. }
+                    | Action::MoveDown { select, .. }
+                    | Action::MoveLeft { select, .. }
+                    | Action::MoveRight { select, .. }
+                    | Action::MoveToPreviousWord { select, .. }
+                    | Action::MoveToWord { select, .. }
+                    | Action::MoveToPreviousWordEnd { select, .. }
+                    | Action::MoveToWordEnd { select, .. }
+                    | Action::MoveToStartOfDocument { select, .. }
+                    | Action::MoveToEndOfDocument { select, .. }
+                    | Action::MoveToStartOfLine { select, .. }
+                    | Action::MoveToStartOfLineNonSpace { select, .. }
+                    | Action::MoveToEndOfLine { select, .. }
+                    | Action::MoveToPreviousParagraph { select, .. }
+                    | Action::MoveToNextParagraph { select, .. }
+                    | Action::MoveToPreviousCharacter { select, .. }
+                    | Action::MoveToNextCharacter { select, .. } => *select = true,
+                    _ => {}
+                }
 
                 let selections = self.selections.selections.clone();
                 let point = self.selections.point;
                 let anchor = self.selections.anchor.clone();
 
-                if is_textobject {
-                    for _idx in 0..*count {
-                        self.apply_action(&motion, editor);
-                    }
-                } else {
-                    match &mut motion {
-                        Action::MoveUp { select, .. }
-                        | Action::MoveDown { select, .. }
-                        | Action::MoveLeft { select, .. }
-                        | Action::MoveRight { select, .. }
-                        | Action::MoveToPreviousWord { select, .. }
-                        | Action::MoveToWord { select, .. }
-                        | Action::MoveToPreviousWordEnd { select, .. }
-                        | Action::MoveToWordEnd { select, .. }
-                        | Action::MoveToStartOfDocument { select, .. }
-                        | Action::MoveToEndOfDocument { select, .. }
-                        | Action::MoveToStartOfLine { select, .. }
-                        | Action::MoveToStartOfLineNonSpace { select, .. }
-                        | Action::MoveToEndOfLine { select, .. }
-                        | Action::MoveToPreviousParagraph { select, .. }
-                        | Action::MoveToNextParagraph { select, .. }
-                        | Action::MoveToPreviousCharacter { select, .. }
-                        | Action::MoveToNextCharacter { select, .. } => *select = true,
-                        _ => {}
-                    }
-                    for _ in 0..*count {
-                        self.apply_action(&motion, editor);
-                    }
+                for _ in 0..*count {
+                    self.apply_action(&motion, editor);
                 }
 
                 let text = self.selections.text(&self.buffer);
@@ -813,9 +828,10 @@ impl Document {
                 self.selections.anchor = anchor;
 
                 if is_textobject {
+                    let inclusive = matches!(motion, Action::MoveWithinCharacter { .. } | Action::MoveAroundCharacter { .. });
                     for _idx in 0..*count {
                         self.apply_action(&motion, editor);
-                        self.delete_text_object();
+                        self.delete_text_object(inclusive);
                     }
                 } else {
                     for _ in 0..*count {
@@ -1006,11 +1022,11 @@ impl Document {
         return delete_count > 0;
     }
 
-    fn delete_text_object(&mut self) -> bool {
+    fn delete_text_object(&mut self, inclusive: bool) -> bool {
         let mut delete_count = 0;
         let cursors = self.selections.selections.clone();
         for cursor in cursors.iter() {
-            let (start, end) = {
+            let (start, mut end) = {
                 let (cs, ce) = if cursor.head().cmp(&cursor.tail(), &self.buffer) == Ordering::Less
                 {
                     (
@@ -1025,7 +1041,10 @@ impl Document {
                 };
 
                 let start = self.buffer.offset_for_anchor(&cs);
-                let end = self.buffer.offset_for_anchor(&ce);
+                let mut end = self.buffer.offset_for_anchor(&ce);
+                if inclusive && start != end {
+                    end = self.buffer.clip_offset(end + 1, Bias::Right);
+                }
                 (start, end)
             };
 
@@ -1434,5 +1453,49 @@ mod tests {
             document.selection().head().to_point(document.buffer()),
             Point { row: 0, column: 6 }
         );
+    }
+
+    #[test]
+    fn test_delete_around_character() {
+        let mut editor = Editor::new(Vec::new()).unwrap();
+        editor.apply_active_action(&Action::InsertText("a (hello) b".into()));
+        // Move cursor inside parens
+        editor.apply_active_action(&Action::MoveLeft {
+            select: false,
+            count: 7,
+        });
+
+        // Execute DeleteMotion around '('
+        editor.apply_active_action(&Action::DeleteMotion {
+            count: 1,
+            motion: Box::new(Action::MoveAroundCharacter {
+                count: 1,
+                ch: '(',
+            }),
+        });
+
+        let document = &editor.buffer_manager.active().doc;
+        assert_eq!(document.buffer().row_text(0), "a  b");
+    }
+
+    #[test]
+    fn test_delete_word() {
+        let mut editor = Editor::new(Vec::new()).unwrap();
+        editor.apply_active_action(&Action::InsertText("abc def".into()));
+        editor.apply_active_action(&Action::MoveLeft {
+            select: false,
+            count: 7,
+        });
+
+        editor.apply_active_action(&Action::DeleteMotion {
+            count: 1,
+            motion: Box::new(Action::MoveToWord {
+                count: 1,
+                select: false,
+            }),
+        });
+
+        let document = &editor.buffer_manager.active().doc;
+        assert_eq!(document.buffer().row_text(0), "def");
     }
 }

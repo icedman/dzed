@@ -52,10 +52,7 @@ impl View for TextView {
         let display_snapshot = active_buffer.display_map.snapshot();
         let visible_rows = display_snapshot.visible_rows as i32;
 
-        Some(crate::input::handle_event(
-            editor,
-            event.clone()
-        ))
+        Some(crate::input::handle_event(editor, event.clone()))
     }
 
     fn update(

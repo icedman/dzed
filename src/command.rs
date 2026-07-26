@@ -1,4 +1,5 @@
 use crate::document::Document;
+use crate::ex;
 use onig::Regex;
 
 pub struct Command {
@@ -49,7 +50,11 @@ impl Command {
         rope.chunks_in_range(0..rope.len()).collect()
     }
 
-    pub fn try_resolve_action(&self, cmd: &crate::ex::ExCommand, _editor: &mut crate::editor::Editor) -> crate::actions::Action {
+    pub fn try_resolve_action(
+        &self,
+        cmd: &crate::ex::ExCommand,
+        _editor: &mut crate::editor::Editor,
+    ) -> crate::actions::Action {
         if let Some(range) = &cmd.range {
             if let (Some(start), Some(end)) = (range.start_line, range.end_line) {
                 match cmd.op {
@@ -97,20 +102,32 @@ pub enum ExResult {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::editor::Editor;
     use crate::actions::Action;
+    use crate::editor::Editor;
 
     #[test]
     fn test_try_resolve_action() {
         let mut editor = Editor::new(Vec::new()).unwrap();
         let cmd = Command::new();
-        
+
         let resolved = cmd.exmap.try_resolve("1,10d").unwrap();
         let act = cmd.try_resolve_action(&resolved, &mut editor);
-        assert_eq!(act, Action::DeleteLines { start_line: 1, end_line: 10 });
+        assert_eq!(
+            act,
+            Action::DeleteLines {
+                start_line: 1,
+                end_line: 10
+            }
+        );
 
         let resolved2 = cmd.exmap.try_resolve("5y").unwrap();
         let act2 = cmd.try_resolve_action(&resolved2, &mut editor);
-        assert_eq!(act2, Action::YankLines { start_line: 5, end_line: 5 });
+        assert_eq!(
+            act2,
+            Action::YankLines {
+                start_line: 5,
+                end_line: 5
+            }
+        );
     }
 }

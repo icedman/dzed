@@ -4,8 +4,8 @@ use crate::document::Document;
 use crate::highlight::Highlights;
 use crate::theme::Theme;
 use onig::Regex;
-use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
 
 pub struct EditorBuffer {
     pub id: usize,
@@ -107,14 +107,14 @@ impl BufferManager {
 pub struct Editor {
     pub buffer_manager: BufferManager,
     pub mode: Mode,
-    
+
     // global settings
     pub theme: Theme,
     pub wrap: bool,
     pub syntax: bool,
     pub tree_sitter: bool,
     pub show_line_numbers: bool,
-    
+
     // commands
     pub command: crate::command::Command,
 

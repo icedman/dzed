@@ -41,15 +41,8 @@ impl ExMap {
         let op = self.lookup(cmd_word)?;
 
         let arguments = if parts.len() > 1 {
-            let args: Vec<String> = parts[1]
-                .split_whitespace()
-                .map(|s| s.to_string())
-                .collect();
-            if args.is_empty() {
-                None
-            } else {
-                Some(args)
-            }
+            let args: Vec<String> = parts[1].split_whitespace().map(|s| s.to_string()).collect();
+            if args.is_empty() { None } else { Some(args) }
         } else {
             None
         };
@@ -346,7 +339,10 @@ mod tests {
         // With multiple arguments and extra spaces
         let cmd3 = map.try_resolve("   edit   foo   bar   ").unwrap();
         assert_eq!(cmd3.op, Ex::Edit);
-        assert_eq!(cmd3.arguments, Some(vec!["foo".to_string(), "bar".to_string()]));
+        assert_eq!(
+            cmd3.arguments,
+            Some(vec!["foo".to_string(), "bar".to_string()])
+        );
 
         // Invalid command
         assert!(map.try_resolve("invalid_command arg1").is_none());

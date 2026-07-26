@@ -1,7 +1,7 @@
-pub mod textview;
 pub mod layout;
 pub mod statusbar;
 pub mod tabs;
+pub mod textview;
 pub mod view;
 pub mod window;
 
@@ -252,10 +252,6 @@ pub fn render_command_line(
             cmd_char = '?';
         }
     }
-    print!(
-        "{}{}",
-        cmd_char,
-        editor.command.get_text()
-    );
+    print!("{}{}", cmd_char, editor.command.get_text());
     Ok(())
 }
