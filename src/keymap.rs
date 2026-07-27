@@ -854,6 +854,12 @@ impl Keymap {
         normal_actions
             .bind("yy", Action::YankLine { count: 1 })
             .expect("Valid binding");
+        normal_actions
+            .bind("q{c}", Action::BeginMacro { register: String::new() })
+            .expect("Valid binding");
+        normal_actions
+            .bind("@{c}", Action::ReplayMacro { register: String::new(), count: 1 })
+            .expect("Valid binding");
 
         normal_actions
             .bind("x", Action::DeleteChar { count: 1 })

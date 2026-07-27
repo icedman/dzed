@@ -16,6 +16,7 @@ mod theme;
 mod treesitter;
 mod ui;
 mod colorscheme;
+mod macros;
 
 use std::{
     io::{Write, stdout},

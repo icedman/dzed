@@ -129,6 +129,7 @@ pub struct Editor {
     // input
     pub keymap: crate::keymap::Keymap,
     pub input: crate::input::VimInput,
+    pub macro_recorder: crate::macros::MacroRecorder,
 }
 
 impl Editor {
@@ -195,6 +196,7 @@ impl Editor {
             clipboard: std::cell::RefCell::new(crate::clipboard::Clipboard::new()),
             keymap: crate::keymap::Keymap::new(),
             input: crate::input::VimInput::new(),
+            macro_recorder: crate::macros::MacroRecorder::new(),
         })
     }
 }

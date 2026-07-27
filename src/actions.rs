@@ -42,6 +42,14 @@ pub enum Action {
     Change {
         count: u32,
     },
+    BeginMacro {
+        register: String,
+    },
+    EndMacro,
+    ReplayMacro {
+        count: u32,
+        register: String,
+    },
     Yank {
         count: u32,
     },
@@ -388,6 +396,9 @@ impl std::fmt::Display for Action {
             Action::Quit => write!(f, "Quit"),
             Action::Delete { count } => write!(f, "Delete({})", count),
             Action::Change { count } => write!(f, "Change({})", count),
+            Action::BeginMacro { register } => write!(f, "BeginMacro({})", register),
+            Action::EndMacro => write!(f, "EndMacro"),
+            Action::ReplayMacro { register, count } => write!(f, "ReplayMacro({}, count={})", register, count),
             Action::Yank { count } => write!(f, "Yank({})", count),
             Action::Fold { count } => write!(f, "Fold({})", count),
             Action::Unfold { count } => write!(f, "Unfold({})", count),
@@ -883,6 +894,9 @@ impl Action {
             Action::Clear => Action::Clear,
             Action::NoOp => Action::NoOp,
             Action::Quit => Action::Quit,
+            Action::BeginMacro { register } => Action::BeginMacro { register },
+            Action::EndMacro => Action::EndMacro,
+            Action::ReplayMacro { register, .. } => Action::ReplayMacro { register, count },
         }
     }
 
@@ -903,12 +917,15 @@ impl Action {
             Action::MoveWithinCharacter { .. } => Action::MoveWithinCharacter { count, ch },
             Action::MoveAroundCharacter { .. } => Action::MoveAroundCharacter { count, ch },
             Action::InsertText(_) => Action::InsertText(ch.to_string()),
+            Action::BeginMacro { .. } => Action::BeginMacro { register: ch.to_string() },
+            Action::ReplayMacro { .. } => Action::ReplayMacro { register: ch.to_string(), count },
             _ => Action::NoOp,
         }
     }
 
     pub fn count(&self) -> u32 {
         match self {
+            Action::ReplayMacro { count, .. } => *count,
             Action::Delete { count } => *count,
             Action::Change { count } => *count,
             Action::Yank { count } => *count,

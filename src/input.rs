@@ -13,7 +13,15 @@ pub enum HandleEvent {
 pub fn handle_event(editor: &mut crate::editor::Editor, event: Event) -> HandleEvent {
     match event {
         Event::Key(key_event) => {
-            let action = editor.input.handle_event(&key_event);
+            let action = if editor.macro_recorder.is_recording()
+                && editor.input.mode() == Mode::Normal
+                && key_event.code == crossterm::event::KeyCode::Char('q')
+                && key_event.modifiers == crossterm::event::KeyModifiers::NONE
+            {
+                Action::EndMacro
+            } else {
+                editor.input.handle_event(&key_event)
+            };
 
             // Sync mode from VimInput to Document
             let active_buffer = editor.buffer_manager.active_mut();
@@ -24,6 +32,36 @@ pub fn handle_event(editor: &mut crate::editor::Editor, event: Event) -> HandleE
             if action != Action::NoOp {
                 if matches!(action, Action::Quit) {
                     return HandleEvent::Exit;
+                }
+
+                // Handle BeginMacro, EndMacro, and ReplayMacro, and update recording
+                match &action {
+                    Action::BeginMacro { register } => {
+                        editor.macro_recorder.begin(register.clone());
+                    }
+                    Action::EndMacro => {
+                        editor.macro_recorder.end();
+                    }
+                    Action::ReplayMacro { register, count } => {
+                        if let Some(macro_actions) = editor.macro_recorder.get(register) {
+                            let actions_to_replay = macro_actions.clone();
+                            for _ in 0..*count {
+                                for act in &actions_to_replay {
+                                    if editor.mode == Mode::Command {
+                                        editor.apply_command_action(act);
+                                    } else {
+                                        editor.apply_active_action(act);
+                                    }
+                                    editor.macro_recorder.update(act);
+                                    editor.input.set_mode(editor.buffer_manager.active().doc.current_mode());
+                                    editor.buffer_manager.active_mut().doc.sync();
+                                }
+                            }
+                        }
+                    }
+                    _ => {
+                        editor.macro_recorder.update(&action);
+                    }
                 }
 
                 let reg_opt = editor.input.last_register;
@@ -65,7 +103,12 @@ pub fn handle_event(editor: &mut crate::editor::Editor, event: Event) -> HandleE
                         editor.apply_command_action(&action);
                     }
                 } else {
-                    editor.apply_active_action(&action);
+                    match &action {
+                        Action::BeginMacro { .. } | Action::EndMacro | Action::ReplayMacro { .. } => {}
+                        _ => {
+                            editor.apply_active_action(&action);
+                        }
+                    }
                 }
 
                 editor.clipboard.borrow_mut().release();
