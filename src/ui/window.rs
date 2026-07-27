@@ -44,9 +44,14 @@ impl Window {
 
         if self.draw_border {
             let border_fg = if self.is_focused {
-                Color::Yellow
+                editor.colorscheme.ui.get("float_border_foreground")
+                    .or_else(|| editor.colorscheme.ui.get("border_foreground"))
+                    .map(|s| s.color)
+                    .unwrap_or(Color::Yellow)
             } else {
-                Color::DarkGrey
+                editor.colorscheme.ui.get("border_foreground")
+                    .map(|s| s.color)
+                    .unwrap_or(Color::DarkGrey)
             };
 
             // Draw border

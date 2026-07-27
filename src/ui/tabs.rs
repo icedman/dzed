@@ -40,11 +40,44 @@ fn draw_tabs_impl<W: Write>(w: &mut W, rect: Rect, editor: &Editor) -> std::io::
         return Ok(());
     }
 
+    let tabline_bg = editor
+        .colorscheme
+        .ui
+        .get("tabline_background")
+        .map(|s| s.color)
+        .unwrap_or(editor.theme.bg);
+    let tabline_fg = editor
+        .colorscheme
+        .ui
+        .get("tabline_foreground")
+        .map(|s| s.color)
+        .unwrap_or(editor.theme.fg);
+
+    let tabline_sel_bg = editor
+        .colorscheme
+        .ui
+        .get("tabline_sel_background")
+        .map(|s| s.color)
+        .unwrap_or(editor.theme.bg);
+    let tabline_sel_fg = editor
+        .colorscheme
+        .ui
+        .get("tabline_sel_foreground")
+        .map(|s| s.color)
+        .unwrap_or(editor.theme.fg);
+
+    let tabline_fill_bg = editor
+        .colorscheme
+        .ui
+        .get("tabline_fill")
+        .map(|s| s.color)
+        .unwrap_or(tabline_bg);
+
     execute!(
         w,
         MoveTo(rect.x, rect.y),
-        SetBackgroundColor(editor.theme.gutter),
-        SetForegroundColor(editor.theme.gutter_fg)
+        SetBackgroundColor(tabline_bg),
+        SetForegroundColor(tabline_fg)
     )?;
 
     let mut cols_drawn = 0usize;
@@ -70,14 +103,14 @@ fn draw_tabs_impl<W: Write>(w: &mut W, rect: Rect, editor: &Editor) -> std::io::
         if is_active {
             execute!(
                 w,
-                SetBackgroundColor(editor.theme.bg),
-                SetForegroundColor(editor.theme.fg)
+                SetBackgroundColor(tabline_sel_bg),
+                SetForegroundColor(tabline_sel_fg)
             )?;
         } else {
             execute!(
                 w,
-                SetBackgroundColor(editor.theme.gutter),
-                SetForegroundColor(editor.theme.gutter_fg)
+                SetBackgroundColor(tabline_bg),
+                SetForegroundColor(tabline_fg)
             )?;
         }
 
@@ -89,8 +122,8 @@ fn draw_tabs_impl<W: Write>(w: &mut W, rect: Rect, editor: &Editor) -> std::io::
     if (rect.width as usize) > cols_drawn {
         execute!(
             w,
-            SetBackgroundColor(editor.theme.gutter),
-            SetForegroundColor(editor.theme.gutter_fg)
+            SetBackgroundColor(tabline_fill_bg),
+            SetForegroundColor(tabline_fg)
         )?;
         execute!(w, Print(" ".repeat(rect.width as usize - cols_drawn)))?;
     }

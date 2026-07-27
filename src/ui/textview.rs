@@ -274,12 +274,22 @@ pub fn render_editor_content<W: Write>(
         }
     }
 
+    let editor_fg = editor.theme.fg;
+    let editor_bg = editor.theme.bg;
+    let gutter_fg = editor.colorscheme.ui.get("gutter_foreground").map(|s| s.color).unwrap_or(editor.theme.fg);
+    let gutter_bg = editor.colorscheme.ui.get("gutter").map(|s| s.color).unwrap_or(editor.theme.bg);
+    let caret_bg = editor.theme.caret;
+    let caret_fg = editor.theme.bg;
+    let selection_bg = editor.theme.select;
+    let find_fg = editor.colorscheme.ui.get("find_highlight_foreground").map(|s| s.color).unwrap_or(editor_fg);
+    let find_bg = editor.colorscheme.ui.get("find_highlight").map(|s| s.color).unwrap_or(editor.theme.select);
+
     let mut prev_line_number = -1;
     let mut screen_row = inner_rect.y;
 
     // Scrollbar metrics
-    let track_bg = editor.theme.gutter;
-    let handle_bg = editor.theme.select;
+    let track_bg = gutter_bg;
+    let handle_bg = selection_bg;
 
     let height = inner_rect.height as u32;
     let handle_h = if total_rows > 0 {
@@ -307,13 +317,13 @@ pub fn render_editor_content<W: Write>(
             let line_number = display_snapshot.buffer_row_for_display_row(row);
             execute!(
                 stdout,
-                crossterm::style::SetForegroundColor(editor.theme.gutter_fg)
+                crossterm::style::SetForegroundColor(gutter_fg)
             )
             .unwrap();
 
             execute!(
                 stdout,
-                crossterm::style::SetBackgroundColor(editor.theme.gutter)
+                crossterm::style::SetBackgroundColor(gutter_bg)
             )
             .unwrap();
             if prev_line_number != line_number as i32 {
@@ -372,8 +382,8 @@ pub fn render_editor_content<W: Write>(
                 }
             }
 
-            let mut fg = editor.theme.fg;
-            let mut bg = editor.theme.bg;
+            let mut fg = editor_fg;
+            let mut bg = editor_bg;
 
             if editor.syntax {
                 if let Some(style_cache) = active_buffer.hl.render_row(orig_point.row) {
@@ -381,15 +391,15 @@ pub fn render_editor_content<W: Write>(
                         orig_point.column >= *start && orig_point.column < *end
                     }) {
                         fg = style.foreground.rgb();
-                        bg = style.background.darken(10).rgb();
+                        bg = style.background.rgb();
                     }
                 }
             }
 
             // Apply search match background if not in a selection
             if in_match {
-                fg = editor.theme.find_fg;
-                bg = editor.theme.find;
+                fg = find_fg;
+                bg = find_bg;
             }
 
             let (selected, mut selected_line, at_cursor) = active_buffer
@@ -397,15 +407,16 @@ pub fn render_editor_content<W: Write>(
                 .selections()
                 .is_selected(orig_point.row, orig_point.column, &buffer);
             if selected && (editor.mode != Mode::Command) {
-                bg = editor.theme.select;
+                bg = selection_bg;
             }
             selected_line = selected_line && editor.mode == Mode::VisualLine;
             if selected_line {
-                bg = editor.theme.select;
+                bg = selection_bg;
             }
 
             if at_cursor {
-                bg = editor.theme.caret;
+                bg = caret_bg;
+                fg = caret_fg;
             }
 
             if x_scroll > 0 {
@@ -461,7 +472,7 @@ pub fn render_editor_content<W: Write>(
             let bg_color = if is_scrollbar {
                 if is_handle { handle_bg } else { track_bg }
             } else {
-                editor.theme.bg
+                editor_bg
             };
             execute!(stdout, crossterm::style::SetBackgroundColor(bg_color)).unwrap();
             print!(" ");
@@ -480,8 +491,8 @@ pub fn render_editor_content<W: Write>(
         if editor.show_line_numbers {
             execute!(
                 stdout,
-                crossterm::style::SetForegroundColor(editor.theme.gutter_fg),
-                crossterm::style::SetBackgroundColor(editor.theme.gutter)
+                crossterm::style::SetForegroundColor(gutter_fg),
+                crossterm::style::SetBackgroundColor(gutter_bg)
             )
             .unwrap();
             print!("~");
@@ -498,7 +509,7 @@ pub fn render_editor_content<W: Write>(
             let bg_color = if is_scrollbar {
                 if is_handle { handle_bg } else { track_bg }
             } else {
-                editor.theme.bg
+                editor_bg
             };
             execute!(stdout, crossterm::style::SetBackgroundColor(bg_color)).unwrap();
             print!(" ");
@@ -535,15 +546,15 @@ pub fn update_cursor_position<W: Write>(
         *last_cursor_style = Some(needed_style);
     }
 
-    let (ox, oy) = (1, 1);
+    let (ox, oy) = (0, 0);
 
     if editor.mode == Mode::Command {
         let cmd_text = editor.command.get_text();
         let cmd_col = (cmd_text.chars().count()) as u16;
-        // Command line is drawn at statusbar rect y position
+        // Command line is drawn at statusbar rect y position (bottom row)
         execute!(
             stdout,
-            MoveTo(cmd_col + 1, inner_rect.y + inner_rect.height + 1),
+            MoveTo(cmd_col + 1, (editor.screen_rows - 1) as u16),
         )
         .unwrap();
     } else {

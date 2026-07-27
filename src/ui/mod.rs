@@ -32,7 +32,7 @@ impl Ui {
         let main_win_id = 0;
         let mut main_win = window::Window::new(main_win_id, "Editor".to_string());
         main_win.set_view(Box::new(textview::TextView::new(main_win_id)));
-        main_win.draw_border = false;
+        // main_win.draw_border = false;
         windows.insert(main_win_id, main_win);
 
         // Create tabs window
@@ -147,11 +147,16 @@ impl Ui {
 
         for &(win_id, rect) in computed {
             if win_id == 0 {
-                editor_inner_rect = layout::Rect {
-                    x: rect.x + 1,
-                    y: rect.y + 1,
-                    width: rect.width.saturating_sub(2),
-                    height: rect.height.saturating_sub(2),
+                let win = self.windows.get(&0).unwrap();
+                editor_inner_rect = if win.draw_border {
+                    layout::Rect {
+                        x: rect.x + 1,
+                        y: rect.y + 1,
+                        width: rect.width.saturating_sub(2),
+                        height: rect.height.saturating_sub(2),
+                    }
+                } else {
+                    rect
                 };
 
                 let active_buffer = editor.buffer_manager.active_mut();
@@ -236,10 +241,12 @@ pub fn render_command_line(
     editor: &Editor,
     rect: layout::Rect,
 ) -> std::io::Result<()> {
+    let fg = editor.colorscheme.ui.get("foreground").map(|s| s.color).unwrap_or(editor.theme.fg);
+    let bg = editor.colorscheme.ui.get("gutter").map(|s| s.color).unwrap_or(editor.theme.bg);
     execute!(
         stdout,
-        crossterm::style::SetForegroundColor(editor.theme.fg),
-        crossterm::style::SetBackgroundColor(editor.theme.gutter),
+        crossterm::style::SetForegroundColor(fg),
+        crossterm::style::SetBackgroundColor(bg),
         MoveTo(rect.x, rect.y)
     )?;
     fill_to_eol(rect.width as usize);

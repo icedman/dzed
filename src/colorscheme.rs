@@ -19,15 +19,57 @@ pub struct ColorSchemeFile {
     pub syntax: HashMap<String, String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Style {
+    pub color: crossterm::style::Color,
+    pub bold: bool,
+    pub italic: bool,
+    pub underline: bool,
+    pub strikethrough: bool,
+}
+
 #[derive(Debug, Clone)]
 pub struct ColorScheme {
     pub metadata: Metadata,
     pub colors: HashMap<String, crossterm::style::Color>,
-    pub ui: HashMap<String, crossterm::style::Color>,
-    pub syntax: HashMap<String, crossterm::style::Color>,
+    pub ui: HashMap<String, Style>,
+    pub syntax: HashMap<String, Style>,
 }
 
 impl ColorScheme {
+    pub fn load_default() -> Self {
+        let contents = include_str!("../data/schemes/catppuccin.toml");
+        let parsed: ColorSchemeFile = toml::from_str(contents).unwrap();
+
+        let mut colors = HashMap::new();
+        for (k, v) in &parsed.colors {
+            if let Some(color) = parse_hex_color(v) {
+                colors.insert(k.clone(), color);
+            }
+        }
+
+        let mut ui = HashMap::new();
+        for (k, v) in &parsed.ui {
+            if let Some(style) = parse_style(v, &parsed.colors, &parsed.ui) {
+                ui.insert(k.clone(), style);
+            }
+        }
+
+        let mut syntax = HashMap::new();
+        for (k, v) in &parsed.syntax {
+            if let Some(style) = parse_style(v, &parsed.colors, &parsed.syntax) {
+                syntax.insert(k.clone(), style);
+            }
+        }
+
+        Self {
+            metadata: parsed.metadata,
+            colors,
+            ui,
+            syntax,
+        }
+    }
+
     pub fn load_from_file<P: AsRef<Path>>(path: P) -> Result<Self, Box<dyn std::error::Error>> {
         let contents = fs::read_to_string(path)?;
         let parsed: ColorSchemeFile = toml::from_str(&contents)?;
@@ -41,15 +83,15 @@ impl ColorScheme {
 
         let mut ui = HashMap::new();
         for (k, v) in &parsed.ui {
-            if let Some(color) = resolve_color(v, &parsed.colors, &parsed.ui) {
-                ui.insert(k.clone(), color);
+            if let Some(style) = parse_style(v, &parsed.colors, &parsed.ui) {
+                ui.insert(k.clone(), style);
             }
         }
 
         let mut syntax = HashMap::new();
         for (k, v) in &parsed.syntax {
-            if let Some(color) = resolve_color(v, &parsed.colors, &parsed.syntax) {
-                syntax.insert(k.clone(), color);
+            if let Some(style) = parse_style(v, &parsed.colors, &parsed.syntax) {
+                syntax.insert(k.clone(), style);
             }
         }
 
@@ -64,15 +106,16 @@ impl ColorScheme {
 
 fn parse_hex_color(hex: &str) -> Option<crossterm::style::Color> {
     let hex = hex.trim().trim_start_matches('#');
-    if hex.len() == 6 {
-        let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
-        let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
-        let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+    let base_hex = hex.split('+').next()?.trim();
+    if base_hex.len() == 6 {
+        let r = u8::from_str_radix(&base_hex[0..2], 16).ok()?;
+        let g = u8::from_str_radix(&base_hex[2..4], 16).ok()?;
+        let b = u8::from_str_radix(&base_hex[4..6], 16).ok()?;
         Some(crossterm::style::Color::Rgb { r, g, b })
-    } else if hex.len() == 3 {
-        let r_char = &hex[0..1];
-        let g_char = &hex[1..2];
-        let b_char = &hex[2..3];
+    } else if base_hex.len() == 3 {
+        let r_char = &base_hex[0..1];
+        let g_char = &base_hex[1..2];
+        let b_char = &base_hex[2..3];
         let r = u8::from_str_radix(&format!("{}{}", r_char, r_char), 16).ok()?;
         let g = u8::from_str_radix(&format!("{}{}", g_char, g_char), 16).ok()?;
         let b = u8::from_str_radix(&format!("{}{}", b_char, b_char), 16).ok()?;
@@ -99,13 +142,51 @@ fn resolve_color_recursive(
     if depth > 10 {
         return None;
     }
-    if let Some(resolved) = palette.get(val) {
-        parse_hex_color(resolved)
-    } else if let Some(linked_val) = fallback_map.get(val) {
+    let base_ref = val.split('+').next()?.trim();
+    if let Some(resolved) = palette.get(base_ref) {
+        let base_resolved = resolved.split('+').next()?.trim();
+        parse_hex_color(base_resolved)
+    } else if let Some(linked_val) = fallback_map.get(base_ref) {
         resolve_color_recursive(linked_val, palette, fallback_map, depth + 1)
     } else {
-        parse_hex_color(val)
+        parse_hex_color(base_ref)
     }
+}
+
+fn parse_style(
+    val: &str,
+    palette: &HashMap<String, String>,
+    fallback_map: &HashMap<String, String>,
+) -> Option<Style> {
+    let parts: Vec<&str> = val.split('+').collect();
+    if parts.is_empty() {
+        return None;
+    }
+    let color_ref = parts[0].trim();
+    let color = resolve_color(color_ref, palette, fallback_map)?;
+
+    let mut bold = false;
+    let mut italic = false;
+    let mut underline = false;
+    let mut strikethrough = false;
+
+    for &attr in &parts[1..] {
+        match attr.trim() {
+            "bold" => bold = true,
+            "italic" => italic = true,
+            "underline" => underline = true,
+            "strikethrough" | "strike" => strikethrough = true,
+            _ => {}
+        }
+    }
+
+    Some(Style {
+        color,
+        bold,
+        italic,
+        underline,
+        strikethrough,
+    })
 }
 
 #[cfg(test)]
@@ -131,14 +212,14 @@ mod tests {
             [ui]
             foreground = "text"
             background = "base"
-            caret = "rosewater"
+            caret = "rosewater+bold"
             selection = "foreground"
 
             [syntax]
-            comment = "#6c7086"
-            keyword = "mauve"
-            operator = "sky"
-            function = "keyword"
+            comment = "#6c7086+italic"
+            keyword = "mauve+bold+italic"
+            operator = "sky+underline"
+            function = "keyword+strikethrough"
         "##;
 
         let path = "temp_colorscheme_test.toml";
@@ -149,12 +230,14 @@ mod tests {
         assert_eq!(scheme.metadata.name, "catppuccin-mocha");
         assert_eq!(scheme.metadata.r#type.as_deref(), Some("dark"));
 
-        // Verify resolved color values
-        let fg_color = scheme.ui.get("foreground").unwrap();
-        let bg_color = scheme.ui.get("background").unwrap();
-        let selection_color = scheme.ui.get("selection").unwrap();
-        let comment_color = scheme.syntax.get("comment").unwrap();
-        let function_color = scheme.syntax.get("function").unwrap();
+        // Verify resolved style values
+        let fg_style = scheme.ui.get("foreground").unwrap();
+        let bg_style = scheme.ui.get("background").unwrap();
+        let caret_style = scheme.ui.get("caret").unwrap();
+        let comment_style = scheme.syntax.get("comment").unwrap();
+        let keyword_style = scheme.syntax.get("keyword").unwrap();
+        let operator_style = scheme.syntax.get("operator").unwrap();
+        let function_style = scheme.syntax.get("function").unwrap();
 
         // Verify resolved palette colors map
         let base_palette = scheme.colors.get("base").unwrap();
@@ -164,26 +247,63 @@ mod tests {
         );
 
         assert_eq!(
-            bg_color,
-            &crossterm::style::Color::Rgb { r: 30, g: 30, b: 46 }
+            bg_style,
+            &Style {
+                color: crossterm::style::Color::Rgb { r: 30, g: 30, b: 46 },
+                bold: false,
+                italic: false,
+                underline: false,
+                strikethrough: false,
+            }
         );
         assert_eq!(
-            fg_color,
-            &crossterm::style::Color::Rgb { r: 205, g: 214, b: 244 }
+            fg_style,
+            &Style {
+                color: crossterm::style::Color::Rgb { r: 205, g: 214, b: 244 },
+                bold: false,
+                italic: false,
+                underline: false,
+                strikethrough: false,
+            }
         );
         assert_eq!(
-            selection_color,
-            &crossterm::style::Color::Rgb { r: 205, g: 214, b: 244 }
+            caret_style.color,
+            crossterm::style::Color::Rgb { r: 245, g: 224, b: 220 }
+        );
+        assert!(caret_style.bold);
+        assert!(!caret_style.italic);
+
+        assert_eq!(
+            comment_style,
+            &Style {
+                color: crossterm::style::Color::Rgb { r: 108, g: 112, b: 134 },
+                bold: false,
+                italic: true,
+                underline: false,
+                strikethrough: false,
+            }
         );
         assert_eq!(
-            comment_color,
-            &crossterm::style::Color::Rgb { r: 108, g: 112, b: 134 }
+            keyword_style,
+            &Style {
+                color: crossterm::style::Color::Rgb { r: 203, g: 166, b: 247 },
+                bold: true,
+                italic: true,
+                underline: false,
+                strikethrough: false,
+            }
         );
-        assert_eq!(
-            function_color,
-            &crossterm::style::Color::Rgb { r: 203, g: 166, b: 247 }
-        );
+        assert!(operator_style.underline);
+        assert!(function_style.strikethrough);
 
         std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn test_load_default() {
+        let scheme = ColorScheme::load_default();
+        assert_eq!(scheme.metadata.name, "catppuccin-mocha");
+        assert!(scheme.ui.contains_key("background"));
+        assert!(scheme.syntax.contains_key("keyword"));
     }
 }

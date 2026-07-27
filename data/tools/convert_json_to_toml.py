@@ -8,8 +8,8 @@ def convert_json_to_toml(json_path, toml_path, repo_url=None):
     with open(json_path, 'r', encoding='utf-8') as f:
         data = json.load(f)
         
-    if os.path.exists(json_path):
-        os.remove(json_path)
+    # if os.path.exists(json_path):
+    #     os.remove(json_path)
         
     metadata_in = data.get("metadata", {})
     name = metadata_in.get("name")
@@ -52,6 +52,39 @@ def convert_json_to_toml(json_path, toml_path, repo_url=None):
         "Folded": (None, "find_highlight"),
         "Search": ("find_highlight_foreground", "find_highlight"),
         "IncSearch": ("find_highlight_foreground", "find_highlight"),
+        "CursorLine": (None, "cursor_line"),
+        "CursorLineNr": ("cursor_line_nr", None),
+        "StatusLine": ("statusline_foreground", "statusline_background"),
+        "StatusLineNC": ("statusline_nc_foreground", "statusline_nc_background"),
+        "TabLine": ("tabline_foreground", "tabline_background"),
+        "TabLineSel": ("tabline_sel_foreground", "tabline_sel_background"),
+        "TabLineFill": (None, "tabline_fill"),
+        "Pmenu": ("pmenu_foreground", "pmenu_background"),
+        "PmenuSel": ("pmenu_sel_foreground", "pmenu_sel_background"),
+        "PmenuSbar": (None, "pmenu_sbar"),
+        "PmenuThumb": (None, "pmenu_thumb"),
+        "DiffAdd": ("diff_add_foreground", "diff_add_background"),
+        "DiffChange": ("diff_change_foreground", "diff_change_background"),
+        "DiffDelete": ("diff_delete_foreground", "diff_delete_background"),
+        "DiffText": ("diff_text_foreground", "diff_text_background"),
+        "DiagnosticError": ("diagnostic_error", None),
+        "DiagnosticWarn": ("diagnostic_warn", None),
+        "DiagnosticInfo": ("diagnostic_info", None),
+        "DiagnosticHint": ("diagnostic_hint", None),
+        "DiagnosticOk": ("diagnostic_ok", None),
+        "ErrorMsg": ("error", None),
+        "WarningMsg": ("warning", None),
+        "MatchParen": ("match_paren_foreground", "match_paren_background"),
+        "NonText": ("non_text", None),
+        "SpecialKey": ("special_key", None),
+        "Whitespace": ("whitespace", None),
+        "Added": ("diff_add_foreground", None),
+        "Changed": ("diff_change_foreground", None),
+        "Removed": ("diff_delete_foreground", None),
+        "WinSeparator": ("border_foreground", "border_background"),
+        "VertSplit": ("border_foreground", "border_background"),
+        "FloatBorder": ("float_border_foreground", "float_border_background"),
+        "NormalFloat": ("float_foreground", "float_background"),
     }
 
     group_to_syntax = {
@@ -66,6 +99,38 @@ def convert_json_to_toml(json_path, toml_path, repo_url=None):
         "Type": "type",
         "Operator": "operator",
         "PreProc": "keyword",
+        "Boolean": "boolean",
+        "Character": "character",
+        "Float": "float",
+        "Conditional": "keyword",
+        "Repeat": "keyword",
+        "Label": "keyword",
+        "Exception": "keyword",
+        "Include": "keyword",
+        "Define": "keyword",
+        "Macro": "keyword",
+        "PreCondit": "keyword",
+        "StorageClass": "type",
+        "Structure": "type",
+        "Typedef": "type",
+        "Special": "special",
+        "SpecialChar": "special",
+        "Tag": "special",
+        "Delimiter": "delimiter",
+        "SpecialComment": "comment",
+        "Debug": "special",
+        "Todo": "todo",
+        "Underlined": "underlined",
+        "Error": "error",
+        "@variable": "variable",
+        "@property": "property",
+        "@module": "module",
+        "@constructor": "constructor",
+        "@tag": "tag",
+        "@tag.delimiter": "tag_delimiter",
+        "@tag.attribute": "tag_attribute",
+        "@markup.heading": "heading",
+        "@markup.link": "link",
     }
     
     for group, style in highlights.items():

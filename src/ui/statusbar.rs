@@ -42,10 +42,23 @@ fn draw_statusbar_impl<W: Write>(w: &mut W, rect: Rect, editor: &Editor) -> std:
         return Ok(());
     }
 
+    let fg = editor
+        .colorscheme
+        .ui
+        .get("statusline_foreground")
+        .map(|s| s.color)
+        .unwrap_or(editor.theme.fg);
+    let bg = editor
+        .colorscheme
+        .ui
+        .get("statusline_background")
+        .map(|s| s.color)
+        .unwrap_or(editor.theme.bg);
+
     execute!(
         w,
-        SetForegroundColor(editor.theme.fg),
-        SetBackgroundColor(editor.theme.gutter),
+        SetForegroundColor(fg),
+        SetBackgroundColor(bg),
         MoveTo(rect.x, rect.y)
     )?;
 

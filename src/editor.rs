@@ -3,6 +3,7 @@ use crate::display::display_map::DisplayMap;
 use crate::document::Document;
 use crate::highlight::Highlights;
 use crate::theme::Theme;
+use crate::colorscheme::ColorScheme;
 use onig::Regex;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
@@ -110,6 +111,7 @@ pub struct Editor {
 
     // global settings
     pub theme: Theme,
+    pub colorscheme: ColorScheme,
     pub wrap: bool,
     pub syntax: bool,
     pub tree_sitter: bool,
@@ -175,6 +177,7 @@ impl Editor {
 
         // let theme = Theme::new("base16-ocean.dark");
         let theme = Theme::new("test/themes/Dracula.tmTheme");
+        let colorscheme = ColorScheme::load_default();
         let bg_worker = crate::background::BackgroundWorker::new();
 
         let (cols, rows) = crossterm::terminal::size().unwrap_or((80, 24));
@@ -184,6 +187,7 @@ impl Editor {
             command: crate::command::Command::new(),
             mode: Mode::Normal,
             theme,
+            colorscheme,
             wrap: false,
             syntax: true,
             tree_sitter: true,

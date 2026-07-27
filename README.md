@@ -34,6 +34,7 @@ DZed is currently a proof of concept and an active learning project rather than 
 - Character search motions and repeatable multi-key command sequences.
 - Insert, append, open-line, change, delete, undo, and redo operations.
 - Mode-aware cursor behavior and selection extension.
+- Macro recording (`q{c}` to record to register `{c}`, `q` to stop recording) and replaying (`@{c}` with support for count prefix to repeat execution).
 
 ### Selections and Text Objects
 
@@ -52,7 +53,7 @@ DZed is currently a proof of concept and an active learning project rather than 
 - Motion-based and linewise yank support.
 - Characterwise and linewise paste behavior.
 - Paste counts and cursor restoration after yank operations.
-- Support for registers.
+- Named register support (`"{register}y` to yank to register, `"{register}p` to paste).
 
 ### Display and Terminal UI
 
@@ -61,10 +62,11 @@ DZed is currently a proof of concept and an active learning project rather than 
 - Logical buffer-point to display-point conversion.
 - Scrolling that follows the active cursor.
 - Optional line-number gutter.
-- Syntax highlighting powered by `syntect`.
+- Syntax highlighting powered by `syntect` and AST-based syntax folding/parsing using `tree-sitter` (supporting Rust, Go, Python, HTML, Markdown, etc.).
 - Search-match and selection highlighting.
 - Dedicated buffer, status-bar, command-line, and cursor renderers.
 - Mode-specific terminal cursor styles.
+- Block code folding.
 - Bracketed paste and mouse-capture support.
 
 ### Search and Commands
@@ -79,6 +81,7 @@ DZed is currently a proof of concept and an active learning project rather than 
 
 - Asynchronous syntax-highlighting tasks.
 - Asynchronous wrapping tasks.
+- Asynchronous tree-sitter tasks.
 - Task identifiers prevent stale background results from replacing newer editor state.
 
 ### Extensible Input Architecture
