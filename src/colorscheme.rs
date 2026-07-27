@@ -38,41 +38,21 @@ pub struct ColorScheme {
 
 impl ColorScheme {
     pub fn load_default() -> Self {
-        let contents = include_str!("../data/schemes/catppuccin.toml");
-        let parsed: ColorSchemeFile = toml::from_str(contents).unwrap();
-
-        let mut colors = HashMap::new();
-        for (k, v) in &parsed.colors {
-            if let Some(color) = parse_hex_color(v) {
-                colors.insert(k.clone(), color);
-            }
-        }
-
-        let mut ui = HashMap::new();
-        for (k, v) in &parsed.ui {
-            if let Some(style) = parse_style(v, &parsed.colors, &parsed.ui) {
-                ui.insert(k.clone(), style);
-            }
-        }
-
-        let mut syntax = HashMap::new();
-        for (k, v) in &parsed.syntax {
-            if let Some(style) = parse_style(v, &parsed.colors, &parsed.syntax) {
-                syntax.insert(k.clone(), style);
-            }
-        }
-
-        Self {
-            metadata: parsed.metadata,
-            colors,
-            ui,
-            syntax,
-        }
+        Self::get_by_name("tokyonight").expect("Failed to load default tokyonight colorscheme")
     }
 
-    pub fn load_from_file<P: AsRef<Path>>(path: P) -> Result<Self, Box<dyn std::error::Error>> {
-        let contents = fs::read_to_string(path)?;
-        let parsed: ColorSchemeFile = toml::from_str(&contents)?;
+    pub fn get_by_name(name: &str) -> Option<Self> {
+        let contents = match name.to_lowercase().as_str() {
+            "catppuccin" | "catppuccin-mocha" => Some(include_str!("../data/schemes/catppuccin.toml")),
+            "tokyonight" => Some(include_str!("../data/schemes/tokyonight.toml")),
+            "kanagawa" => Some(include_str!("../data/schemes/kanagawa.toml")),
+            _ => None,
+        };
+        contents.and_then(|c| Self::load_from_str(c).ok())
+    }
+
+    pub fn load_from_str(contents: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        let parsed: ColorSchemeFile = toml::from_str(contents)?;
 
         let mut colors = HashMap::new();
         for (k, v) in &parsed.colors {
@@ -101,6 +81,11 @@ impl ColorScheme {
             ui,
             syntax,
         })
+    }
+
+    pub fn load_from_file<P: AsRef<Path>>(path: P) -> Result<Self, Box<dyn std::error::Error>> {
+        let contents = fs::read_to_string(path)?;
+        Self::load_from_str(&contents)
     }
 }
 
@@ -302,8 +287,14 @@ mod tests {
     #[test]
     fn test_load_default() {
         let scheme = ColorScheme::load_default();
-        assert_eq!(scheme.metadata.name, "catppuccin-mocha");
+        assert_eq!(scheme.metadata.name, "tokyonight-moon");
         assert!(scheme.ui.contains_key("background"));
         assert!(scheme.syntax.contains_key("keyword"));
+
+        let catppuccin = ColorScheme::get_by_name("catppuccin").unwrap();
+        assert_eq!(catppuccin.metadata.name, "catppuccin-mocha");
+
+        let kanagawa = ColorScheme::get_by_name("kanagawa").unwrap();
+        assert_eq!(kanagawa.metadata.name, "kanagawa");
     }
 }

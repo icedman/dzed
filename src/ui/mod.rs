@@ -241,8 +241,12 @@ pub fn render_command_line(
     editor: &Editor,
     rect: layout::Rect,
 ) -> std::io::Result<()> {
-    let fg = editor.colorscheme.ui.get("foreground").map(|s| s.color).unwrap_or(editor.theme.fg);
-    let bg = editor.colorscheme.ui.get("gutter").map(|s| s.color).unwrap_or(editor.theme.bg);
+    use crate::theme::ToCrossTerm;
+    let theme_fg = editor.theme.theme.settings.foreground.map(|c| c.rgb()).unwrap_or(crossterm::style::Color::White);
+    let theme_bg = editor.theme.theme.settings.background.map(|c| c.rgb()).unwrap_or(crossterm::style::Color::Black);
+
+    let fg = editor.colorscheme.ui.get("foreground").map(|s| s.color).unwrap_or(theme_fg);
+    let bg = editor.colorscheme.ui.get("gutter").map(|s| s.color).unwrap_or(theme_bg);
     execute!(
         stdout,
         crossterm::style::SetForegroundColor(fg),

@@ -71,6 +71,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut prev_screen_cols = 0;
     let mut ticks: Duration = Duration::ZERO;
     let mut last_activity = Instant::now();
+    let mut last_shown = Instant::now();
     let mut cursor_visible = false;
 
     loop {
@@ -129,8 +130,9 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         //------------------
         ui.update(&mut editor, &mut should_sync)?;
 
-        if !cursor_visible && last_activity.elapsed() >= Duration::from_millis(250) {
+        if !cursor_visible && (last_activity.elapsed() >= Duration::from_millis(1000) || last_shown.elapsed() >= Duration::from_millis(1000)) {
             cursor_visible = true;
+            last_shown = Instant::now();
             should_redraw = true;
         }
 

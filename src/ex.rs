@@ -111,6 +111,10 @@ pub enum Ex {
     // --- Configuration & Help ---
     /// `:se[t] [option]` - Configures or views editor settings.
     Set,
+    /// `:colorschemes [name]` - Loads a colorscheme by name.
+    Colorschemes,
+    /// `:syn[tax] {on|off}` - Enables or disables syntax highlighting.
+    Syntax,
     /// `:h[elp] [subject]` - Opens help documentation for a subject.
     Help,
 }
@@ -165,6 +169,8 @@ impl std::fmt::Display for Ex {
             Ex::Undo => write!(f, "undo"),
             Ex::Redo => write!(f, "redo"),
             Ex::Set => write!(f, "set"),
+            Ex::Colorschemes => write!(f, "colorschemes"),
+            Ex::Syntax => write!(f, "syntax"),
             Ex::Help => write!(f, "help"),
         }
     }

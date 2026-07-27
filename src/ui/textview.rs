@@ -109,7 +109,9 @@ impl View for TextView {
                     snapshot: active_buffer.doc.buffer().snapshot().clone(),
                     start_row: start,
                     row_count: active_buffer.doc.buffer().row_count() - start,
+                    colorscheme: std::sync::Arc::new(editor.colorscheme.clone()),
                     theme: std::sync::Arc::new(editor.theme.theme.clone()),
+                    use_colorscheme: editor.use_colorscheme,
                     task_id: crate::background::TaskId(hl_task_id),
                     latest_task_id: active_buffer.latest_hl_task_id.clone(),
                 });
@@ -269,20 +271,34 @@ pub fn render_editor_content<W: Write>(
                 &active_buffer.doc.buffer().snapshot(),
                 start_buffer_row,
                 end_buffer_row_exclusive - start_buffer_row,
+                &editor.colorscheme,
                 &editor.theme.theme,
+                editor.use_colorscheme,
             );
         }
     }
 
-    let editor_fg = editor.theme.fg;
-    let editor_bg = editor.theme.bg;
-    let gutter_fg = editor.colorscheme.ui.get("gutter_foreground").map(|s| s.color).unwrap_or(editor.theme.fg);
-    let gutter_bg = editor.colorscheme.ui.get("gutter").map(|s| s.color).unwrap_or(editor.theme.bg);
-    let caret_bg = editor.theme.caret;
-    let caret_fg = editor.theme.bg;
-    let selection_bg = editor.theme.select;
+    use crate::theme::ToCrossTerm;
+    let theme_fg = editor.theme.theme.settings.foreground.map(|c| c.rgb()).unwrap_or(crossterm::style::Color::White);
+    let theme_bg = editor.theme.theme.settings.background.map(|c| c.rgb()).unwrap_or(crossterm::style::Color::Black);
+    let theme_caret = editor.theme.theme.settings.caret.map(|c| c.rgb()).unwrap_or(theme_fg);
+    let theme_select = editor.theme.theme.settings.selection.map(|c| c.rgb()).unwrap_or(theme_bg);
+
+    let (editor_fg, editor_bg, caret_bg, caret_fg, selection_bg) = if editor.use_colorscheme {
+        let fg = editor.colorscheme.ui.get("foreground").map(|s| s.color).unwrap_or(theme_fg);
+        let bg = editor.colorscheme.ui.get("background").map(|s| s.color).unwrap_or(theme_bg);
+        let sel = editor.colorscheme.ui.get("selection").map(|s| s.color).unwrap_or(theme_select);
+        let c_bg = editor.colorscheme.ui.get("caret").map(|s| s.color).unwrap_or(sel);
+        let c_fg = fg; // editor.colorscheme.ui.get("caret_foreground").map(|s| s.color).unwrap_or(bg);
+        (fg, bg, c_bg, c_fg, sel)
+    } else {
+        (theme_fg, theme_bg, theme_caret, theme_bg, theme_select)
+    };
+
+    let gutter_fg = editor.colorscheme.ui.get("gutter_foreground").map(|s| s.color).unwrap_or(editor_fg);
+    let gutter_bg = editor.colorscheme.ui.get("gutter").map(|s| s.color).unwrap_or(editor_bg);
     let find_fg = editor.colorscheme.ui.get("find_highlight_foreground").map(|s| s.color).unwrap_or(editor_fg);
-    let find_bg = editor.colorscheme.ui.get("find_highlight").map(|s| s.color).unwrap_or(editor.theme.select);
+    let find_bg = editor.colorscheme.ui.get("find_highlight").map(|s| s.color).unwrap_or(selection_bg);
 
     let mut prev_line_number = -1;
     let mut screen_row = inner_rect.y;
@@ -415,8 +431,9 @@ pub fn render_editor_content<W: Write>(
             }
 
             if at_cursor {
-                bg = caret_bg;
-                fg = caret_fg;
+                bg = selection_bg;
+                // bg = caret_bg;
+                // fg = caret_fg;
             }
 
             if x_scroll > 0 {
@@ -443,7 +460,7 @@ pub fn render_editor_content<W: Write>(
                                 && editor.mode != Mode::Insert
                                 && editor.mode != Mode::Command
                             {
-                                editor.theme.bg
+                                editor_bg
                             } else {
                                 bg
                             };

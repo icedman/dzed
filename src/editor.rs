@@ -112,6 +112,7 @@ pub struct Editor {
     // global settings
     pub theme: Theme,
     pub colorscheme: ColorScheme,
+    pub use_colorscheme: bool,
     pub wrap: bool,
     pub syntax: bool,
     pub tree_sitter: bool,
@@ -188,6 +189,7 @@ impl Editor {
             mode: Mode::Normal,
             theme,
             colorscheme,
+            use_colorscheme: true,
             wrap: false,
             syntax: true,
             tree_sitter: true,

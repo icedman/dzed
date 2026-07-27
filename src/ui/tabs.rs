@@ -40,31 +40,35 @@ fn draw_tabs_impl<W: Write>(w: &mut W, rect: Rect, editor: &Editor) -> std::io::
         return Ok(());
     }
 
+    use crate::theme::ToCrossTerm;
+    let theme_fg = editor.theme.theme.settings.foreground.map(|c| c.rgb()).unwrap_or(crossterm::style::Color::White);
+    let theme_bg = editor.theme.theme.settings.background.map(|c| c.rgb()).unwrap_or(crossterm::style::Color::Black);
+
     let tabline_bg = editor
         .colorscheme
         .ui
         .get("tabline_background")
         .map(|s| s.color)
-        .unwrap_or(editor.theme.bg);
+        .unwrap_or(theme_bg);
     let tabline_fg = editor
         .colorscheme
         .ui
         .get("tabline_foreground")
         .map(|s| s.color)
-        .unwrap_or(editor.theme.fg);
+        .unwrap_or(theme_fg);
 
     let tabline_sel_bg = editor
         .colorscheme
         .ui
         .get("tabline_sel_background")
         .map(|s| s.color)
-        .unwrap_or(editor.theme.bg);
+        .unwrap_or(theme_bg);
     let tabline_sel_fg = editor
         .colorscheme
         .ui
         .get("tabline_sel_foreground")
         .map(|s| s.color)
-        .unwrap_or(editor.theme.fg);
+        .unwrap_or(theme_fg);
 
     let tabline_fill_bg = editor
         .colorscheme

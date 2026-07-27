@@ -24,7 +24,9 @@ pub enum BackgroundTask {
         snapshot: BufferSnapshot,
         start_row: u32,
         row_count: u32,
-        theme: Arc<Theme>,
+        colorscheme: Arc<crate::colorscheme::ColorScheme>,
+        theme: Arc<syntect::highlighting::Theme>,
+        use_colorscheme: bool,
         task_id: TaskId,
         latest_task_id: Arc<AtomicU64>,
     },
@@ -97,7 +99,9 @@ impl BackgroundWorker {
                         snapshot,
                         start_row,
                         row_count,
+                        colorscheme,
                         theme,
+                        use_colorscheme,
                         task_id,
                         latest_task_id,
                     } => {
@@ -110,7 +114,7 @@ impl BackgroundWorker {
                         let mut hl = Highlights::new(&file_path);
 
                         // Highlight the requested block of lines synchronously inside this thread
-                        hl.highlight_lines(&snapshot, start_row, row_count, &theme);
+                        hl.highlight_lines(&snapshot, start_row, row_count, &colorscheme, &theme, use_colorscheme);
 
                         // Extract computed style cache
                         let style_cache = hl.get_style_cache().clone();

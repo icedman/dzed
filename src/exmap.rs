@@ -282,6 +282,8 @@ impl ExMap {
 
         // --- Configuration & Help ---
         self.register("se[t]", Ex::Set);
+        self.register("colo[rschemes]", Ex::Colorschemes);
+        self.register("syn[tax]", Ex::Syntax);
         self.register("h[elp]", Ex::Help);
     }
 }

@@ -42,18 +42,22 @@ fn draw_statusbar_impl<W: Write>(w: &mut W, rect: Rect, editor: &Editor) -> std:
         return Ok(());
     }
 
+    use crate::theme::ToCrossTerm;
+    let theme_fg = editor.theme.theme.settings.foreground.map(|c| c.rgb()).unwrap_or(crossterm::style::Color::White);
+    let theme_bg = editor.theme.theme.settings.background.map(|c| c.rgb()).unwrap_or(crossterm::style::Color::Black);
+
     let fg = editor
         .colorscheme
         .ui
         .get("statusline_foreground")
         .map(|s| s.color)
-        .unwrap_or(editor.theme.fg);
+        .unwrap_or(theme_fg);
     let bg = editor
         .colorscheme
         .ui
         .get("statusline_background")
         .map(|s| s.color)
-        .unwrap_or(editor.theme.bg);
+        .unwrap_or(theme_bg);
 
     execute!(
         w,

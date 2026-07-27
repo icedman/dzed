@@ -110,6 +110,35 @@ impl Command {
                     None
                 }
                 crate::ex::Ex::Quit => Some(ExResult::Exit),
+                crate::ex::Ex::Colorschemes => {
+                    let name = resolved.arguments.as_ref()
+                        .and_then(|args| args.first())
+                        .map(|s| s.as_str())
+                        .unwrap_or("tokyonight");
+                    let loaded = crate::colorscheme::ColorScheme::get_by_name(name)
+                        .unwrap_or_else(|| crate::colorscheme::ColorScheme::load_default());
+                    editor.colorscheme = loaded;
+                    None
+                }
+                crate::ex::Ex::Syntax => {
+                    let arg = resolved.arguments.as_ref()
+                        .and_then(|args| args.first())
+                        .map(|s| s.as_str());
+                    match arg {
+                        Some("on") => editor.syntax = true,
+                        Some("off") => editor.syntax = false,
+                        _ => {}
+                    }
+                    None
+                }
+                crate::ex::Ex::Bnext => {
+                    editor.buffer_manager.switch_next();
+                    None
+                }
+                crate::ex::Ex::Bprev => {
+                    editor.buffer_manager.switch_prev();
+                    None
+                }
                 _ => None,
             }
         } else {
@@ -199,5 +228,46 @@ mod tests {
         cmd.set("set treesitter");
         cmd.ex(&mut editor);
         assert!(editor.tree_sitter);
+
+        // Test colorschemes command and aliases
+        cmd.set("colorschemes catppuccin");
+        cmd.ex(&mut editor);
+        assert_eq!(editor.colorscheme.metadata.name, "catppuccin-mocha");
+
+        cmd.set("colorscheme kanagawa");
+        cmd.ex(&mut editor);
+        assert_eq!(editor.colorscheme.metadata.name, "kanagawa");
+
+        cmd.set("colo catppuccin");
+        cmd.ex(&mut editor);
+        assert_eq!(editor.colorscheme.metadata.name, "catppuccin-mocha");
+
+        cmd.set("colorscheme unknown_colorscheme");
+        cmd.ex(&mut editor);
+        assert_eq!(editor.colorscheme.metadata.name, "tokyonight-moon");
+
+        // Test syntax command
+        cmd.set("syntax off");
+        cmd.ex(&mut editor);
+        assert!(!editor.syntax);
+
+        cmd.set("syn on");
+        cmd.ex(&mut editor);
+        assert!(editor.syntax);
+
+        // Test bnext / bprev commands
+        let buf2 = crate::editor::EditorBuffer::new(99, "temp_test_file2.txt").unwrap();
+        editor.buffer_manager.add_buffer(buf2);
+        // Switch active index to first buffer (index 0)
+        editor.buffer_manager.active_idx = 0;
+        assert_eq!(editor.buffer_manager.active_idx, 0);
+
+        cmd.set("bnext");
+        cmd.ex(&mut editor);
+        assert_eq!(editor.buffer_manager.active_idx, 1);
+
+        cmd.set("bprev");
+        cmd.ex(&mut editor);
+        assert_eq!(editor.buffer_manager.active_idx, 0);
     }
 }
