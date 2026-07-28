@@ -104,19 +104,31 @@ impl Document {
                 let head_point = selection.head().to_point(&self.buffer);
                 let head_offset = head_point.to_offset(&self.buffer);
                 if let Some(block) = syntax_tree.enclosing_block_at_byte(head_offset) {
-                    if !editor.fold_multiline_only || block.end_position.row > block.start_position.row {
+                    if !editor.settings.fold_multiline_only
+                        || block.end_position.row > block.start_position.row
+                    {
                         let mut start_offset = block.byte_range.start;
                         let mut end_offset = block.byte_range.end;
-                        
-                        let first_char = self.buffer.text_for_range(start_offset..start_offset + 1).next().and_then(|s| s.chars().next());
+
+                        let first_char = self
+                            .buffer
+                            .text_for_range(start_offset..start_offset + 1)
+                            .next()
+                            .and_then(|s| s.chars().next());
                         let last_char = if end_offset > 0 {
-                            self.buffer.text_for_range(end_offset - 1..end_offset).next().and_then(|s| s.chars().next())
+                            self.buffer
+                                .text_for_range(end_offset - 1..end_offset)
+                                .next()
+                                .and_then(|s| s.chars().next())
                         } else {
                             None
                         };
 
                         if let (Some(fc), Some(lc)) = (first_char, last_char) {
-                            if (fc == '{' && lc == '}') || (fc == '[' && lc == ']') || (fc == '(' && lc == ')') {
+                            if (fc == '{' && lc == '}')
+                                || (fc == '[' && lc == ']')
+                                || (fc == '(' && lc == ')')
+                            {
                                 start_offset += 1;
                                 end_offset -= 1;
                             }
@@ -542,9 +554,17 @@ impl Document {
                         self.selections.update(&self.buffer, &next);
                         updated = true;
                     } else if *ch == 'p' {
-                        let prev_p = cursor.move_to_previous_paragraph(false, &self.buffer).head().to_point(&self.buffer);
-                        let next_p = cursor.move_to_next_paragraph(false, &self.buffer).head().to_point(&self.buffer);
-                        let start_row = if prev_p.row < self.buffer.row_count() && self.buffer.line_len(prev_p.row) == 0 {
+                        let prev_p = cursor
+                            .move_to_previous_paragraph(false, &self.buffer)
+                            .head()
+                            .to_point(&self.buffer);
+                        let next_p = cursor
+                            .move_to_next_paragraph(false, &self.buffer)
+                            .head()
+                            .to_point(&self.buffer);
+                        let start_row = if prev_p.row < self.buffer.row_count()
+                            && self.buffer.line_len(prev_p.row) == 0
+                        {
                             prev_p.row + 1
                         } else {
                             prev_p.row
@@ -554,8 +574,17 @@ impl Document {
                         } else {
                             next_p.row
                         };
-                        let start_offset = Point { row: start_row, column: 0 }.to_offset(&self.buffer);
-                        let end_offset = Point { row: end_row, column: self.buffer.line_len(end_row) }.to_offset(&self.buffer).saturating_sub(1);
+                        let start_offset = Point {
+                            row: start_row,
+                            column: 0,
+                        }
+                        .to_offset(&self.buffer);
+                        let end_offset = Point {
+                            row: end_row,
+                            column: self.buffer.line_len(end_row),
+                        }
+                        .to_offset(&self.buffer)
+                        .saturating_sub(1);
                         let next = Selection {
                             id: cursor.id,
                             start: self.buffer.anchor_at(start_offset, Bias::Left),
@@ -565,10 +594,14 @@ impl Document {
                         };
                         self.selections.update(&self.buffer, &next);
                         updated = true;
-                    } else if editor.tree_sitter {
-                        if let Some(syntax_tree) = editor.buffer_manager.active().syntax_tree.as_ref() {
+                    } else if editor.settings.tree_sitter {
+                        if let Some(syntax_tree) =
+                            editor.buffer_manager.active().syntax_tree.as_ref()
+                        {
                             let byte = self.buffer.offset_for_anchor(&cursor.head());
-                            if let Some((start_node, end_node)) = syntax_tree.delimiter_boundaries_at_byte(byte) {
+                            if let Some((start_node, end_node)) =
+                                syntax_tree.delimiter_boundaries_at_byte(byte)
+                            {
                                 let matches_ch = match ch {
                                     '{' | '}' => start_node.kind == "{",
                                     '(' | ')' => start_node.kind == "(",
@@ -576,13 +609,18 @@ impl Document {
                                     '"' => start_node.kind == "\"",
                                     '\'' => start_node.kind == "'",
                                     '`' => start_node.kind == "`",
-                                    't' | '<' | '>' => start_node.kind == "<" || start_node.kind == "start_tag" || start_node.kind == "jsx_opening_element",
+                                    't' | '<' | '>' => {
+                                        start_node.kind == "<"
+                                            || start_node.kind == "start_tag"
+                                            || start_node.kind == "jsx_opening_element"
+                                    }
                                     _ => false,
                                 };
                                 if matches_ch {
                                     let start_offset = start_node.byte_range.end;
                                     let end_offset = end_node.byte_range.start.saturating_sub(1);
-                                    let start_anchor = self.buffer.anchor_at(start_offset, Bias::Left);
+                                    let start_anchor =
+                                        self.buffer.anchor_at(start_offset, Bias::Left);
                                     let end_anchor = self.buffer.anchor_at(end_offset, Bias::Right);
                                     let next = Selection {
                                         id: cursor.id,
@@ -612,7 +650,9 @@ impl Document {
                         let start_sel = cursor.move_to_word(false, &self.buffer);
                         let next_word_head = cursor.move_to_next_word(false, &self.buffer).head();
                         let next_word_offset = self.buffer.offset_for_anchor(&next_word_head);
-                        let end_offset = self.buffer.clip_offset(next_word_offset.saturating_sub(1), Bias::Left);
+                        let end_offset = self
+                            .buffer
+                            .clip_offset(next_word_offset.saturating_sub(1), Bias::Left);
                         let next = Selection {
                             id: cursor.id,
                             start: start_sel.head(),
@@ -623,16 +663,32 @@ impl Document {
                         self.selections.update(&self.buffer, &next);
                         updated = true;
                     } else if *ch == 'p' {
-                        let prev_p = cursor.move_to_previous_paragraph(false, &self.buffer).head().to_point(&self.buffer);
-                        let next_p = cursor.move_to_next_paragraph(false, &self.buffer).head().to_point(&self.buffer);
-                        let start_row = if prev_p.row < self.buffer.row_count() && self.buffer.line_len(prev_p.row) == 0 {
+                        let prev_p = cursor
+                            .move_to_previous_paragraph(false, &self.buffer)
+                            .head()
+                            .to_point(&self.buffer);
+                        let next_p = cursor
+                            .move_to_next_paragraph(false, &self.buffer)
+                            .head()
+                            .to_point(&self.buffer);
+                        let start_row = if prev_p.row < self.buffer.row_count()
+                            && self.buffer.line_len(prev_p.row) == 0
+                        {
                             prev_p.row + 1
                         } else {
                             prev_p.row
                         };
                         let end_row = next_p.row;
-                        let start_offset = Point { row: start_row, column: 0 }.to_offset(&self.buffer);
-                        let end_offset = Point { row: end_row, column: self.buffer.line_len(end_row) }.to_offset(&self.buffer);
+                        let start_offset = Point {
+                            row: start_row,
+                            column: 0,
+                        }
+                        .to_offset(&self.buffer);
+                        let end_offset = Point {
+                            row: end_row,
+                            column: self.buffer.line_len(end_row),
+                        }
+                        .to_offset(&self.buffer);
                         let next = Selection {
                             id: cursor.id,
                             start: self.buffer.anchor_at(start_offset, Bias::Left),
@@ -642,10 +698,14 @@ impl Document {
                         };
                         self.selections.update(&self.buffer, &next);
                         updated = true;
-                    } else if editor.tree_sitter {
-                        if let Some(syntax_tree) = editor.buffer_manager.active().syntax_tree.as_ref() {
+                    } else if editor.settings.tree_sitter {
+                        if let Some(syntax_tree) =
+                            editor.buffer_manager.active().syntax_tree.as_ref()
+                        {
                             let byte = self.buffer.offset_for_anchor(&cursor.head());
-                            if let Some((start_node, end_node)) = syntax_tree.delimiter_boundaries_at_byte(byte) {
+                            if let Some((start_node, end_node)) =
+                                syntax_tree.delimiter_boundaries_at_byte(byte)
+                            {
                                 let matches_ch = match ch {
                                     '{' | '}' => start_node.kind == "{",
                                     '(' | ')' => start_node.kind == "(",
@@ -653,13 +713,18 @@ impl Document {
                                     '"' => start_node.kind == "\"",
                                     '\'' => start_node.kind == "'",
                                     '`' => start_node.kind == "`",
-                                    't' | '<' | '>' => start_node.kind == "<" || start_node.kind == "start_tag" || start_node.kind == "jsx_opening_element",
+                                    't' | '<' | '>' => {
+                                        start_node.kind == "<"
+                                            || start_node.kind == "start_tag"
+                                            || start_node.kind == "jsx_opening_element"
+                                    }
                                     _ => false,
                                 };
                                 if matches_ch {
                                     let start_offset = start_node.byte_range.start;
                                     let end_offset = end_node.byte_range.end.saturating_sub(1);
-                                    let start_anchor = self.buffer.anchor_at(start_offset, Bias::Left);
+                                    let start_anchor =
+                                        self.buffer.anchor_at(start_offset, Bias::Left);
                                     let end_anchor = self.buffer.anchor_at(end_offset, Bias::Right);
                                     let next = Selection {
                                         id: cursor.id,
@@ -682,7 +747,7 @@ impl Document {
             }
 
             Action::MoveToNextFunction { select, count } => {
-                if editor.tree_sitter && *count > 0 {
+                if editor.settings.tree_sitter && *count > 0 {
                     if let Some(syntax_tree) = editor.buffer_manager.active().syntax_tree.as_ref() {
                         self.selections.move_to_syntax_target(
                             *select,
@@ -695,7 +760,7 @@ impl Document {
                 }
             }
             Action::MoveToPreviousFunction { select, count } => {
-                if editor.tree_sitter && *count > 0 {
+                if editor.settings.tree_sitter && *count > 0 {
                     if let Some(syntax_tree) = editor.buffer_manager.active().syntax_tree.as_ref() {
                         self.selections.move_to_syntax_target(
                             *select,
@@ -708,7 +773,7 @@ impl Document {
                 }
             }
             Action::MoveToNextBlock { select, count } => {
-                if editor.tree_sitter && *count > 0 {
+                if editor.settings.tree_sitter && *count > 0 {
                     if let Some(syntax_tree) = editor.buffer_manager.active().syntax_tree.as_ref() {
                         self.selections.move_to_syntax_target(
                             *select,
@@ -721,7 +786,7 @@ impl Document {
                 }
             }
             Action::MoveToPreviousBlock { select, count } => {
-                if editor.tree_sitter && *count > 0 {
+                if editor.settings.tree_sitter && *count > 0 {
                     if let Some(syntax_tree) = editor.buffer_manager.active().syntax_tree.as_ref() {
                         self.selections.move_to_syntax_target(
                             *select,
@@ -734,7 +799,7 @@ impl Document {
                 }
             }
             Action::MoveToBlockStart { select, count } => {
-                if editor.tree_sitter && *count > 0 {
+                if editor.settings.tree_sitter && *count > 0 {
                     if let Some(syntax_tree) = editor.buffer_manager.active().syntax_tree.as_ref() {
                         self.selections.move_to_syntax_target(
                             *select,
@@ -747,7 +812,7 @@ impl Document {
                 }
             }
             Action::MoveToBlockEnd { select, count } => {
-                if editor.tree_sitter && *count > 0 {
+                if editor.settings.tree_sitter && *count > 0 {
                     if let Some(syntax_tree) = editor.buffer_manager.active().syntax_tree.as_ref() {
                         self.selections.move_to_syntax_target_end(
                             *select,
@@ -760,7 +825,7 @@ impl Document {
                 }
             }
             Action::MoveToNextClass { select, count } => {
-                if editor.tree_sitter && *count > 0 {
+                if editor.settings.tree_sitter && *count > 0 {
                     if let Some(syntax_tree) = editor.buffer_manager.active().syntax_tree.as_ref() {
                         self.selections.move_to_syntax_target(
                             *select,
@@ -773,7 +838,7 @@ impl Document {
                 }
             }
             Action::MoveToPreviousClass { select, count } => {
-                if editor.tree_sitter && *count > 0 {
+                if editor.settings.tree_sitter && *count > 0 {
                     if let Some(syntax_tree) = editor.buffer_manager.active().syntax_tree.as_ref() {
                         self.selections.move_to_syntax_target(
                             *select,
@@ -786,7 +851,7 @@ impl Document {
                 }
             }
             Action::MoveToNextArgument { select, count } => {
-                if editor.tree_sitter && *count > 0 {
+                if editor.settings.tree_sitter && *count > 0 {
                     if let Some(syntax_tree) = editor.buffer_manager.active().syntax_tree.as_ref() {
                         self.selections.move_to_syntax_target(
                             *select,
@@ -799,7 +864,7 @@ impl Document {
                 }
             }
             Action::MoveToPreviousArgument { select, count } => {
-                if editor.tree_sitter && *count > 0 {
+                if editor.settings.tree_sitter && *count > 0 {
                     if let Some(syntax_tree) = editor.buffer_manager.active().syntax_tree.as_ref() {
                         self.selections.move_to_syntax_target(
                             *select,
@@ -840,49 +905,58 @@ impl Document {
                 .selections
                 .move_to_end_of_next_line(*select, &self.buffer),
             Action::MovePageUp { count, select } => {
-                let page_size = (editor.screen_rows - 4).max(1) as u32;
-                self.selections.move_up(*select, page_size * *count, &self.buffer)
+                let page_size = (editor.settings.screen_rows - 4).max(1) as u32;
+                self.selections
+                    .move_up(*select, page_size * *count, &self.buffer)
             }
             Action::MovePageDown { count, select } => {
-                let page_size = (editor.screen_rows - 4).max(1) as u32;
-                self.selections.move_down(*select, page_size * *count, &self.buffer)
+                let page_size = (editor.settings.screen_rows - 4).max(1) as u32;
+                self.selections
+                    .move_down(*select, page_size * *count, &self.buffer)
             }
             Action::ScrollHalfPageUp { count } => {
-                let half_page_size = ((editor.screen_rows - 4).max(1) / 2).max(1) as u32;
-                self.selections.move_up(false, half_page_size * *count, &self.buffer)
+                let half_page_size = ((editor.settings.screen_rows - 4).max(1) / 2).max(1) as u32;
+                self.selections
+                    .move_up(false, half_page_size * *count, &self.buffer)
             }
             Action::ScrollHalfPageDown { count } => {
-                let half_page_size = ((editor.screen_rows - 4).max(1) / 2).max(1) as u32;
-                self.selections.move_down(false, half_page_size * *count, &self.buffer)
+                let half_page_size = ((editor.settings.screen_rows - 4).max(1) / 2).max(1) as u32;
+                self.selections
+                    .move_down(false, half_page_size * *count, &self.buffer)
             }
             Action::MoveToScreenTop { select, count } => {
                 let active_idx = editor.buffer_manager.active_idx;
                 let buffer = &editor.buffer_manager.buffers[active_idx];
                 let display_snapshot = buffer.display_map.snapshot();
                 let target_point = display_snapshot.display_point_to_point(
-                    crate::display::display_map::DisplayPoint::new(display_snapshot.scroll_y, 0)
+                    crate::display::display_map::DisplayPoint::new(display_snapshot.scroll_y, 0),
                 );
-                self.selections.move_to_line(*select, target_point.row, &self.buffer)
+                self.selections
+                    .move_to_line(*select, target_point.row, &self.buffer)
             }
             Action::MoveToScreenMiddle { select, count } => {
                 let active_idx = editor.buffer_manager.active_idx;
                 let buffer = &editor.buffer_manager.buffers[active_idx];
                 let display_snapshot = buffer.display_map.snapshot();
-                let middle_display_row = display_snapshot.scroll_y + display_snapshot.visible_rows / 2;
+                let middle_display_row =
+                    display_snapshot.scroll_y + display_snapshot.visible_rows / 2;
                 let target_point = display_snapshot.display_point_to_point(
-                    crate::display::display_map::DisplayPoint::new(middle_display_row, 0)
+                    crate::display::display_map::DisplayPoint::new(middle_display_row, 0),
                 );
-                self.selections.move_to_line(*select, target_point.row, &self.buffer)
+                self.selections
+                    .move_to_line(*select, target_point.row, &self.buffer)
             }
             Action::MoveToScreenBottom { select, count } => {
                 let active_idx = editor.buffer_manager.active_idx;
                 let buffer = &editor.buffer_manager.buffers[active_idx];
                 let display_snapshot = buffer.display_map.snapshot();
-                let bottom_display_row = display_snapshot.scroll_y + display_snapshot.visible_rows.saturating_sub(1);
+                let bottom_display_row =
+                    display_snapshot.scroll_y + display_snapshot.visible_rows.saturating_sub(1);
                 let target_point = display_snapshot.display_point_to_point(
-                    crate::display::display_map::DisplayPoint::new(bottom_display_row, 0)
+                    crate::display::display_map::DisplayPoint::new(bottom_display_row, 0),
                 );
-                self.selections.move_to_line(*select, target_point.row, &self.buffer)
+                self.selections
+                    .move_to_line(*select, target_point.row, &self.buffer)
             }
             Action::InsertText(text) => {
                 self.delete_text(0);
@@ -1138,7 +1212,10 @@ impl Document {
                 self.selections.anchor = anchor;
 
                 if is_textobject {
-                    let inclusive = matches!(motion, Action::MoveWithinCharacter { .. } | Action::MoveAroundCharacter { .. });
+                    let inclusive = matches!(
+                        motion,
+                        Action::MoveWithinCharacter { .. } | Action::MoveAroundCharacter { .. }
+                    );
                     for _idx in 0..*count {
                         self.apply_action(&motion, editor);
                         self.delete_text_object(inclusive);
@@ -1190,7 +1267,7 @@ impl Document {
             Action::Put { count } => {
                 self.paste(*count, editor);
             }
-             Action::Undo { count } => self.undo(*count),
+            Action::Undo { count } => self.undo(*count),
             Action::Redo { count } => self.redo(*count),
             Action::Fold { count } => {
                 self.fold(*count, editor);
@@ -1410,9 +1487,8 @@ impl Document {
     fn remove_overlapping_folds(&mut self, start: usize, end: usize) {
         let start_point = start.to_point(&self.buffer);
         let end_point = end.to_point(&self.buffer);
-        self.folds.retain(|fold| {
-            !(fold.end > start_point && fold.start < end_point)
-        });
+        self.folds
+            .retain(|fold| !(fold.end > start_point && fold.start < end_point));
     }
 
     pub fn selection(&self) -> Selection<Anchor> {
@@ -1795,10 +1871,7 @@ mod tests {
         // Execute DeleteMotion around '('
         editor.apply_active_action(&Action::DeleteMotion {
             count: 1,
-            motion: Box::new(Action::MoveAroundCharacter {
-                count: 1,
-                ch: '(',
-            }),
+            motion: Box::new(Action::MoveAroundCharacter { count: 1, ch: '(' }),
         });
 
         let document = &editor.buffer_manager.active().doc;
@@ -1839,10 +1912,7 @@ mod tests {
         // diw
         editor.apply_active_action(&Action::DeleteMotion {
             count: 1,
-            motion: Box::new(Action::MoveWithinCharacter {
-                count: 1,
-                ch: 'w',
-            }),
+            motion: Box::new(Action::MoveWithinCharacter { count: 1, ch: 'w' }),
         });
 
         let document = &editor.buffer_manager.active().doc;
@@ -1862,10 +1932,7 @@ mod tests {
         // daw
         editor.apply_active_action(&Action::DeleteMotion {
             count: 1,
-            motion: Box::new(Action::MoveAroundCharacter {
-                count: 1,
-                ch: 'w',
-            }),
+            motion: Box::new(Action::MoveAroundCharacter { count: 1, ch: 'w' }),
         });
 
         let document = &editor.buffer_manager.active().doc;
@@ -1878,12 +1945,17 @@ mod tests {
         let text = "fn main() {\n    let x = 1;\n    let y = 2;\n}";
         editor.buffer_manager.active_mut().doc = Document::new_with_text(text);
         editor.buffer_manager.active_mut().grammar = Some(Grammar::Rust);
-        
+
         let mut parser = TreeSitterParser::new(Grammar::Rust).unwrap();
-        let tree = parser.parse(editor.buffer_manager.active().doc.buffer().snapshot(), None).unwrap();
+        let tree = parser
+            .parse(editor.buffer_manager.active().doc.buffer().snapshot(), None)
+            .unwrap();
         editor.buffer_manager.active_mut().syntax_tree = Some(tree);
 
-        editor.apply_active_action(&Action::MoveDown { select: false, count: 1 });
+        editor.apply_active_action(&Action::MoveDown {
+            select: false,
+            count: 1,
+        });
 
         editor.apply_active_action(&Action::Fold { count: 1 });
 
@@ -1905,7 +1977,7 @@ mod tests {
         let mut editor = Editor::new(Vec::new()).unwrap();
         let text = "line 1\nline 2\nline 3\nline 4";
         editor.buffer_manager.active_mut().doc = Document::new_with_text(text);
-        
+
         let fold = crate::display::fold_map::Fold {
             start: Point::new(1, 0),
             end: Point::new(2, 6),
@@ -1913,7 +1985,10 @@ mod tests {
         editor.buffer_manager.active_mut().doc.folds.push(fold);
         assert_eq!(editor.buffer_manager.active().doc.folds.len(), 1);
 
-        editor.apply_active_action(&Action::MoveDown { select: false, count: 1 });
+        editor.apply_active_action(&Action::MoveDown {
+            select: false,
+            count: 1,
+        });
         editor.apply_active_action(&Action::Delete { count: 1 });
 
         assert_eq!(editor.buffer_manager.active().doc.folds.len(), 0);

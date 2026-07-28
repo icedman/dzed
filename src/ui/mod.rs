@@ -7,7 +7,7 @@ pub mod window;
 
 use crate::actions::Mode;
 use crate::document::BufferText;
-use crate::editor::Editor;
+use crate::editor::{AppContext, Editor};
 use crate::search::{TextSearch, compile};
 use crate::theme::{ColorAdjust, ToCrossTerm};
 use crossterm::{cursor::MoveTo, execute};
@@ -15,17 +15,17 @@ use std::io::{Stdout, Write};
 use text::{Point, ToPoint};
 
 /// The main UI class managing layouts, windows, and focus state.
-pub struct Ui {
-    pub layout: layout::LayoutNode,
+pub struct UI {
     pub windows: std::collections::HashMap<usize, window::Window>,
-    pub focused_window_id: Option<usize>,
     pub cached_layouts: Vec<(usize, layout::Rect)>,
+    pub layout: layout::LayoutNode,
+    pub focused_window_id: Option<usize>,
     pub last_parent_rect: Option<layout::Rect>,
     pub last_cursor_style: Option<crossterm::cursor::SetCursorStyle>,
     pub dirty: bool,
 }
 
-impl Ui {
+impl UI {
     pub fn new() -> Self {
         let mut windows = std::collections::HashMap::new();
         // Create initial default window
@@ -93,7 +93,12 @@ impl Ui {
         self.dirty = true;
     }
 
-    pub fn update(&mut self, editor: &mut Editor, should_sync: &mut bool) -> std::io::Result<()> {
+    pub fn update(
+        &mut self,
+        ctx: &mut AppContext,
+        editor: &mut Editor,
+        should_sync: &mut bool,
+    ) -> std::io::Result<()> {
         let computed = &self.cached_layouts;
         for &(win_id, rect) in computed {
             if let Some(win) = self.windows.get_mut(&win_id) {
@@ -108,7 +113,7 @@ impl Ui {
                     rect
                 };
                 if let Some(ref mut view) = win.view {
-                    view.update(editor, inner_rect, should_sync)?;
+                    view.update(ctx, editor, inner_rect, should_sync)?;
                 }
             }
         }
@@ -161,7 +166,7 @@ impl Ui {
 
                 let active_buffer = editor.buffer_manager.active_mut();
                 let row_count = active_buffer.doc.buffer().row_count();
-                editor_gutter_width = if editor.show_line_numbers {
+                editor_gutter_width = if editor.settings.show_line_numbers {
                     2 + if row_count == 0 {
                         0
                     } else {
@@ -242,11 +247,33 @@ pub fn render_command_line(
     rect: layout::Rect,
 ) -> std::io::Result<()> {
     use crate::theme::ToCrossTerm;
-    let theme_fg = editor.theme.theme.settings.foreground.map(|c| c.rgb()).unwrap_or(crossterm::style::Color::White);
-    let theme_bg = editor.theme.theme.settings.background.map(|c| c.rgb()).unwrap_or(crossterm::style::Color::Black);
+    let theme_fg = editor
+        .theme
+        .theme
+        .settings
+        .foreground
+        .map(|c| c.rgb())
+        .unwrap_or(crossterm::style::Color::White);
+    let theme_bg = editor
+        .theme
+        .theme
+        .settings
+        .background
+        .map(|c| c.rgb())
+        .unwrap_or(crossterm::style::Color::Black);
 
-    let fg = editor.colorscheme.ui.get("foreground").map(|s| s.color).unwrap_or(theme_fg);
-    let bg = editor.colorscheme.ui.get("gutter").map(|s| s.color).unwrap_or(theme_bg);
+    let fg = editor
+        .colorscheme
+        .ui
+        .get("foreground")
+        .map(|s| s.color)
+        .unwrap_or(theme_fg);
+    let bg = editor
+        .colorscheme
+        .ui
+        .get("gutter")
+        .map(|s| s.color)
+        .unwrap_or(theme_bg);
     execute!(
         stdout,
         crossterm::style::SetForegroundColor(fg),

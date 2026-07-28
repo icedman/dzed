@@ -7,7 +7,7 @@ use crate::theme::Theme;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 
-pub struct EditorBuffer {
+pub struct TextBuffer {
     pub id: usize,
     pub file_path: String,
     pub doc: Document,
@@ -23,7 +23,7 @@ pub struct EditorBuffer {
     pub syntax_tree: Option<crate::treesitter::SyntaxTree>,
 }
 
-impl EditorBuffer {
+impl TextBuffer {
     pub fn new(id: usize, file_path: &str) -> Result<Self, Box<dyn std::error::Error>> {
         let doc = Document::new(file_path)?;
         let hl = Highlights::new(file_path);
@@ -48,7 +48,7 @@ impl EditorBuffer {
 }
 
 pub struct BufferManager {
-    pub buffers: Vec<EditorBuffer>,
+    pub buffers: Vec<TextBuffer>,
     pub active_idx: usize,
 }
 
@@ -60,16 +60,16 @@ impl BufferManager {
         }
     }
 
-    pub fn add_buffer(&mut self, buffer: EditorBuffer) {
+    pub fn add_buffer(&mut self, buffer: TextBuffer) {
         self.buffers.push(buffer);
         self.active_idx = self.buffers.len() - 1;
     }
 
-    pub fn active(&self) -> &EditorBuffer {
+    pub fn active(&self) -> &TextBuffer {
         &self.buffers[self.active_idx]
     }
 
-    pub fn active_mut(&mut self) -> &mut EditorBuffer {
+    pub fn active_mut(&mut self) -> &mut TextBuffer {
         &mut self.buffers[self.active_idx]
     }
 
@@ -89,11 +89,11 @@ impl BufferManager {
         }
     }
 
-    pub fn get_by_id(&self, id: usize) -> Option<&EditorBuffer> {
+    pub fn get_by_id(&self, id: usize) -> Option<&TextBuffer> {
         self.buffers.iter().find(|b| b.id == id)
     }
 
-    pub fn get_by_id_mut(&mut self, id: usize) -> Option<&mut EditorBuffer> {
+    pub fn get_by_id_mut(&mut self, id: usize) -> Option<&mut TextBuffer> {
         self.buffers.iter_mut().find(|b| b.id == id)
     }
 

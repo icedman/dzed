@@ -1,10 +1,10 @@
 use super::layout::Rect;
 use super::view::View;
 use crate::actions::Mode;
-use crate::buffers::EditorBuffer;
+use crate::buffers::TextBuffer;
 use crate::display::display_map::DisplayPoint;
 use crate::document::BufferText;
-use crate::editor::Editor;
+use crate::editor::{AppContext, Editor};
 use crate::search::{TextSearch, compile};
 use crate::theme::{ColorAdjust, ToCrossTerm};
 use crossterm::{cursor::MoveTo, execute};
@@ -31,7 +31,7 @@ impl View for TextView {
     ) -> std::io::Result<()> {
         let active_buffer = editor.buffer_manager.active_mut();
         let row_count = active_buffer.doc.buffer().row_count();
-        let gutter_width = if editor.show_line_numbers {
+        let gutter_width = if editor.settings.show_line_numbers {
             2 + if row_count == 0 {
                 0
             } else {
@@ -50,15 +50,12 @@ impl View for TextView {
         event: &crossterm::event::Event,
         editor: &mut Editor,
     ) -> Option<crate::input::HandleEvent> {
-        let active_buffer = editor.buffer_manager.active();
-        let display_snapshot = active_buffer.display_map.snapshot();
-        let visible_rows = display_snapshot.visible_rows as i32;
-
         Some(crate::input::handle_event(editor, event.clone()))
     }
 
     fn update(
         &mut self,
+        ctx: &mut AppContext,
         editor: &mut Editor,
         rect: Rect,
         should_sync: &mut bool,
@@ -67,7 +64,7 @@ impl View for TextView {
 
         // Update layout before wrapping so the wrap width reflects the current gutter.
         let row_count = active_buffer.doc.buffer().row_count();
-        let gutter_width = if editor.show_line_numbers {
+        let gutter_width = if ctx.show_line_numbers {
             2 + if row_count == 0 {
                 0
             } else {
@@ -84,7 +81,7 @@ impl View for TextView {
             .max(1);
         active_buffer
             .display_map
-            .set_wrap_width(editor.wrap.then_some(wrap_cols as u32));
+            .set_wrap_width(ctx.wrap.then_some(wrap_cols as u32));
 
         if *should_sync {
             active_buffer.display_map.fold(
@@ -113,13 +110,13 @@ impl View for TextView {
                     row_count: active_buffer.doc.buffer().row_count() - start,
                     colorscheme: std::sync::Arc::new(editor.colorscheme.clone()),
                     theme: std::sync::Arc::new(editor.theme.theme.clone()),
-                    use_colorscheme: editor.use_colorscheme,
+                    use_colorscheme: ctx.use_colorscheme,
                     task_id: crate::background::TaskId(hl_task_id),
                     latest_task_id: active_buffer.latest_hl_task_id.clone(),
                 });
 
             // Spawn background wrap task
-            let wrap_width = editor.wrap.then_some(wrap_cols as u32);
+            let wrap_width = ctx.wrap.then_some(wrap_cols as u32);
             let wrap_task_id = active_buffer
                 .latest_wrap_task_id
                 .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
@@ -136,7 +133,7 @@ impl View for TextView {
                     latest_task_id: active_buffer.latest_wrap_task_id.clone(),
                 });
 
-            if editor.tree_sitter
+            if ctx.tree_sitter
                 && let Some(grammar) = active_buffer.grammar
             {
                 let parse_task_id = active_buffer
@@ -177,7 +174,7 @@ impl View for TextView {
         let end_line =
             (display_snapshot.scroll_y + display_snapshot.visible_rows + 4).min(total_rows);
 
-        if editor.syntax && end_line > display_snapshot.scroll_y {
+        if ctx.syntax && end_line > display_snapshot.scroll_y {
             let start_buffer_row =
                 display_snapshot.buffer_row_for_display_row(display_snapshot.scroll_y);
             let last_visible_display_row = end_line.saturating_sub(1);
@@ -201,7 +198,7 @@ impl View for TextView {
                     end_buffer_row_exclusive - start_buffer_row,
                     &editor.colorscheme,
                     &editor.theme.theme,
-                    editor.use_colorscheme,
+                    ctx.use_colorscheme,
                 );
             }
         }
@@ -258,7 +255,7 @@ impl View for TextView {
                 task_id,
                 ..
             } => {
-                if editor.tree_sitter {
+                if editor.settings.tree_sitter {
                     if let Some(buf) = editor
                         .buffer_manager
                         .buffers
@@ -320,36 +317,37 @@ pub fn render_editor_content<W: Write>(
         .map(|c| c.rgb())
         .unwrap_or(theme_bg);
 
-    let (editor_fg, editor_bg, caret_bg, caret_fg, selection_bg) = if editor.use_colorscheme {
-        let fg = editor
-            .colorscheme
-            .ui
-            .get("foreground")
-            .map(|s| s.color)
-            .unwrap_or(theme_fg);
-        let bg = editor
-            .colorscheme
-            .ui
-            .get("background")
-            .map(|s| s.color)
-            .unwrap_or(theme_bg);
-        let sel = editor
-            .colorscheme
-            .ui
-            .get("selection")
-            .map(|s| s.color)
-            .unwrap_or(theme_select);
-        let c_bg = editor
-            .colorscheme
-            .ui
-            .get("caret")
-            .map(|s| s.color)
-            .unwrap_or(sel);
-        let c_fg = fg; // editor.colorscheme.ui.get("caret_foreground").map(|s| s.color).unwrap_or(bg);
-        (fg, bg, c_bg, c_fg, sel)
-    } else {
-        (theme_fg, theme_bg, theme_caret, theme_bg, theme_select)
-    };
+    let (editor_fg, editor_bg, caret_bg, caret_fg, selection_bg) =
+        if editor.settings.use_colorscheme {
+            let fg = editor
+                .colorscheme
+                .ui
+                .get("foreground")
+                .map(|s| s.color)
+                .unwrap_or(theme_fg);
+            let bg = editor
+                .colorscheme
+                .ui
+                .get("background")
+                .map(|s| s.color)
+                .unwrap_or(theme_bg);
+            let sel = editor
+                .colorscheme
+                .ui
+                .get("selection")
+                .map(|s| s.color)
+                .unwrap_or(theme_select);
+            let c_bg = editor
+                .colorscheme
+                .ui
+                .get("caret")
+                .map(|s| s.color)
+                .unwrap_or(sel);
+            let c_fg = fg; // editor.colorscheme.ui.get("caret_foreground").map(|s| s.color).unwrap_or(bg);
+            (fg, bg, c_bg, c_fg, sel)
+        } else {
+            (theme_fg, theme_bg, theme_caret, theme_bg, theme_select)
+        };
 
     let gutter_fg = editor
         .colorscheme
@@ -405,7 +403,7 @@ pub fn render_editor_content<W: Write>(
         execute!(stdout, MoveTo(inner_rect.x, screen_row)).unwrap();
 
         // line number
-        if editor.show_line_numbers {
+        if editor.settings.show_line_numbers {
             let line_number = display_snapshot.buffer_row_for_display_row(row);
             execute!(stdout, crossterm::style::SetForegroundColor(gutter_fg)).unwrap();
 
@@ -470,7 +468,7 @@ pub fn render_editor_content<W: Write>(
             let mut fg = editor_fg;
             let mut bg = editor_bg;
 
-            if editor.syntax {
+            if editor.settings.syntax {
                 if let Some(style_cache) = active_buffer.hl.render_row(orig_point.row) {
                     if let Some(&(style, _, _)) =
                         style_cache.styles.iter().find(|(_, start, end)| {
@@ -576,7 +574,7 @@ pub fn render_editor_content<W: Write>(
     // Clear and draw scrollbar for any remaining empty rows in the viewport
     while screen_row < inner_rect.y + inner_rect.height {
         execute!(stdout, MoveTo(inner_rect.x, screen_row)).unwrap();
-        if editor.show_line_numbers {
+        if editor.settings.show_line_numbers {
             execute!(
                 stdout,
                 crossterm::style::SetForegroundColor(gutter_fg),
@@ -640,7 +638,11 @@ pub fn update_cursor_position<W: Write>(
         let cmd_text = editor.command.get_text();
         let cmd_col = (cmd_text.chars().count()) as u16;
         // Command line is drawn at statusbar rect y position (bottom row)
-        execute!(stdout, MoveTo(cmd_col + 1, (editor.screen_rows - 1) as u16),).unwrap();
+        execute!(
+            stdout,
+            MoveTo(cmd_col + 1, (editor.settings.screen_rows - 1) as u16),
+        )
+        .unwrap();
     } else {
         execute!(
             stdout,

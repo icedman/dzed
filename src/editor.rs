@@ -1,17 +1,13 @@
 use crate::actions::Mode;
 use crate::buffers::BufferManager;
-use crate::buffers::EditorBuffer;
+use crate::buffers::TextBuffer;
 use crate::colorscheme::ColorScheme;
 use crate::document::Document;
 use crate::theme::Theme;
 
-pub struct Editor {
-    pub buffer_manager: BufferManager,
-    pub mode: Mode,
-
-    // global settings
-    pub theme: Theme,
-    pub colorscheme: ColorScheme,
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AppContext {
+    // settings
     pub use_colorscheme: bool,
     pub wrap: bool,
     pub syntax: bool,
@@ -19,8 +15,22 @@ pub struct Editor {
     pub show_line_numbers: bool,
     pub fold: bool,
     pub fold_multiline_only: bool,
+    // state
     pub screen_rows: i32,
     pub screen_cols: i32,
+    pub focused_window: Option<usize>,
+    pub should_redraw: bool,
+    pub should_sync: bool,
+}
+
+pub struct Editor {
+    pub buffer_manager: BufferManager,
+    pub mode: Mode,
+
+    // global settings
+    pub settings: AppContext,
+    pub theme: Theme,
+    pub colorscheme: ColorScheme,
 
     // commands
     pub command: crate::command::Command,
@@ -37,7 +47,7 @@ pub struct Editor {
 
 impl Editor {
     pub fn set_tree_sitter_enabled(&mut self, enabled: bool) {
-        self.tree_sitter = enabled;
+        self.settings.tree_sitter = enabled;
         if !enabled {
             for buffer in &mut self.buffer_manager.buffers {
                 buffer
@@ -68,16 +78,15 @@ impl Editor {
         let mut buffer_manager = BufferManager::new();
         let mut next_id = 0;
         for path in file_paths {
-            buffer_manager.add_buffer(EditorBuffer::new(next_id, &path)?);
+            buffer_manager.add_buffer(TextBuffer::new(next_id, &path)?);
             next_id += 1;
         }
 
         if buffer_manager.buffers.is_empty() {
-            buffer_manager.add_buffer(EditorBuffer::new(next_id, "")?);
+            buffer_manager.add_buffer(TextBuffer::new(next_id, "")?);
         }
 
-        // let theme = Theme::new("base16-ocean.dark");
-        let theme = Theme::new("test/themes/Dracula.tmTheme");
+        let theme = Theme::new("base16-ocean.dark");
         let colorscheme = ColorScheme::load_default();
         let bg_worker = crate::background::BackgroundWorker::new();
 
@@ -89,15 +98,20 @@ impl Editor {
             mode: Mode::Normal,
             theme,
             colorscheme,
-            use_colorscheme: true,
-            wrap: false,
-            syntax: true,
-            tree_sitter: true,
-            show_line_numbers: true,
-            fold: true,
-            fold_multiline_only: true,
-            screen_rows: rows as i32,
-            screen_cols: cols as i32,
+            settings: AppContext {
+                use_colorscheme: true,
+                wrap: false,
+                syntax: true,
+                tree_sitter: true,
+                show_line_numbers: true,
+                fold: true,
+                fold_multiline_only: true,
+                screen_rows: rows as i32,
+                screen_cols: cols as i32,
+                focused_window: None,
+                should_redraw: true,
+                should_sync: true,
+            },
             bg_worker,
             clipboard: std::cell::RefCell::new(crate::clipboard::Clipboard::new()),
             keymap: crate::keymap::Keymap::new(),

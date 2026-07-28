@@ -65,7 +65,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
     execute!(stdout, crossterm::cursor::Hide).unwrap();
 
-    let mut ui = ui::Ui::new();
+    let mut ui = ui::UI::new();
     let mut should_redraw = true;
     let mut should_sync = true;
     let mut prev_screen_rows = 0;
@@ -105,8 +105,8 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             let (cols, rows) = crossterm::terminal::size().unwrap();
             (cols as i32, rows as i32)
         };
-        editor.screen_rows = screen_rows;
-        editor.screen_cols = screen_cols;
+        editor.settings.screen_rows = screen_rows;
+        editor.settings.screen_cols = screen_cols;
         // dimensions has changed
         if prev_screen_cols != screen_cols || prev_screen_rows != screen_rows {
             should_redraw = true;
@@ -129,7 +129,9 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         //------------------
         // update
         //------------------
-        ui.update(&mut editor, &mut should_sync)?;
+        let mut edit_ctx = editor.settings.clone();
+        ui.update(&mut edit_ctx, &mut editor, &mut should_sync)?;
+        editor.settings = edit_ctx;
 
         if !cursor_visible
             && (last_activity.elapsed() >= Duration::from_millis(1000)

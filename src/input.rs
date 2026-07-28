@@ -10,6 +10,7 @@ pub enum HandleEvent {
     Exit,
 }
 
+// this is global handler
 pub fn handle_event(editor: &mut crate::editor::Editor, event: Event) -> HandleEvent {
     match event {
         Event::Key(key_event) => {
@@ -53,7 +54,9 @@ pub fn handle_event(editor: &mut crate::editor::Editor, event: Event) -> HandleE
                                         editor.apply_active_action(act);
                                     }
                                     editor.macro_recorder.update(act);
-                                    editor.input.set_mode(editor.buffer_manager.active().doc.current_mode());
+                                    editor.input.set_mode(
+                                        editor.buffer_manager.active().doc.current_mode(),
+                                    );
                                     editor.buffer_manager.active_mut().doc.sync();
                                 }
                             }
@@ -104,7 +107,9 @@ pub fn handle_event(editor: &mut crate::editor::Editor, event: Event) -> HandleE
                     }
                 } else {
                     match &action {
-                        Action::BeginMacro { .. } | Action::EndMacro | Action::ReplayMacro { .. } => {}
+                        Action::BeginMacro { .. }
+                        | Action::EndMacro
+                        | Action::ReplayMacro { .. } => {}
                         _ => {
                             editor.apply_active_action(&action);
                         }

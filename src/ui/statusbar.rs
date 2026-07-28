@@ -43,8 +43,20 @@ fn draw_statusbar_impl<W: Write>(w: &mut W, rect: Rect, editor: &Editor) -> std:
     }
 
     use crate::theme::ToCrossTerm;
-    let theme_fg = editor.theme.theme.settings.foreground.map(|c| c.rgb()).unwrap_or(crossterm::style::Color::White);
-    let theme_bg = editor.theme.theme.settings.background.map(|c| c.rgb()).unwrap_or(crossterm::style::Color::Black);
+    let theme_fg = editor
+        .theme
+        .theme
+        .settings
+        .foreground
+        .map(|c| c.rgb())
+        .unwrap_or(crossterm::style::Color::White);
+    let theme_bg = editor
+        .theme
+        .theme
+        .settings
+        .background
+        .map(|c| c.rgb())
+        .unwrap_or(crossterm::style::Color::Black);
 
     let fg = editor
         .colorscheme
@@ -80,6 +92,7 @@ fn draw_statusbar_impl<W: Write>(w: &mut W, rect: Rect, editor: &Editor) -> std:
     let selection = active_buffer.doc.selection();
     let cursor_offset = buffer.offset_for_anchor(&selection.head());
     let syntax_context = editor
+        .settings
         .tree_sitter
         .then_some(active_buffer.syntax_tree.as_ref())
         .flatten()
@@ -98,7 +111,7 @@ fn draw_statusbar_impl<W: Write>(w: &mut W, rect: Rect, editor: &Editor) -> std:
             )
         })
         .unwrap_or_else(|| {
-            if editor.tree_sitter {
+            if editor.settings.tree_sitter {
                 "ts:- node:- scope:-".to_string()
             } else {
                 "ts:off".to_string()

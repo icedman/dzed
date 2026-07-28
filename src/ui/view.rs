@@ -1,5 +1,5 @@
 use super::layout::Rect;
-use crate::editor::Editor;
+use crate::editor::{AppContext, Editor};
 use crossterm::event::Event;
 use std::io::Write;
 
@@ -9,9 +9,12 @@ pub trait View {
         &mut self,
         event: &Event,
         editor: &mut Editor,
-    ) -> Option<crate::input::HandleEvent>;
+    ) -> Option<crate::input::HandleEvent> {
+        None
+    }
     fn update(
         &mut self,
+        _ctx: &mut AppContext,
         _editor: &mut Editor,
         _rect: Rect,
         _should_sync: &mut bool,

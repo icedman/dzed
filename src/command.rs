@@ -89,16 +89,16 @@ impl Command {
                     if let Some(args) = &resolved.arguments {
                         for arg in args {
                             match arg.as_str() {
-                                "wrap" => editor.wrap = true,
-                                "nowrap" => editor.wrap = false,
-                                "nu" => editor.show_line_numbers = true,
-                                "nonu" => editor.show_line_numbers = false,
-                                "number" => editor.show_line_numbers = true,
-                                "nonumber" => editor.show_line_numbers = false,
-                                "fold" => editor.fold = true,
-                                "nofold" => editor.fold = false,
-                                "foldmultiline" => editor.fold_multiline_only = true,
-                                "nofoldmultiline" => editor.fold_multiline_only = false,
+                                "wrap" => editor.settings.wrap = true,
+                                "nowrap" => editor.settings.wrap = false,
+                                "nu" => editor.settings.show_line_numbers = true,
+                                "nonu" => editor.settings.show_line_numbers = false,
+                                "number" => editor.settings.show_line_numbers = true,
+                                "nonumber" => editor.settings.show_line_numbers = false,
+                                "fold" => editor.settings.fold = true,
+                                "nofold" => editor.settings.fold = false,
+                                "foldmultiline" => editor.settings.fold_multiline_only = true,
+                                "nofoldmultiline" => editor.settings.fold_multiline_only = false,
                                 "tree" => editor.set_tree_sitter_enabled(true),
                                 "notree" => editor.set_tree_sitter_enabled(false),
                                 "treesitter" => editor.set_tree_sitter_enabled(true),
@@ -111,7 +111,9 @@ impl Command {
                 }
                 crate::ex::Ex::Quit => Some(ExResult::Exit),
                 crate::ex::Ex::Colorschemes => {
-                    let name = resolved.arguments.as_ref()
+                    let name = resolved
+                        .arguments
+                        .as_ref()
                         .and_then(|args| args.first())
                         .map(|s| s.as_str())
                         .unwrap_or("tokyonight");
@@ -121,12 +123,14 @@ impl Command {
                     None
                 }
                 crate::ex::Ex::Syntax => {
-                    let arg = resolved.arguments.as_ref()
+                    let arg = resolved
+                        .arguments
+                        .as_ref()
                         .and_then(|args| args.first())
                         .map(|s| s.as_str());
                     match arg {
-                        Some("on") => editor.syntax = true,
-                        Some("off") => editor.syntax = false,
+                        Some("on") => editor.settings.syntax = true,
+                        Some("off") => editor.settings.syntax = false,
                         _ => {}
                     }
                     None
@@ -191,43 +195,43 @@ mod tests {
 
         cmd.set("set wrap");
         cmd.ex(&mut editor);
-        assert!(editor.wrap);
+        assert!(editor.settings.wrap);
 
         cmd.set("set nowrap");
         cmd.ex(&mut editor);
-        assert!(!editor.wrap);
+        assert!(!editor.settings.wrap);
 
         cmd.set("set nonu");
         cmd.ex(&mut editor);
-        assert!(!editor.show_line_numbers);
+        assert!(!editor.settings.show_line_numbers);
 
         cmd.set("set nu");
         cmd.ex(&mut editor);
-        assert!(editor.show_line_numbers);
+        assert!(editor.settings.show_line_numbers);
 
         cmd.set("set nofold");
         cmd.ex(&mut editor);
-        assert!(!editor.fold);
+        assert!(!editor.settings.fold);
 
         cmd.set("set fold");
         cmd.ex(&mut editor);
-        assert!(editor.fold);
+        assert!(editor.settings.fold);
 
         cmd.set("set nofoldmultiline");
         cmd.ex(&mut editor);
-        assert!(!editor.fold_multiline_only);
+        assert!(!editor.settings.fold_multiline_only);
 
         cmd.set("set foldmultiline");
         cmd.ex(&mut editor);
-        assert!(editor.fold_multiline_only);
+        assert!(editor.settings.fold_multiline_only);
 
         cmd.set("set notreesitter");
         cmd.ex(&mut editor);
-        assert!(!editor.tree_sitter);
+        assert!(!editor.settings.tree_sitter);
 
         cmd.set("set treesitter");
         cmd.ex(&mut editor);
-        assert!(editor.tree_sitter);
+        assert!(editor.settings.tree_sitter);
 
         // Test colorschemes command and aliases
         cmd.set("colorschemes catppuccin");
@@ -249,14 +253,14 @@ mod tests {
         // Test syntax command
         cmd.set("syntax off");
         cmd.ex(&mut editor);
-        assert!(!editor.syntax);
+        assert!(!editor.settings.syntax);
 
         cmd.set("syn on");
         cmd.ex(&mut editor);
-        assert!(editor.syntax);
+        assert!(editor.settings.syntax);
 
         // Test bnext / bprev commands
-        let buf2 = crate::editor::EditorBuffer::new(99, "temp_test_file2.txt").unwrap();
+        let buf2 = crate::buffers::TextBuffer::new(99, "temp_test_file2.txt").unwrap();
         editor.buffer_manager.add_buffer(buf2);
         // Switch active index to first buffer (index 0)
         editor.buffer_manager.active_idx = 0;

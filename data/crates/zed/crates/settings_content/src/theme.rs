@@ -814,7 +814,7 @@ pub struct ThemeColorsContent {
     #[serde(rename = "editor.invisible")]
     pub editor_invisible: Option<String>,
 
-    #[serde(rename = "editor.wrap_guide")]
+    #[serde(rename = "editor.settings.wrap_guide")]
     pub editor_wrap_guide: Option<String>,
 
     #[serde(rename = "editor.active_wrap_guide")]
