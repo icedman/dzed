@@ -1,6 +1,8 @@
 mod actions;
 mod background;
+mod buffers;
 mod clipboard;
+mod colorscheme;
 mod command;
 mod display;
 mod document;
@@ -10,13 +12,12 @@ mod exmap;
 mod highlight;
 mod input;
 mod keymap;
+mod macros;
 mod search;
 mod selections;
 mod theme;
 mod treesitter;
 mod ui;
-mod colorscheme;
-mod macros;
 
 use std::{
     io::{Write, stdout},
@@ -130,7 +131,10 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         //------------------
         ui.update(&mut editor, &mut should_sync)?;
 
-        if !cursor_visible && (last_activity.elapsed() >= Duration::from_millis(1000) || last_shown.elapsed() >= Duration::from_millis(1000)) {
+        if !cursor_visible
+            && (last_activity.elapsed() >= Duration::from_millis(1000)
+                || last_shown.elapsed() >= Duration::from_millis(1000))
+        {
             cursor_visible = true;
             last_shown = Instant::now();
             should_redraw = true;

@@ -1,13 +1,14 @@
 use super::layout::Rect;
 use super::view::View;
 use crate::actions::Mode;
+use crate::buffers::EditorBuffer;
+use crate::display::display_map::DisplayPoint;
 use crate::document::BufferText;
 use crate::editor::Editor;
 use crate::search::{TextSearch, compile};
 use crate::theme::{ColorAdjust, ToCrossTerm};
 use crossterm::{cursor::MoveTo, execute};
 use std::io::Write;
-use crate::display::display_map::DisplayPoint;
 use text::ToPoint;
 
 /// A standard view that renders the active text editor buffer.
@@ -86,9 +87,10 @@ impl View for TextView {
             .set_wrap_width(editor.wrap.then_some(wrap_cols as u32));
 
         if *should_sync {
-            active_buffer
-                .display_map
-                .fold(active_buffer.doc.folds.clone(), active_buffer.doc.buffer().snapshot().clone());
+            active_buffer.display_map.fold(
+                active_buffer.doc.folds.clone(),
+                active_buffer.doc.buffer().snapshot().clone(),
+            );
 
             let (start, _) = active_buffer
                 .doc
@@ -167,6 +169,42 @@ impl View for TextView {
             rect.height as i32,
             rect.width as i32,
         );
+
+        // highlighting code
+        let active_buffer = editor.buffer_manager.active_mut();
+        let display_snapshot = active_buffer.display_map.snapshot();
+        let total_rows = display_snapshot.row_count();
+        let end_line =
+            (display_snapshot.scroll_y + display_snapshot.visible_rows + 4).min(total_rows);
+
+        if editor.syntax && end_line > display_snapshot.scroll_y {
+            let start_buffer_row =
+                display_snapshot.buffer_row_for_display_row(display_snapshot.scroll_y);
+            let last_visible_display_row = end_line.saturating_sub(1);
+            let end_point = display_snapshot.display_point_to_point(DisplayPoint::new(
+                last_visible_display_row,
+                display_snapshot.line_len(last_visible_display_row),
+            ));
+            let end_buffer_row = end_point.row;
+            let end_buffer_row_exclusive = end_buffer_row + 1;
+
+            if !active_buffer
+                .hl
+                .is_sync(&active_buffer.doc.buffer().snapshot())
+                || !active_buffer
+                    .hl
+                    .contains_rows(start_buffer_row, end_buffer_row_exclusive)
+            {
+                active_buffer.hl.highlight_lines(
+                    &active_buffer.doc.buffer().snapshot(),
+                    start_buffer_row,
+                    end_buffer_row_exclusive - start_buffer_row,
+                    &editor.colorscheme,
+                    &editor.theme.theme,
+                    editor.use_colorscheme,
+                );
+            }
+        }
 
         Ok(())
     }
@@ -252,53 +290,91 @@ pub fn render_editor_content<W: Write>(
     let total_rows = display_snapshot.row_count();
     let end_line = (display_snapshot.scroll_y + inner_rect.height as u32).min(total_rows);
 
-    if editor.syntax && end_line > display_snapshot.scroll_y {
-        let start_buffer_row =
-            display_snapshot.buffer_row_for_display_row(display_snapshot.scroll_y);
-        let last_visible_display_row = end_line.saturating_sub(1);
-        let end_point = display_snapshot.display_point_to_point(DisplayPoint::new(last_visible_display_row, display_snapshot.line_len(last_visible_display_row)));
-        let end_buffer_row = end_point.row;
-        let end_buffer_row_exclusive = end_buffer_row + 1;
-
-        if !active_buffer
-            .hl
-            .is_sync(&active_buffer.doc.buffer().snapshot())
-            || !active_buffer
-                .hl
-                .contains_rows(start_buffer_row, end_buffer_row_exclusive)
-        {
-            active_buffer.hl.highlight_lines(
-                &active_buffer.doc.buffer().snapshot(),
-                start_buffer_row,
-                end_buffer_row_exclusive - start_buffer_row,
-                &editor.colorscheme,
-                &editor.theme.theme,
-                editor.use_colorscheme,
-            );
-        }
-    }
-
     use crate::theme::ToCrossTerm;
-    let theme_fg = editor.theme.theme.settings.foreground.map(|c| c.rgb()).unwrap_or(crossterm::style::Color::White);
-    let theme_bg = editor.theme.theme.settings.background.map(|c| c.rgb()).unwrap_or(crossterm::style::Color::Black);
-    let theme_caret = editor.theme.theme.settings.caret.map(|c| c.rgb()).unwrap_or(theme_fg);
-    let theme_select = editor.theme.theme.settings.selection.map(|c| c.rgb()).unwrap_or(theme_bg);
+    let theme_fg = editor
+        .theme
+        .theme
+        .settings
+        .foreground
+        .map(|c| c.rgb())
+        .unwrap_or(crossterm::style::Color::White);
+    let theme_bg = editor
+        .theme
+        .theme
+        .settings
+        .background
+        .map(|c| c.rgb())
+        .unwrap_or(crossterm::style::Color::Black);
+    let theme_caret = editor
+        .theme
+        .theme
+        .settings
+        .caret
+        .map(|c| c.rgb())
+        .unwrap_or(theme_fg);
+    let theme_select = editor
+        .theme
+        .theme
+        .settings
+        .selection
+        .map(|c| c.rgb())
+        .unwrap_or(theme_bg);
 
     let (editor_fg, editor_bg, caret_bg, caret_fg, selection_bg) = if editor.use_colorscheme {
-        let fg = editor.colorscheme.ui.get("foreground").map(|s| s.color).unwrap_or(theme_fg);
-        let bg = editor.colorscheme.ui.get("background").map(|s| s.color).unwrap_or(theme_bg);
-        let sel = editor.colorscheme.ui.get("selection").map(|s| s.color).unwrap_or(theme_select);
-        let c_bg = editor.colorscheme.ui.get("caret").map(|s| s.color).unwrap_or(sel);
+        let fg = editor
+            .colorscheme
+            .ui
+            .get("foreground")
+            .map(|s| s.color)
+            .unwrap_or(theme_fg);
+        let bg = editor
+            .colorscheme
+            .ui
+            .get("background")
+            .map(|s| s.color)
+            .unwrap_or(theme_bg);
+        let sel = editor
+            .colorscheme
+            .ui
+            .get("selection")
+            .map(|s| s.color)
+            .unwrap_or(theme_select);
+        let c_bg = editor
+            .colorscheme
+            .ui
+            .get("caret")
+            .map(|s| s.color)
+            .unwrap_or(sel);
         let c_fg = fg; // editor.colorscheme.ui.get("caret_foreground").map(|s| s.color).unwrap_or(bg);
         (fg, bg, c_bg, c_fg, sel)
     } else {
         (theme_fg, theme_bg, theme_caret, theme_bg, theme_select)
     };
 
-    let gutter_fg = editor.colorscheme.ui.get("gutter_foreground").map(|s| s.color).unwrap_or(editor_fg);
-    let gutter_bg = editor.colorscheme.ui.get("gutter").map(|s| s.color).unwrap_or(editor_bg);
-    let find_fg = editor.colorscheme.ui.get("find_highlight_foreground").map(|s| s.color).unwrap_or(editor_fg);
-    let find_bg = editor.colorscheme.ui.get("find_highlight").map(|s| s.color).unwrap_or(selection_bg);
+    let gutter_fg = editor
+        .colorscheme
+        .ui
+        .get("gutter_foreground")
+        .map(|s| s.color)
+        .unwrap_or(editor_fg);
+    let gutter_bg = editor
+        .colorscheme
+        .ui
+        .get("gutter")
+        .map(|s| s.color)
+        .unwrap_or(editor_bg);
+    let find_fg = editor
+        .colorscheme
+        .ui
+        .get("find_highlight_foreground")
+        .map(|s| s.color)
+        .unwrap_or(editor_fg);
+    let find_bg = editor
+        .colorscheme
+        .ui
+        .get("find_highlight")
+        .map(|s| s.color)
+        .unwrap_or(selection_bg);
 
     let mut prev_line_number = -1;
     let mut screen_row = inner_rect.y;
@@ -331,17 +407,9 @@ pub fn render_editor_content<W: Write>(
         // line number
         if editor.show_line_numbers {
             let line_number = display_snapshot.buffer_row_for_display_row(row);
-            execute!(
-                stdout,
-                crossterm::style::SetForegroundColor(gutter_fg)
-            )
-            .unwrap();
+            execute!(stdout, crossterm::style::SetForegroundColor(gutter_fg)).unwrap();
 
-            execute!(
-                stdout,
-                crossterm::style::SetBackgroundColor(gutter_bg)
-            )
-            .unwrap();
+            execute!(stdout, crossterm::style::SetBackgroundColor(gutter_bg)).unwrap();
             if prev_line_number != line_number as i32 {
                 print!("{:>width$} ", (line_number + 1), width = gutter_width - 1);
             } else {
@@ -385,7 +453,8 @@ pub fn render_editor_content<W: Write>(
         let is_handle = relative_row >= start_y && relative_row < start_y + handle_h;
 
         for (column, ch) in text.chars().enumerate() {
-            let orig_point = display_snapshot.display_point_to_point(DisplayPoint::new(row, column as u32));
+            let orig_point =
+                display_snapshot.display_point_to_point(DisplayPoint::new(row, column as u32));
             // Determine if current column is within a search match range
             let mut in_match = false;
             while match_idx < match_ranges.len() && column >= match_ranges[match_idx].1 {
@@ -403,9 +472,11 @@ pub fn render_editor_content<W: Write>(
 
             if editor.syntax {
                 if let Some(style_cache) = active_buffer.hl.render_row(orig_point.row) {
-                    if let Some(&(style, _, _)) = style_cache.styles.iter().find(|(_, start, end)| {
-                        orig_point.column >= *start && orig_point.column < *end
-                    }) {
+                    if let Some(&(style, _, _)) =
+                        style_cache.styles.iter().find(|(_, start, end)| {
+                            orig_point.column >= *start && orig_point.column < *end
+                        })
+                    {
                         fg = style.foreground.rgb();
                         bg = style.background.rgb();
                     }
@@ -569,11 +640,7 @@ pub fn update_cursor_position<W: Write>(
         let cmd_text = editor.command.get_text();
         let cmd_col = (cmd_text.chars().count()) as u16;
         // Command line is drawn at statusbar rect y position (bottom row)
-        execute!(
-            stdout,
-            MoveTo(cmd_col + 1, (editor.screen_rows - 1) as u16),
-        )
-        .unwrap();
+        execute!(stdout, MoveTo(cmd_col + 1, (editor.screen_rows - 1) as u16),).unwrap();
     } else {
         execute!(
             stdout,
