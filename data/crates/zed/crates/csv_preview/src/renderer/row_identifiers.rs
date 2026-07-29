@@ -51,7 +51,7 @@ impl CsvPreviewView {
     /// This ensures the column is wide enough to display the largest identifier comfortably,
     /// but not wastefully wide for small files.
     pub(crate) fn calculate_row_identifier_column_width(&self) -> f32 {
-        match self.settings.numbering_type {
+        match self.numbering_type {
             RowIdentifiers::SrcLines => self.calculate_line_number_width(),
             RowIdentifiers::RowNum => self.calculate_row_number_width(),
         }
@@ -78,7 +78,7 @@ impl CsvPreviewView {
             (max_line_number as f32).log10().floor() as usize + 1
         };
 
-        // if !self.settings.multiline_cells_enabled {
+        // if !self.multiline_cells_enabled {
         //     // Uses horizontal line numbers layout like `123-456`. Needs twice the size
         //     digit_count *= 2;
         // }
@@ -112,14 +112,14 @@ impl CsvPreviewView {
         cx: &mut Context<'_, CsvPreviewView>,
     ) -> AnyElement {
         // First column: row identifier (clickable to toggle between Lines and Rows)
-        let row_identifier_text = match self.settings.numbering_type {
+        let row_identifier_text = match self.numbering_type {
             RowIdentifiers::SrcLines => "Lines",
             RowIdentifiers::RowNum => "Rows",
         };
 
         let view = cx.entity();
         let value = div()
-            .map(|div| match self.settings.font_type {
+            .map(|div| match self.font_type {
                 FontType::Ui => div.font_ui(cx),
                 FontType::Monospace => div.font_buffer(cx),
             })
@@ -153,13 +153,13 @@ impl CsvPreviewView {
         data_row: DataRow,
         cx: &Context<'_, CsvPreviewView>,
     ) -> Option<AnyElement> {
-        let row_identifier: SharedString = match self.settings.numbering_type {
+        let row_identifier: SharedString = match self.numbering_type {
             RowIdentifiers::SrcLines => self
                 .engine
                 .contents
                 .line_numbers
                 .get(*data_row)?
-                .display_string(if self.settings.multiline_cells_enabled {
+                .display_string(if self.multiline_cells_enabled {
                     RowIdentDisplayMode::Vertical
                 } else {
                     RowIdentDisplayMode::Horizontal
@@ -178,7 +178,7 @@ impl CsvPreviewView {
             // Row identifiers are always centered
             .items_center()
             .justify_end()
-            .map(|div| match self.settings.font_type {
+            .map(|div| match self.font_type {
                 FontType::Ui => div.font_ui(cx),
                 FontType::Monospace => div.font_buffer(cx),
             })

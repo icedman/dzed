@@ -23,7 +23,7 @@ impl Render for CsvPreviewView {
                         .justify_center()
                         .h_32()
                         .text_ui(cx)
-                        .map(|div| match self.settings.font_type {
+                        .map(|div| match self.font_type {
                             FontType::Ui => div.font_ui(cx),
                             FontType::Monospace => div.font_buffer(cx),
                         })

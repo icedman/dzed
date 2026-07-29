@@ -1,4 +1,7 @@
 use super::layout::Rect;
+use super::view::View;
+use crate::editor::Editor;
+
 use crossterm::{
     cursor::MoveTo,
     execute,
@@ -11,7 +14,7 @@ pub struct Window {
     pub title: String,
     pub is_focused: bool,
     pub draw_border: bool,
-    pub view_id: Option<usize>,
+    pub view: Option<Box<dyn View>>,
 }
 
 impl Window {
@@ -21,11 +24,20 @@ impl Window {
             title,
             is_focused: false,
             draw_border: true,
-            view_id: None,
+            view: None,
         }
     }
 
-    pub fn draw<W: Write>(&mut self, w: &mut W, rect: Rect) -> std::io::Result<()> {
+    pub fn set_view(&mut self, view: Box<dyn View>) {
+        self.view = Some(view);
+    }
+
+    pub fn draw<W: Write>(
+        &mut self,
+        w: &mut W,
+        rect: Rect,
+        editor: &Editor,
+    ) -> std::io::Result<()> {
         if rect.width == 0 || rect.height == 0 {
             return Ok(());
         }
@@ -91,6 +103,21 @@ impl Window {
             }
 
             execute!(w, ResetColor)?;
+        }
+
+        // Draw inner view content
+        if let Some(ref mut view) = self.view {
+            let inner_rect = if self.draw_border {
+                Rect {
+                    x: rect.x.saturating_add(1),
+                    y: rect.y.saturating_add(1),
+                    width: rect.width.saturating_sub(2),
+                    height: rect.height.saturating_sub(2),
+                }
+            } else {
+                rect
+            };
+            _ = view.draw(w, inner_rect, editor);
         }
 
         Ok(())

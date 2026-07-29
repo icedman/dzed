@@ -1041,7 +1041,7 @@ impl LocalWorktree {
     }
 
     pub fn is_path_private(&self, path: &RelPath) -> bool {
-        !self.share_private_files && self.settings.is_path_private(path)
+        !self.share_private_files && self.is_path_private(path)
     }
 
     pub fn fs_is_case_sensitive(&self) -> bool {
@@ -1077,7 +1077,7 @@ impl LocalWorktree {
         let next_entry_id = self.next_entry_id.clone();
         let fs = self.fs.clone();
         let scanning_enabled = self.scanning_enabled;
-        let settings = self.settings.clone();
+        let settings = self.clone();
         let (scan_states_tx, mut scan_states_rx) = mpsc::unbounded();
         let background_scanner = cx.background_spawn({
             let abs_path = snapshot.abs_path.as_path().to_path_buf();
@@ -1291,7 +1291,7 @@ impl LocalWorktree {
     }
 
     pub fn settings(&self) -> WorktreeSettings {
-        self.settings.clone()
+        self.clone()
     }
 
     fn load_binary_file(
@@ -1423,7 +1423,7 @@ impl LocalWorktree {
         cx: &Context<Worktree>,
     ) -> Task<Result<CreatedEntry>> {
         let abs_path = self.absolutize(&path);
-        let path_excluded = self.settings.is_path_excluded(&path);
+        let path_excluded = self.is_path_excluded(&path);
         let fs = self.fs.clone();
         let task_abs_path = abs_path.clone();
         let write = cx.background_spawn(async move {
@@ -1793,7 +1793,7 @@ impl LocalWorktree {
         old_path: Option<Arc<RelPath>>,
         cx: &Context<Worktree>,
     ) -> Task<Result<Option<Entry>>> {
-        if self.settings.is_path_excluded(&path) {
+        if self.is_path_excluded(&path) {
             return Task::ready(Ok(None));
         }
         let paths = if let Some(old_path) = old_path.as_ref() {
@@ -4186,7 +4186,7 @@ impl BackgroundScanner {
                     continue;
                 }
 
-                if self.settings.is_path_excluded(&relative_path) {
+                if self.is_path_excluded(&relative_path) {
                     if !is_git_related {
                         log::debug!("ignoring FS event for excluded path {relative_path:?}");
                     }
@@ -4442,7 +4442,7 @@ impl BackgroundScanner {
         let root_char_bag;
         {
             let snapshot = &self.state.lock().await.snapshot;
-            if self.settings.is_path_excluded(&job.path) {
+            if self.is_path_excluded(&job.path) {
                 log::error!("skipping excluded directory {:?}", job.path);
                 return Ok(());
             }
@@ -4520,7 +4520,7 @@ impl BackgroundScanner {
                 }
             }
 
-            if self.settings.is_path_excluded(&child_path) {
+            if self.is_path_excluded(&child_path) {
                 log::debug!("skipping excluded child entry {child_path:?}");
                 self.state
                     .lock()
@@ -4579,8 +4579,7 @@ impl BackgroundScanner {
 
             if child_entry.is_dir() {
                 child_entry.is_ignored = ignore_stack.is_abs_path_ignored(&child_abs_path, true);
-                child_entry.is_always_included =
-                    self.settings.is_path_always_included(&child_path, true);
+                child_entry.is_always_included = self.is_path_always_included(&child_path, true);
 
                 // Avoid recursing until crash in the case of a recursive symlink
                 if job.ancestor_inodes.contains(&child_entry.inode) {
@@ -4604,8 +4603,7 @@ impl BackgroundScanner {
                 }
             } else {
                 child_entry.is_ignored = ignore_stack.is_abs_path_ignored(&child_abs_path, false);
-                child_entry.is_always_included =
-                    self.settings.is_path_always_included(&child_path, false);
+                child_entry.is_always_included = self.is_path_always_included(&child_path, false);
             }
 
             {
@@ -4616,7 +4614,7 @@ impl BackgroundScanner {
                     log::debug!("detected private file: {relative_path:?}");
                     child_entry.is_private = true;
                 }
-                if self.settings.is_path_hidden(&relative_path) {
+                if self.is_path_hidden(&relative_path) {
                     log::debug!("detected hidden file: {relative_path:?}");
                     child_entry.is_hidden = true;
                 }
@@ -4745,9 +4743,8 @@ impl BackgroundScanner {
                     fs_entry.is_ignored = ignore_stack.is_abs_path_ignored(&abs_path, is_dir);
                     fs_entry.is_external = is_external;
                     fs_entry.is_private = self.is_path_private(path);
-                    fs_entry.is_always_included =
-                        self.settings.is_path_always_included(path, is_dir);
-                    fs_entry.is_hidden = self.settings.is_path_hidden(path);
+                    fs_entry.is_always_included = self.is_path_always_included(path, is_dir);
+                    fs_entry.is_hidden = self.is_path_hidden(path);
 
                     if let (Some(scan_queue_tx), true) = (&scan_queue_tx, is_dir) {
                         if state.should_scan_directory(&fs_entry)
@@ -5195,7 +5192,7 @@ impl BackgroundScanner {
     }
 
     fn is_path_private(&self, path: &RelPath) -> bool {
-        !self.share_private_files && self.settings.is_path_private(path)
+        !self.share_private_files && self.is_path_private(path)
     }
 
     async fn next_scan_request(&self) -> Result<ScanRequest> {

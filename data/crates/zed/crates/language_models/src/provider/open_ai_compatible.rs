@@ -52,13 +52,13 @@ impl State {
     }
 
     fn set_api_key(&mut self, api_key: Option<String>, cx: &mut Context<Self>) -> Task<Result<()>> {
-        let api_url = SharedString::new(self.settings.api_url.as_str());
+        let api_url = SharedString::new(self.api_url.as_str());
         self.api_key_state
             .store(api_url, api_key, |this| &mut this.api_key_state, cx)
     }
 
     fn authenticate(&mut self, cx: &mut Context<Self>) -> Task<Result<(), AuthenticateError>> {
-        let api_url = SharedString::new(self.settings.api_url.clone());
+        let api_url = SharedString::new(self.api_url.clone());
         self.api_key_state
             .load_if_needed(api_url, |this| &mut this.api_key_state, cx)
     }

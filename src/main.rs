@@ -16,19 +16,6 @@ use crossterm::{
     terminal::{Clear, ClearType},
 };
 
-pub struct BufferManager {}
-pub struct LayoutManager {}
-
-pub struct Application {
-    pub buffers: BufferManager,
-    pub layout: LayoutManager,
-}
-
-pub struct Controller {}
-pub struct Views {}
-
-pub struct Renderer {}
-
 fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
     let file_paths = if args.len() > 1 {
@@ -38,8 +25,8 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     };
 
     let mut ui = ui::Ui::new();
-    let mut editor = editor::Editor::new(file_paths);
-    // let mut controller = controller::Controller::new();
+    let mut controller = controller::Controller::new();
+    let mut editor = editor::Editor::new(file_paths)?;
 
     let mut stdout = stdout();
 
@@ -62,37 +49,15 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     execute!(stdout, crossterm::cursor::Hide).unwrap();
 
     loop {
-        //------------------
-        // layout
-        //------------------
-        // get screen dimensions
-        let (screen_cols, screen_rows) = {
-            let (cols, rows) = crossterm::terminal::size().unwrap();
-            (cols as i32, rows as i32)
-        };
-        ui.layout(screen_cols as u32, screen_rows as u32);
-
-        //------------------
-        // update
-        //------------------
-
-        //------------------
-        // render
-        //------------------
-        let computed = &ui.cached_layouts;
-        for &(win_id, rect) in computed {
-            if let Some(win) = ui.windows.get_mut(&win_id) {
-                win.draw(&mut stdout, rect)?;
-            }
+        ui.update(&mut editor)?;
+        if editor.should_redraw {
+            ui.draw(&mut stdout, &mut editor)?;
         }
 
-        //------------------
-        // input
-        //------------------
         if event::poll(Duration::from_millis(50))? {
             let event = event::read()?;
-            match event {
-                Event::Key(key_event) => {
+            match controller.handle_event(event, &mut editor)? {
+                controller::ControllerResult::Exit => {
                     break;
                 }
                 _ => {}
@@ -100,8 +65,9 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         }
 
         //------------------
-        // controller
+        // 4. Background work
         //------------------
+        // editor.services.poll(&mut editor)?;
     }
 
     crossterm::terminal::disable_raw_mode().unwrap();
@@ -119,6 +85,5 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         MoveTo(0, 0)
     )
     .unwrap();
-
     Ok(())
 }
