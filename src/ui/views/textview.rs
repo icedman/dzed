@@ -1,4 +1,4 @@
-use crate::editor::Editor;
+use crate::editor::{Editor, document::BufferText};
 use crate::ui::layout::Rect;
 use crate::ui::views::View;
 
@@ -19,7 +19,7 @@ impl TextView {
 }
 
 impl TextView {
-    fn draw_tabs<W: Write>(
+    fn draw_textview<W: Write>(
         &self,
         w: &mut W,
         rect: Rect,
@@ -33,9 +33,22 @@ impl TextView {
             MoveTo(rect.x, rect.y),
             SetForegroundColor(Color::Black),
             SetBackgroundColor(Color::White),
-            Print(format!("Buffer...{} rows", rows)),
+            Print(format!("Buffer...{} rows\r\n", rows)),
             ResetColor,
         )?;
+
+        for row in 0..rows {
+            let text = buffer.doc.buffer().row_text(row);
+            execute!(
+                w,
+                MoveTo(rect.x, rect.y + row as u16 + 1),
+                Print(format!("{}\r\n", text)),
+                ResetColor,
+            )?;
+            if row > 8 {
+                break;
+            }
+        }
 
         Ok(())
     }
@@ -48,6 +61,6 @@ impl View for TextView {
         rect: Rect,
         editor: &Editor,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        self.draw_tabs(&mut w, rect, editor)
+        self.draw_textview(&mut w, rect, editor)
     }
 }

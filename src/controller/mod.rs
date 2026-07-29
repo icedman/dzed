@@ -76,7 +76,6 @@ impl Controller {
 
         while let Some(action) = self.pending_actions.pop_front() {
             editor.last_action = action.clone();
-
             if let Some(window) = ui.get_focused_window() {
                 if let Some(ref controller) = window.controller {
                     last_result = controller.handle_action(action, editor, ui, window.id)?;
