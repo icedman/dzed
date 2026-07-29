@@ -1,53 +1,53 @@
+use crate::editor::Editor;
 use crate::ui::layout::Rect;
 use crate::ui::views::View;
-use crate::{controller::controllers::ViewController, editor::Editor};
+
 use std::io::Write;
 
-use collections::Equivalent;
 use crossterm::{
     cursor::MoveTo,
     execute,
     style::{Color, Print, ResetColor, SetBackgroundColor, SetForegroundColor},
 };
 
-pub struct StatusBarView;
+pub struct TextView {}
 
-impl StatusBarView {
+impl TextView {
     pub fn new() -> Self {
-        StatusBarView {}
+        TextView {}
     }
 }
 
-impl StatusBarView {
-    fn draw_statusbar<W: Write>(
+impl TextView {
+    fn draw_tabs<W: Write>(
         &self,
         w: &mut W,
         rect: Rect,
         editor: &Editor,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let remaining = rect
-            .width
-            .saturating_sub(editor.last_action.to_string().len() as u16);
-        let status = format!("{}{}", editor.last_action, " ".repeat(remaining as usize));
+        let buffer = editor.buffer_manager.active();
+        let rows = buffer.doc.buffer().row_count();
+
         execute!(
             w,
             MoveTo(rect.x, rect.y),
             SetForegroundColor(Color::Black),
             SetBackgroundColor(Color::White),
-            Print(status),
+            Print(format!("Buffer...{} rows", rows)),
             ResetColor,
         )?;
+
         Ok(())
     }
 }
 
-impl View for StatusBarView {
+impl View for TextView {
     fn draw(
         &self,
         mut w: &mut dyn Write,
         rect: Rect,
         editor: &Editor,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        self.draw_statusbar(&mut w, rect, editor)
+        self.draw_tabs(&mut w, rect, editor)
     }
 }

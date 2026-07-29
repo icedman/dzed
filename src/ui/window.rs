@@ -1,6 +1,7 @@
 use super::layout::Rect;
 use super::views::View;
-use crate::editor::Editor;
+use crate::controller::controllers::ViewController;
+use crate::{editor::Editor, ui::WindowKind};
 
 use crossterm::{
     cursor::MoveTo,
@@ -12,9 +13,10 @@ use std::io::Write;
 pub struct Window {
     pub id: usize,
     pub title: String,
-    pub is_focused: bool,
     pub draw_border: bool,
     pub view: Option<Box<dyn View>>,
+    pub controller: Option<Box<dyn ViewController>>,
+    pub buffer_id: Option<usize>,
 }
 
 impl Window {
@@ -22,14 +24,19 @@ impl Window {
         Self {
             id,
             title,
-            is_focused: false,
             draw_border: true,
             view: None,
+            controller: None,
+            buffer_id: None,
         }
     }
 
     pub fn set_view(&mut self, view: Box<dyn View>) {
         self.view = Some(view);
+    }
+
+    pub fn set_controller(&mut self, controller: Box<dyn ViewController>) {
+        self.controller = Some(controller);
     }
 
     pub fn draw<W: Write>(

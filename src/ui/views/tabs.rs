@@ -1,6 +1,6 @@
-use crate::editor::Editor;
 use crate::ui::layout::Rect;
 use crate::ui::views::View;
+use crate::{controller::controllers::ViewController, editor::Editor};
 use std::io::Write;
 
 use crossterm::{
@@ -13,13 +13,13 @@ pub struct TabsView;
 
 impl TabsView {
     pub fn new() -> Self {
-        TabsView
+        TabsView {}
     }
 }
 
 impl TabsView {
     fn draw_tabs<W: Write>(
-        &mut self,
+        &self,
         w: &mut W,
         rect: Rect,
         editor: &Editor,
@@ -60,7 +60,7 @@ impl TabsView {
 
 impl View for TabsView {
     fn draw(
-        &mut self,
+        &self,
         mut w: &mut dyn Write,
         rect: Rect,
         editor: &Editor,

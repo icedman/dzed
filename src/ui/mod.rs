@@ -5,6 +5,17 @@ pub mod theme;
 pub mod views;
 pub mod window;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WindowKind {
+    Editor,
+    StatusBar,
+    CommandLine,
+    TabBar,
+    Popup,
+    DirectoryTree,
+}
+
+use crate::controller::controllers;
 use crate::editor::Editor;
 use crossterm::{
     cursor::MoveTo,
@@ -47,6 +58,8 @@ impl Ui {
         // Create initial default window
         let main_win_id = 0;
         let mut main_win = window::Window::new(main_win_id, "Editor".to_string());
+        main_win.set_view(Box::new(views::textview::TextView::new()));
+        main_win.set_controller(Box::new(controllers::textview::TextViewController::new()));
         main_win.draw_border = true;
         windows.insert(main_win_id, main_win);
 
@@ -69,7 +82,7 @@ impl Ui {
             last_parent_rect: None,
             cached_layouts: Vec::new(),
             windows,
-            focused_window_id: None,
+            focused_window_id: Some(main_win_id),
         }
     }
 
@@ -109,6 +122,19 @@ impl Ui {
         // Update animations.
 
         Ok(())
+    }
+
+    pub fn set_focused_window(&mut self, window_id: usize) {
+        self.focused_window_id = Some(window_id);
+    }
+
+    pub fn get_focused_window(&self) -> Option<&window::Window> {
+        self.focused_window_id.and_then(|id| self.windows.get(&id))
+    }
+
+    pub fn get_focused_window_mut(&mut self) -> Option<&mut window::Window> {
+        self.focused_window_id
+            .and_then(|id| self.windows.get_mut(&id))
     }
 
     pub fn draw<W: Write>(

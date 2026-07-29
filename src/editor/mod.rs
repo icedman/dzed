@@ -3,14 +3,14 @@ pub mod display;
 pub mod document;
 pub mod selections;
 
-use crate::controller::{self, Controller};
+use crate::controller::{self};
 use crate::editor::buffers::BufferManager;
 use crate::editor::buffers::TextBuffer;
 use crate::editor::document::Document;
 use crate::services::Services;
 use crate::ui::colorscheme::ColorScheme;
 use crate::ui::theme::Theme;
-use controller::actions::Mode;
+use controller::actions::{Action, Mode};
 
 pub struct Editor {
     pub mode: Mode,
@@ -34,8 +34,7 @@ pub struct Editor {
 
     pub services: Services,
 
-    // TODO: remove from editor
-    pub controller: Controller,
+    pub last_action: Action,
 }
 
 impl Editor {
@@ -62,10 +61,10 @@ impl Editor {
     }
 
     pub fn apply_command_action(&mut self, action: &controller::actions::Action) {
-        let mut command =
-            std::mem::replace(&mut self.controller.command.cmd, Document::new("").unwrap());
-        command.apply_action(action, self);
-        self.controller.command.cmd = command;
+        // let mut command =
+        //     std::mem::replace(&mut self.controller.command.cmd, Document::new("").unwrap());
+        // command.apply_action(action, self);
+        // self.controller.command.cmd = command;
     }
 
     pub fn new(file_paths: Vec<String>) -> Result<Self, Box<dyn std::error::Error>> {
@@ -86,7 +85,6 @@ impl Editor {
 
         Ok(Self {
             buffer_manager,
-            controller: controller::Controller::new(),
             mode: Mode::Normal,
             theme,
             colorscheme,
@@ -100,6 +98,7 @@ impl Editor {
             should_redraw: true,
             should_sync: true,
             services,
+            last_action: Action::NoOp,
         })
     }
 }

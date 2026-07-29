@@ -25,8 +25,8 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     };
 
     let mut ui = ui::Ui::new();
-    let mut controller = controller::Controller::new();
     let mut editor = editor::Editor::new(file_paths)?;
+    let mut controller = controller::Controller::new();
 
     let mut stdout = stdout();
 
@@ -63,6 +63,8 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 _ => {}
             }
         }
+
+        controller.dispatch_actions(&mut editor, &mut ui)?;
 
         //------------------
         // 4. Background work
