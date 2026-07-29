@@ -159,16 +159,6 @@ pub fn handle_event(editor: &mut crate::editor::Editor, event: Event) -> HandleE
     HandleEvent::NoRedraw
 }
 
-pub struct InputContext {
-    pub mode: Mode,
-}
-
-impl InputContext {
-    pub fn new() -> Self {
-        Self { mode: Mode::Normal }
-    }
-}
-
 pub struct VimInput {
     pub state_machine: InputStateMachine,
     pub keymap: Keymap,

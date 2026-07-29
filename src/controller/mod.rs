@@ -38,13 +38,17 @@ impl Controller {
         editor: &mut crate::editor::Editor,
     ) -> Result<ControllerResult, Box<dyn std::error::Error>> {
         match event {
-            Event::Key(key_event) => match (key_event.code, key_event.modifiers) {
-                (KeyCode::Char('q'), KeyModifiers::CONTROL) => {
-                    return Ok(ControllerResult::Exit);
-                }
+            Event::Key(key_event) => {
+                self.input.set_mode(editor.mode);
+                let mut action = self.input.handle_event(&key_event);
 
-                _ => {}
-            },
+                match (key_event.code, key_event.modifiers) {
+                    (KeyCode::Char('q'), KeyModifiers::CONTROL) => {
+                        return Ok(ControllerResult::Exit);
+                    }
+                    _ => {}
+                }
+            }
             _ => {}
         }
         Ok(ControllerResult::None)

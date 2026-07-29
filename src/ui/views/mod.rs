@@ -1,3 +1,6 @@
+pub mod statusbar;
+pub mod tabs;
+
 use crate::editor::Editor;
 use crate::ui::layout::Rect;
 use std::io::Write;

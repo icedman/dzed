@@ -2,8 +2,7 @@ pub mod colorscheme;
 pub mod layout;
 pub mod renderer;
 pub mod theme;
-pub mod view;
-pub mod widgets;
+pub mod views;
 pub mod window;
 
 use crate::editor::Editor;
@@ -32,9 +31,9 @@ impl Ui {
         let layout = layout::LayoutNode::Split {
             direction: layout::SplitDirection::Vertical,
             constraints: vec![
-                layout::SizeConstraint::Fixed(2),        // Tabs (1 row)
+                layout::SizeConstraint::Fixed(1),        // Tabs (1 row)
                 layout::SizeConstraint::Percentage(1.0), // Editor
-                layout::SizeConstraint::Fixed(3),        // Statusbar (1 row)
+                layout::SizeConstraint::Fixed(1),        // Statusbar (1 row)
             ],
             children: vec![
                 layout::LayoutNode::Leaf { window_id: 1 }, // Tabs
@@ -53,13 +52,14 @@ impl Ui {
 
         // Create tabs window
         let mut tabs_win = window::Window::new(1, "Tabs".to_string());
-        tabs_win.draw_border = true;
+        tabs_win.set_view(Box::new(views::tabs::TabsView {}));
+        tabs_win.draw_border = false;
         windows.insert(1, tabs_win);
 
         // Create status bar window
         let mut statusbar_win = window::Window::new(2, "Status Bar".to_string());
-        statusbar_win.draw_border = true;
-        statusbar_win.set_view(Box::new(widgets::statusbar::StatusBarView {}));
+        statusbar_win.set_view(Box::new(views::statusbar::StatusBarView {}));
+        statusbar_win.draw_border = false;
         windows.insert(2, statusbar_win);
 
         Self {

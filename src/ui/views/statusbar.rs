@@ -1,6 +1,6 @@
 use crate::editor::Editor;
 use crate::ui::layout::Rect;
-use crate::ui::view::View;
+use crate::ui::views::View;
 use std::io::Write;
 
 use crossterm::{
@@ -29,7 +29,7 @@ impl StatusBarView {
             MoveTo(rect.x, rect.y),
             SetForegroundColor(Color::Black),
             SetBackgroundColor(Color::White),
-            Print(" hello world"),
+            Print("STATUS"),
             ResetColor,
         )?;
         Ok(())

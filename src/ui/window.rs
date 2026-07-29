@@ -1,5 +1,5 @@
 use super::layout::Rect;
-use super::view::View;
+use super::views::View;
 use crate::editor::Editor;
 
 use crossterm::{
