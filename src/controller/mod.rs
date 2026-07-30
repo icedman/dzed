@@ -78,9 +78,14 @@ impl Controller {
 
         while let Some(action) = self.pending_actions.pop_front() {
             editor.last_action = action.clone();
-            if let Some(window) = ui.get_focused_window() {
-                if let Some(ref controller) = window.controller {
-                    last_result = controller.handle_action(action, editor, buffer_manager, ui, window.id)?;
+            let focused_id = ui.focused_window_id;
+            if let Some(window_id) = focused_id {
+                let mut controller = ui.windows.get_mut(&window_id).and_then(|w| w.controller.take());
+                if let Some(ref mut c) = controller {
+                    last_result = c.handle_action(action, editor, buffer_manager, ui, window_id)?;
+                }
+                if let Some(w) = ui.windows.get_mut(&window_id) {
+                    w.controller = controller;
                 }
             }
         }

@@ -24,6 +24,7 @@ impl TabsView {
         rect: Rect,
         editor: &Editor,
         buffer_manager: &mut crate::editor::buffers::BufferManager,
+        _doc: Option<&crate::editor::document::Document>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         execute!(
             w,
@@ -66,7 +67,8 @@ impl View for TabsView {
         rect: Rect,
         editor: &Editor,
         buffer_manager: &mut crate::editor::buffers::BufferManager,
+        _doc: Option<&crate::editor::document::Document>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        self.draw_tabs(&mut w, rect, editor, buffer_manager)
+        self.draw_tabs(&mut w, rect, editor, buffer_manager, _doc)
     }
 }

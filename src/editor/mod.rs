@@ -34,14 +34,15 @@ pub struct Editor {
 }
 
 impl Editor {
-    pub fn set_tree_sitter_enabled(&mut self, buffer_manager: &mut BufferManager, enabled: bool) {
+    pub fn set_tree_sitter_enabled(&mut self, ui: &mut crate::ui::Ui, buffer_manager: &mut BufferManager, enabled: bool) {
         self.tree_sitter = enabled;
         if !enabled {
+            for window in ui.windows.values_mut() {
+                if let Some(ref mut doc) = window.doc {
+                    doc.latest_parse_task_id.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                }
+            }
             for buffer in &mut buffer_manager.buffers {
-                buffer
-                    .doc
-                    .latest_parse_task_id
-                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 buffer.syntax_tree = None;
             }
         }
@@ -49,23 +50,23 @@ impl Editor {
 
     pub fn apply_active_action(
         &mut self,
+        ui: &mut crate::ui::Ui,
         buffer_manager: &mut BufferManager,
         action: &controller::actions::Action,
     ) {
-        let active_idx = buffer_manager.active_idx;
-        let dummy_buffer = text::Buffer::new(clock::ReplicaId::default(), text::BufferId::new(1).unwrap(), "".to_string());
-        let mut document = std::mem::replace(
-            &mut buffer_manager.buffers[active_idx].doc,
-            Document::new_with_buffer(0, &dummy_buffer, ""),
+        let active_win_id = ui.focused_window_id.unwrap();
+        let window = ui.windows.get_mut(&active_win_id).unwrap();
+        let doc = window.doc.as_mut().unwrap();
+        let buffer_id = window.buffer_id.unwrap();
+        
+        let text_buffer = buffer_manager.get_by_id_mut(buffer_id).unwrap();
+        doc.apply_action(
+            &mut text_buffer.buffer,
+            action,
+            self,
+            text_buffer.syntax_tree.as_ref(),
         );
-        let mut active_buffer = std::mem::replace(
-            &mut buffer_manager.buffers[active_idx].buffer,
-            dummy_buffer,
-        );
-        document.apply_action(&mut active_buffer, action, self, buffer_manager);
-        self.mode = document.mode();
-        buffer_manager.buffers[active_idx].buffer = active_buffer;
-        buffer_manager.buffers[active_idx].doc = document;
+        self.mode = doc.mode();
     }
 
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {

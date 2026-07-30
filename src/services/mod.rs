@@ -32,7 +32,7 @@ pub fn poll(
         };
         if let Some(win) = ui.windows.get_mut(&owner_id) {
             if let Some(ref mut controller) = win.controller {
-                let _ = controller.handle_task(&result, editor, buffer_manager);
+                let _ = controller.handle_task(&result, editor, buffer_manager, win.doc.as_mut());
             }
         }
     }

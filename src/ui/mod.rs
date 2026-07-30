@@ -128,17 +128,23 @@ impl Ui {
         // Recompute layout if needed.
         // Update window rects.
         if self.layout(screen_cols as u32, screen_rows as u32) {
-            for buffer in &mut buffer_manager.buffers {
-                buffer.doc.should_sync = true;
+            for window in self.windows.values_mut() {
+                if let Some(ref mut doc) = window.doc {
+                    doc.should_sync = true;
+                }
             }
             editor.should_redraw = true;
         }
 
-        let computed = &self.cached_layouts;
-        for &(window_id, rect) in computed {
-            if let Some(window) = self.windows.get(&window_id) {
-                if let Some(ref controller) = window.controller {
-                    controller.update(editor, buffer_manager, self, window_id, rect)?;
+        let computed = self.cached_layouts.clone();
+        for &(window_id, rect) in &computed {
+            if let Some(window) = self.windows.get_mut(&window_id) {
+                let mut controller = window.controller.take();
+                if let Some(ref mut c) = controller {
+                    c.update(editor, buffer_manager, self, window_id, rect)?;
+                }
+                if let Some(window) = self.windows.get_mut(&window_id) {
+                    window.controller = controller;
                 }
             }
         }

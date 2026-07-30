@@ -15,7 +15,7 @@ pub trait ViewController {
         &self,
         editor: &mut Editor,
         buffer_manager: &mut crate::editor::buffers::BufferManager,
-        ui: &Ui,
+        ui: &mut crate::ui::Ui,
         window_id: usize,
         rect: Rect,
     ) -> Result<ControllerResult, Box<dyn std::error::Error>> {
@@ -27,7 +27,7 @@ pub trait ViewController {
         action: actions::Action,
         editor: &mut Editor,
         buffer_manager: &mut crate::editor::buffers::BufferManager,
-        ui: &Ui,
+        ui: &mut crate::ui::Ui,
         window_id: usize,
     ) -> Result<ControllerResult, Box<dyn std::error::Error>> {
         Ok(ControllerResult::None)
@@ -38,6 +38,7 @@ pub trait ViewController {
         _result: &background::BackgroundResult,
         _editor: &mut Editor,
         _buffer_manager: &mut crate::editor::buffers::BufferManager,
+        _doc: Option<&mut crate::editor::document::Document>,
     ) -> Result<ControllerResult, Box<dyn std::error::Error>> {
         Ok(ControllerResult::None)
     }

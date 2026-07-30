@@ -92,12 +92,8 @@ impl Document {
         }
     }
 
-    pub fn fold(&mut self, buffer: &Buffer, _count: u32, editor: &Editor, buffer_manager: &crate::editor::buffers::BufferManager) {
-        let text_buffer = match buffer_manager.find(self) {
-            Some(b) => b,
-            None => return,
-        };
-        if let Some(syntax_tree) = &text_buffer.syntax_tree {
+    pub fn fold(&mut self, buffer: &Buffer, _count: u32, editor: &Editor, syntax_tree: Option<&crate::services::treesitter::SyntaxTree>) {
+        if let Some(syntax_tree) = syntax_tree {
             let mut seen_ranges = std::collections::HashSet::new();
             for selection in self.selections.selections.iter() {
                 let head_point = selection.head().to_point(buffer);
@@ -148,7 +144,7 @@ impl Document {
         }
     }
 
-    pub fn unfold(&mut self, buffer: &Buffer, _count: u32, editor: &Editor, buffer_manager: &crate::editor::buffers::BufferManager) {
+    pub fn unfold(&mut self, buffer: &Buffer, _count: u32, editor: &Editor, syntax_tree: Option<&crate::services::treesitter::SyntaxTree>) {
         let mut to_remove = Vec::new();
         for selection in self.selections.selections.iter() {
             let head_point = selection.head().to_point(buffer);
@@ -302,7 +298,7 @@ impl Document {
         // }
     }
 
-    pub fn apply_action(&mut self, buffer: &mut Buffer, action: &Action, editor: &Editor, buffer_manager: &crate::editor::buffers::BufferManager) {
+    pub fn apply_action(&mut self, buffer: &mut Buffer, action: &Action, editor: &Editor, syntax_tree: Option<&crate::services::treesitter::SyntaxTree>) {
         let mut action_owned = action.clone();
         if self.mode.is_visual() {
             action_owned = action_owned.with_select(true);
@@ -592,7 +588,7 @@ impl Document {
                         updated = true;
                     } else if editor.tree_sitter {
                         if let Some(syntax_tree) =
-                            buffer_manager.find(self).and_then(|b| b.syntax_tree.as_ref())
+                            syntax_tree
                         {
                             let byte = buffer.offset_for_anchor(&cursor.head());
                             if let Some((start_node, end_node)) =
@@ -695,7 +691,7 @@ impl Document {
                         updated = true;
                     } else if editor.tree_sitter {
                         if let Some(syntax_tree) =
-                            buffer_manager.find(self).and_then(|b| b.syntax_tree.as_ref())
+                            syntax_tree
                         {
                             let byte = buffer.offset_for_anchor(&cursor.head());
                             if let Some((start_node, end_node)) =
@@ -743,7 +739,7 @@ impl Document {
 
             Action::MoveToNextFunction { select, count } => {
                 if editor.tree_sitter && *count > 0 {
-                    if let Some(syntax_tree) = buffer_manager.find(self).and_then(|b| b.syntax_tree.as_ref()) {
+                    if let Some(syntax_tree) = syntax_tree {
                         self.selections.move_to_syntax_target(
                             *select,
                             *count,
@@ -756,7 +752,7 @@ impl Document {
             }
             Action::MoveToPreviousFunction { select, count } => {
                 if editor.tree_sitter && *count > 0 {
-                    if let Some(syntax_tree) = buffer_manager.find(self).and_then(|b| b.syntax_tree.as_ref()) {
+                    if let Some(syntax_tree) = syntax_tree {
                         self.selections.move_to_syntax_target(
                             *select,
                             *count,
@@ -769,7 +765,7 @@ impl Document {
             }
             Action::MoveToNextBlock { select, count } => {
                 if editor.tree_sitter && *count > 0 {
-                    if let Some(syntax_tree) = buffer_manager.find(self).and_then(|b| b.syntax_tree.as_ref()) {
+                    if let Some(syntax_tree) = syntax_tree {
                         self.selections.move_to_syntax_target(
                             *select,
                             *count,
@@ -782,7 +778,7 @@ impl Document {
             }
             Action::MoveToPreviousBlock { select, count } => {
                 if editor.tree_sitter && *count > 0 {
-                    if let Some(syntax_tree) = buffer_manager.find(self).and_then(|b| b.syntax_tree.as_ref()) {
+                    if let Some(syntax_tree) = syntax_tree {
                         self.selections.move_to_syntax_target(
                             *select,
                             *count,
@@ -795,7 +791,7 @@ impl Document {
             }
             Action::MoveToBlockStart { select, count } => {
                 if editor.tree_sitter && *count > 0 {
-                    if let Some(syntax_tree) = buffer_manager.find(self).and_then(|b| b.syntax_tree.as_ref()) {
+                    if let Some(syntax_tree) = syntax_tree {
                         self.selections.move_to_syntax_target(
                             *select,
                             *count,
@@ -808,7 +804,7 @@ impl Document {
             }
             Action::MoveToBlockEnd { select, count } => {
                 if editor.tree_sitter && *count > 0 {
-                    if let Some(syntax_tree) = buffer_manager.find(self).and_then(|b| b.syntax_tree.as_ref()) {
+                    if let Some(syntax_tree) = syntax_tree {
                         self.selections.move_to_syntax_target_end(
                             *select,
                             *count,
@@ -821,7 +817,7 @@ impl Document {
             }
             Action::MoveToNextClass { select, count } => {
                 if editor.tree_sitter && *count > 0 {
-                    if let Some(syntax_tree) = buffer_manager.find(self).and_then(|b| b.syntax_tree.as_ref()) {
+                    if let Some(syntax_tree) = syntax_tree {
                         self.selections.move_to_syntax_target(
                             *select,
                             *count,
@@ -834,7 +830,7 @@ impl Document {
             }
             Action::MoveToPreviousClass { select, count } => {
                 if editor.tree_sitter && *count > 0 {
-                    if let Some(syntax_tree) = buffer_manager.find(self).and_then(|b| b.syntax_tree.as_ref()) {
+                    if let Some(syntax_tree) = syntax_tree {
                         self.selections.move_to_syntax_target(
                             *select,
                             *count,
@@ -847,7 +843,7 @@ impl Document {
             }
             Action::MoveToNextArgument { select, count } => {
                 if editor.tree_sitter && *count > 0 {
-                    if let Some(syntax_tree) = buffer_manager.find(self).and_then(|b| b.syntax_tree.as_ref()) {
+                    if let Some(syntax_tree) = syntax_tree {
                         self.selections.move_to_syntax_target(
                             *select,
                             *count,
@@ -860,7 +856,7 @@ impl Document {
             }
             Action::MoveToPreviousArgument { select, count } => {
                 if editor.tree_sitter && *count > 0 {
-                    if let Some(syntax_tree) = buffer_manager.find(self).and_then(|b| b.syntax_tree.as_ref()) {
+                    if let Some(syntax_tree) = syntax_tree {
                         self.selections.move_to_syntax_target(
                             *select,
                             *count,
@@ -1186,7 +1182,7 @@ impl Document {
                 let anchor = self.selections.anchor.clone();
 
                 for _ in 0..*count {
-                    self.apply_action(buffer, &motion, editor, buffer_manager);
+                    self.apply_action(buffer, &motion, editor, syntax_tree);
                 }
 
                 let text = self.selections.text(buffer);
@@ -1202,12 +1198,12 @@ impl Document {
                         Action::MoveWithinCharacter { .. } | Action::MoveAroundCharacter { .. }
                     );
                     for _idx in 0..*count {
-                        self.apply_action(buffer, &motion, editor, buffer_manager);
+                        self.apply_action(buffer, &motion, editor, syntax_tree);
                         self.delete_text_object(buffer, inclusive);
                     }
                 } else {
                     for _ in 0..*count {
-                        self.apply_action(buffer, &motion, editor, buffer_manager);
+                        self.apply_action(buffer, &motion, editor, syntax_tree);
                         self.delete_text(buffer, 0);
                     }
                 }
@@ -1232,7 +1228,7 @@ impl Document {
             Action::InsertNewLineMotion { count, motion } => {
                 let mut motion = (**motion).clone();
                 for _ in 0..*count {
-                    self.apply_action(buffer, &motion, editor, buffer_manager);
+                    self.apply_action(buffer, &motion, editor, syntax_tree);
                     self.insert_text(buffer, &self.new_line(buffer).to_string());
                     motion = Action::NoOp;
                 }
@@ -1244,7 +1240,7 @@ impl Document {
                 }
             }
             Action::YankMotion { count, motion } => {
-                self.yank_motion(buffer, *count, motion, editor, buffer_manager);
+                self.yank_motion(buffer, *count, motion, editor, syntax_tree);
             }
             Action::YankLine { count } => {
                 self.yank_current_line(buffer, *count, editor);
@@ -1255,10 +1251,10 @@ impl Document {
             Action::Undo { count } => self.undo(buffer, *count),
             Action::Redo { count } => self.redo(buffer, *count),
             Action::Fold { count } => {
-                self.fold(buffer, *count, editor, buffer_manager);
+                self.fold(buffer, *count, editor, syntax_tree);
             }
             Action::Unfold { count } => {
-                self.unfold(buffer, *count, editor, buffer_manager);
+                self.unfold(buffer, *count, editor, syntax_tree);
             }
             Action::NoOp | Action::Quit => {
                 return;
@@ -1266,17 +1262,17 @@ impl Document {
             _ => {}
         }
 
-        self.apply_action(buffer, &next_action, editor, buffer_manager);
+        self.apply_action(buffer, &next_action, editor, syntax_tree);
         self.snap_selections_to_folds(buffer, action);
     }
 
-    fn yank_motion(&mut self, buffer: &mut Buffer, count: u32, motion: &Action, editor: &Editor, buffer_manager: &crate::editor::buffers::BufferManager) {
+    fn yank_motion(&mut self, buffer: &mut Buffer, count: u32, motion: &Action, editor: &Editor, syntax_tree: Option<&crate::services::treesitter::SyntaxTree>) {
         let selections = self.selections.selections.clone();
         let point = self.selections.point;
         let anchor = self.selections.anchor.clone();
 
         for _ in 0..count {
-            self.apply_action(buffer, motion, editor, buffer_manager);
+            self.apply_action(buffer, motion, editor, syntax_tree);
         }
         let text = self.selections.text(buffer);
         editor.services.clipboard.borrow_mut().set_text(text);
@@ -1503,31 +1499,64 @@ mod tests {
     use crate::services::treesitter::grammars::Grammar;
     use crate::editor::buffers::{BufferManager, TextBuffer};
 
+    struct TestEnv {
+        editor: Editor,
+        buffer_manager: BufferManager,
+        ui: crate::ui::Ui,
+    }
+
+    impl TestEnv {
+        fn new() -> Self {
+            let mut editor = Editor::new().unwrap();
+            let mut buffer_manager = BufferManager::new();
+            buffer_manager.add_buffer(TextBuffer::new(0, "").unwrap());
+            let mut ui = crate::ui::Ui::new();
+            let active_buf = buffer_manager.active();
+            if let Some(win) = ui.windows.get_mut(&0) {
+                win.buffer_id = Some(active_buf.id);
+                win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
+            }
+            Self { editor, buffer_manager, ui }
+        }
+
+        fn apply_action(&mut self, action: &Action) {
+            self.editor.apply_active_action(&mut self.ui, &mut self.buffer_manager, action);
+        }
+
+        fn doc(&self) -> &Document {
+            self.ui.windows.get(&0).unwrap().doc.as_ref().unwrap()
+        }
+
+        fn doc_mut(&mut self) -> &mut Document {
+            self.ui.windows.get_mut(&0).unwrap().doc.as_mut().unwrap()
+        }
+
+        fn buffer(&self) -> &text::Buffer {
+            &self.buffer_manager.active().buffer
+        }
+    }
+
     #[test]
     fn consecutive_insert_text_actions_leave_cursor_after_inserted_text() {
-        let mut editor = Editor::new().unwrap();
-        let mut buffer_manager = BufferManager::new();
-        buffer_manager.add_buffer(TextBuffer::new(0, "").unwrap());
+        let mut env = TestEnv::new();
 
-        {
-            let active = buffer_manager.active_mut();
-            active.doc.enter_mode(&active.buffer, Mode::Insert);
-        }
-        editor.apply_active_action(&mut buffer_manager, &Action::InsertText("abc".into()));
-        editor.apply_active_action(&mut buffer_manager, &Action::MoveLeft {
+        let buffer = &env.buffer_manager.active().buffer;
+        let doc = env.ui.windows.get_mut(&0).unwrap().doc.as_mut().unwrap();
+        doc.enter_mode(buffer, Mode::Insert);
+        env.apply_action(&Action::InsertText("abc".into()));
+        env.apply_action(&Action::MoveLeft {
             select: false,
             count: 2,
         });
-        editor.apply_active_action(&mut buffer_manager, &Action::InsertText("x".into()));
-        editor.apply_active_action(&mut buffer_manager, &Action::InsertText("y".into()));
+        env.apply_action(&Action::InsertText("x".into()));
+        env.apply_action(&Action::InsertText("y".into()));
 
-        let document = &buffer_manager.active().doc;
-        assert_eq!(&buffer_manager.active().buffer.row_text(0), "axybc");
+        assert_eq!(&env.buffer().row_text(0), "axybc");
         assert_eq!(
-            document
+            env.doc()
                 .selection()
                 .head()
-                .to_point(&buffer_manager.active().buffer)
+                .to_point(env.buffer())
                 .column,
             3
         );
@@ -1535,54 +1564,45 @@ mod tests {
 
     #[test]
     fn newline_and_tab_insertions_do_not_advance_twice() {
-        let mut newline_editor = Editor::new().unwrap();
-        let mut newline_buffer_manager = BufferManager::new();
-        newline_buffer_manager.add_buffer(TextBuffer::new(0, "").unwrap());
+        let mut env = TestEnv::new();
 
-        {
-            let active = newline_buffer_manager.active_mut();
-            active.doc.enter_mode(&active.buffer, Mode::Insert);
-        }
-        newline_editor.apply_active_action(&mut newline_buffer_manager, &Action::InsertText("abc".into()));
-        newline_editor.apply_active_action(&mut newline_buffer_manager, &Action::MoveLeft {
+        let buffer = &env.buffer_manager.active().buffer;
+        let doc = env.ui.windows.get_mut(&0).unwrap().doc.as_mut().unwrap();
+        doc.enter_mode(buffer, Mode::Insert);
+        env.apply_action(&Action::InsertText("abc".into()));
+        env.apply_action(&Action::MoveLeft {
             select: false,
             count: 2,
         });
-        newline_editor.apply_active_action(&mut newline_buffer_manager, &Action::InsertNewLine { count: 1 });
+        env.apply_action(&Action::InsertNewLine { count: 1 });
 
-        let newline_document = &newline_buffer_manager.active().doc;
-        assert_eq!(&newline_buffer_manager.active().buffer.row_text(0), "a");
-        assert_eq!(&newline_buffer_manager.active().buffer.row_text(1), "bc");
+        assert_eq!(&env.buffer().row_text(0), "a");
+        assert_eq!(&env.buffer().row_text(1), "bc");
         assert_eq!(
-            newline_document
+            env.doc()
                 .selection()
                 .head()
-                .to_point(&newline_buffer_manager.active().buffer),
+                .to_point(env.buffer()),
             Point::new(1, 0)
         );
 
-        let mut tab_editor = Editor::new().unwrap();
-        let mut tab_buffer_manager = BufferManager::new();
-        tab_buffer_manager.add_buffer(TextBuffer::new(0, "").unwrap());
-
-        {
-            let active = tab_buffer_manager.active_mut();
-            active.doc.enter_mode(&active.buffer, Mode::Insert);
-        }
-        tab_editor.apply_active_action(&mut tab_buffer_manager, &Action::InsertText("abc".into()));
-        tab_editor.apply_active_action(&mut tab_buffer_manager, &Action::MoveLeft {
+        let mut env2 = TestEnv::new();
+        let buffer2 = &env2.buffer_manager.active().buffer;
+        let doc2 = env2.ui.windows.get_mut(&0).unwrap().doc.as_mut().unwrap();
+        doc2.enter_mode(buffer2, Mode::Insert);
+        env2.apply_action(&Action::InsertText("abc".into()));
+        env2.apply_action(&Action::MoveLeft {
             select: false,
             count: 2,
         });
-        tab_editor.apply_active_action(&mut tab_buffer_manager, &Action::InsertTab);
+        env2.apply_action(&Action::InsertTab);
 
-        let tab_document = &tab_buffer_manager.active().doc;
-        assert_eq!(&tab_buffer_manager.active().buffer.row_text(0), "a    bc");
+        assert_eq!(&env2.buffer().row_text(0), "a    bc");
         assert_eq!(
-            tab_document
+            env2.doc()
                 .selection()
                 .head()
-                .to_point(&tab_buffer_manager.active().buffer)
+                .to_point(env2.buffer())
                 .column,
             5
         );
@@ -1590,17 +1610,15 @@ mod tests {
 
     #[test]
     fn yank_motion_copies_selection_and_paste_inserts_after_cursor() {
-        let mut editor = Editor::new().unwrap();
-        let mut buffer_manager = BufferManager::new();
-        buffer_manager.add_buffer(TextBuffer::new(0, "").unwrap());
+        let mut env = TestEnv::new();
 
-        editor.apply_active_action(&mut buffer_manager, &Action::InsertText("abcde".into()));
-        editor.apply_active_action(&mut buffer_manager, &Action::MoveLeft {
+        env.apply_action(&Action::InsertText("abcde".into()));
+        env.apply_action(&Action::MoveLeft {
             select: false,
             count: 4,
         });
 
-        editor.apply_active_action(&mut buffer_manager, &Action::YankMotion {
+        env.apply_action(&Action::YankMotion {
             count: 1,
             motion: Box::new(Action::MoveRight {
                 select: true,
@@ -1608,114 +1626,104 @@ mod tests {
             }),
         });
 
-        assert_eq!(editor.services.clipboard.borrow().text(), "bc");
+        assert_eq!(env.editor.services.clipboard.borrow().text(), "bc");
         assert_eq!(
-            buffer_manager
-                .active()
-                .doc
+            env.doc()
                 .selection()
                 .head()
-                .to_point(&buffer_manager.active().buffer)
+                .to_point(env.buffer())
                 .column,
             1
         );
 
-        editor.apply_active_action(&mut buffer_manager, &Action::Put { count: 1 });
+        env.apply_action(&Action::Put { count: 1 });
 
         assert_eq!(
-            &buffer_manager.active().buffer.row_text(0),
+            &env.buffer().row_text(0),
             "abbccde"
         );
     }
 
     #[test]
     fn yank_current_line_and_paste_create_a_line_below() {
-        let mut editor = Editor::new().unwrap();
-        let mut buffer_manager = BufferManager::new();
-        buffer_manager.add_buffer(TextBuffer::new(0, "").unwrap());
+        let mut env = TestEnv::new();
 
-        editor.apply_active_action(&mut buffer_manager, &Action::InsertText("abc".into()));
-        editor.apply_active_action(&mut buffer_manager, &Action::MoveLeft {
+        env.apply_action(&Action::InsertText("abc".into()));
+        env.apply_action(&Action::MoveLeft {
             select: false,
             count: 1,
         });
 
-        editor.apply_active_action(&mut buffer_manager, &Action::YankLine { count: 1 });
-        assert_eq!(editor.services.clipboard.borrow().text(), "abc\n");
+        env.apply_action(&Action::YankLine { count: 1 });
+        assert_eq!(env.editor.services.clipboard.borrow().text(), "abc
+");
         assert_eq!(
-            editor.services.clipboard.borrow().kind(),
+            env.editor.services.clipboard.borrow().kind(),
             ClipboardKind::Line
         );
 
-        editor.apply_active_action(&mut buffer_manager, &Action::Put { count: 1 });
-        let document = &buffer_manager.active().doc;
-        assert_eq!(&buffer_manager.active().buffer.row_text(0), "abc");
-        assert_eq!(&buffer_manager.active().buffer.row_text(1), "abc");
+        env.apply_action(&Action::Put { count: 1 });
+        assert_eq!(&env.buffer().row_text(0), "abc");
+        assert_eq!(&env.buffer().row_text(1), "abc");
     }
 
     #[test]
     fn test_join_lines() {
-        let mut editor = Editor::new().unwrap();
-        let mut buffer_manager = BufferManager::new();
-        buffer_manager.add_buffer(TextBuffer::new(0, "").unwrap());
+        let mut env = TestEnv::new();
 
-        editor.apply_active_action(&mut buffer_manager, &Action::InsertText("line 1\n  line 2\nline 3".into()));
+        env.apply_action(&Action::InsertText("line 1
+  line 2
+line 3".into()));
         // Move back to line 1
-        editor.apply_active_action(&mut buffer_manager, &Action::MoveUp {
+        env.apply_action(&Action::MoveUp {
             select: false,
             count: 2,
         });
 
         // Join line 1 and line 2
-        editor.apply_active_action(&mut buffer_manager, &Action::JoinLines { count: 1 });
+        env.apply_action(&Action::JoinLines { count: 1 });
 
-        let document = &buffer_manager.active().doc;
-        assert_eq!(&buffer_manager.active().buffer.row_text(0), "line 1 line 2");
-        assert_eq!(&buffer_manager.active().buffer.row_text(1), "line 3");
+        assert_eq!(&env.buffer().row_text(0), "line 1 line 2");
+        assert_eq!(&env.buffer().row_text(1), "line 3");
 
         // Verify cursor is on the space
         assert_eq!(
-            document.selection().head().to_point(&buffer_manager.active().buffer),
+            env.doc().selection().head().to_point(env.buffer()),
             Point { row: 0, column: 6 }
         );
     }
 
     #[test]
     fn test_delete_around_character() {
-        let mut editor = Editor::new().unwrap();
-        let mut buffer_manager = BufferManager::new();
-        buffer_manager.add_buffer(TextBuffer::new(0, "").unwrap());
+        let mut env = TestEnv::new();
 
-        editor.apply_active_action(&mut buffer_manager, &Action::InsertText("a (hello) b".into()));
+        env.apply_action(&Action::InsertText("a (hello) b".into()));
         // Move cursor inside parens
-        editor.apply_active_action(&mut buffer_manager, &Action::MoveLeft {
+        env.apply_action(&Action::MoveLeft {
             select: false,
             count: 7,
         });
 
         // Execute DeleteMotion around '('
-        editor.apply_active_action(&mut buffer_manager, &Action::DeleteMotion {
+        env.apply_action(&Action::DeleteMotion {
             count: 1,
             motion: Box::new(Action::MoveAroundCharacter { count: 1, ch: '(' }),
         });
 
-        let document = &buffer_manager.active().doc;
-        assert_eq!(&buffer_manager.active().buffer.row_text(0), "a  b");
+        assert_eq!(&env.buffer().row_text(0), "a  b");
     }
 
     #[test]
     fn test_delete_word() {
-        let mut editor = Editor::new().unwrap();
-        let mut buffer_manager = BufferManager::new();
-        buffer_manager.add_buffer(TextBuffer::new(0, "").unwrap());
+        let mut env = TestEnv::new();
 
-        editor.apply_active_action(&mut buffer_manager, &Action::InsertText("abc def".into()));
-        editor.apply_active_action(&mut buffer_manager, &Action::MoveLeft {
+        env.apply_action(&Action::InsertText("abc def".into()));
+        env.apply_action(&Action::MoveLeft {
             select: false,
             count: 7,
         });
 
-        editor.apply_active_action(&mut buffer_manager, &Action::DeleteMotion {
+        env.apply_action(&Action::DeleteMotion {
             count: 1,
             motion: Box::new(Action::MoveToWord {
                 count: 1,
@@ -1723,114 +1731,118 @@ mod tests {
             }),
         });
 
-        let document = &buffer_manager.active().doc;
-        assert_eq!(&buffer_manager.active().buffer.row_text(0), "def");
+        assert_eq!(&env.buffer().row_text(0), "def");
     }
 
     #[test]
     fn test_delete_inner_word() {
-        let mut editor = Editor::new().unwrap();
-        let mut buffer_manager = BufferManager::new();
-        buffer_manager.add_buffer(TextBuffer::new(0, "").unwrap());
+        let mut env = TestEnv::new();
 
-        editor.apply_active_action(&mut buffer_manager, &Action::InsertText("abc def ghi".into()));
+        env.apply_action(&Action::InsertText("abc def ghi".into()));
         // Move to 'e' in 'def'
-        editor.apply_active_action(&mut buffer_manager, &Action::MoveLeft {
+        env.apply_action(&Action::MoveLeft {
             select: false,
             count: 6,
         });
 
         // diw
-        editor.apply_active_action(&mut buffer_manager, &Action::DeleteMotion {
+        env.apply_action(&Action::DeleteMotion {
             count: 1,
             motion: Box::new(Action::MoveWithinCharacter { count: 1, ch: 'w' }),
         });
 
-        let document = &buffer_manager.active().doc;
-        assert_eq!(&buffer_manager.active().buffer.row_text(0), "abc  ghi");
+        assert_eq!(&env.buffer().row_text(0), "abc  ghi");
     }
 
     #[test]
     fn test_delete_around_word() {
-        let mut editor = Editor::new().unwrap();
-        let mut buffer_manager = BufferManager::new();
-        buffer_manager.add_buffer(TextBuffer::new(0, "").unwrap());
+        let mut env = TestEnv::new();
 
-        editor.apply_active_action(&mut buffer_manager, &Action::InsertText("abc def ghi".into()));
+        env.apply_action(&Action::InsertText("abc def ghi".into()));
         // Move to 'e' in 'def'
-        editor.apply_active_action(&mut buffer_manager, &Action::MoveLeft {
+        env.apply_action(&Action::MoveLeft {
             select: false,
             count: 6,
         });
 
         // daw
-        editor.apply_active_action(&mut buffer_manager, &Action::DeleteMotion {
+        env.apply_action(&Action::DeleteMotion {
             count: 1,
             motion: Box::new(Action::MoveAroundCharacter { count: 1, ch: 'w' }),
         });
 
-        let document = &buffer_manager.active().doc;
-        assert_eq!(&buffer_manager.active().buffer.row_text(0), "abc ghi");
+        assert_eq!(&env.buffer().row_text(0), "abc ghi");
     }
 
     #[test]
     fn test_treesitter_folding() {
-        let mut editor = Editor::new().unwrap();
-        let mut buffer_manager = BufferManager::new();
-        buffer_manager.add_buffer(TextBuffer::new(0, "").unwrap());
+        let mut env = TestEnv::new();
 
-        let text = "fn main() {\n    let x = 1;\n    let y = 2;\n}";
-        *buffer_manager.active_mut() = TextBuffer::new_with_text(text);
-        buffer_manager.active_mut().grammar = Some(Grammar::Rust);
+        let text = "fn main() {
+    let x = 1;
+    let y = 2;
+}";
+        *env.buffer_manager.active_mut() = TextBuffer::new_with_text(text);
+        if let Some(win) = env.ui.windows.get_mut(&0) {
+            let active_buf = env.buffer_manager.active();
+            win.buffer_id = Some(active_buf.id);
+            win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
+        }
+
+        env.buffer_manager.active_mut().grammar = Some(Grammar::Rust);
 
         let mut parser = TreeSitterParser::new(Grammar::Rust).unwrap();
         let tree = parser
-            .parse(&buffer_manager.active().buffer.snapshot(), None)
+            .parse(env.buffer().snapshot(), None)
             .unwrap();
-        buffer_manager.active_mut().syntax_tree = Some(tree);
+        env.buffer_manager.active_mut().syntax_tree = Some(tree);
 
-        editor.apply_active_action(&mut buffer_manager, &Action::MoveDown {
+        env.apply_action(&Action::MoveDown {
             select: false,
             count: 1,
         });
 
-        editor.apply_active_action(&mut buffer_manager, &Action::Fold { count: 1 });
+        env.apply_action(&Action::Fold { count: 1 });
 
-        let active_buffer = buffer_manager.active();
-        assert_eq!(active_buffer.doc.folds.len(), 1);
-        let fold = &active_buffer.doc.folds[0];
+        assert_eq!(env.doc().folds.len(), 1);
+        let fold = &env.doc().folds[0];
         assert_eq!(fold.start.row, 0);
         assert_eq!(fold.start.column, 11);
         assert_eq!(fold.end.row, 3);
         assert_eq!(fold.end.column, 0);
 
-        editor.apply_active_action(&mut buffer_manager, &Action::Unfold { count: 1 });
-        let active_buffer = buffer_manager.active();
-        assert_eq!(active_buffer.doc.folds.len(), 0);
+        env.apply_action(&Action::Unfold { count: 1 });
+        assert_eq!(env.doc().folds.len(), 0);
     }
 
     #[test]
     fn test_fold_deletion() {
-        let mut editor = Editor::new().unwrap();
-        let mut buffer_manager = BufferManager::new();
-        buffer_manager.add_buffer(TextBuffer::new(0, "").unwrap());
+        let mut env = TestEnv::new();
 
-        let text = "line 1\nline 2\nline 3\nline 4";
-        *buffer_manager.active_mut() = TextBuffer::new_with_text(text);
+        let text = "line 1
+line 2
+line 3
+line 4";
+        *env.buffer_manager.active_mut() = TextBuffer::new_with_text(text);
+        if let Some(win) = env.ui.windows.get_mut(&0) {
+            let active_buf = env.buffer_manager.active();
+            win.buffer_id = Some(active_buf.id);
+            win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
+        }
 
         let fold = display::fold_map::Fold {
             start: Point::new(1, 0),
             end: Point::new(2, 6),
         };
-        buffer_manager.active_mut().doc.folds.push(fold);
-        assert_eq!(buffer_manager.active().doc.folds.len(), 1);
+        env.doc_mut().folds.push(fold);
+        assert_eq!(env.doc().folds.len(), 1);
 
-        editor.apply_active_action(&mut buffer_manager, &Action::MoveDown {
+        env.apply_action(&Action::MoveDown {
             select: false,
             count: 1,
         });
-        editor.apply_active_action(&mut buffer_manager, &Action::Delete { count: 1 });
+        env.apply_action(&Action::Delete { count: 1 });
 
-        assert_eq!(buffer_manager.active().doc.folds.len(), 0);
+        assert_eq!(env.doc().folds.len(), 0);
     }
 }

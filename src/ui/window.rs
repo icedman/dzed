@@ -18,6 +18,7 @@ pub struct Window {
     pub view: Option<Box<dyn View>>,
     pub controller: Option<Box<dyn ViewController>>,
     pub buffer_id: Option<usize>,
+    pub doc: Option<crate::editor::document::Document>,
 }
 
 impl Window {
@@ -30,6 +31,7 @@ impl Window {
             view: None,
             controller: None,
             buffer_id: None,
+            doc: None,
         }
     }
 
@@ -127,7 +129,7 @@ impl Window {
             } else {
                 rect
             };
-            _ = view.draw(w, inner_rect, editor, buffer_manager);
+            _ = view.draw(w, inner_rect, editor, buffer_manager, self.doc.as_ref());
         }
 
         Ok(())

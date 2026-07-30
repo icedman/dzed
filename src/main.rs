@@ -40,6 +40,16 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     if buffer_manager.buffers.is_empty() {
         buffer_manager.add_buffer(editor::buffers::TextBuffer::new(next_id, "")?);
     }
+    
+    if let Some(win) = ui.windows.get_mut(&0) {
+        let active_buf = buffer_manager.active();
+        win.buffer_id = Some(active_buf.id);
+        win.doc = Some(editor::document::Document::new_with_buffer(
+            active_buf.id,
+            &active_buf.buffer,
+            &active_buf.file_path,
+        ));
+    }
 
     crossterm::terminal::enable_raw_mode().unwrap();
     execute!(

@@ -29,15 +29,17 @@ impl TextView {
         inner_rect: Rect,
         editor: &Editor,
         buffer_manager: &mut crate::editor::buffers::BufferManager,
+        document: Option<&crate::editor::document::Document>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let (screen_cols, _) = {
             let (cols, rows) = crossterm::terminal::size().unwrap();
             (cols as i32, rows as i32)
         };
 
+        let document = document.expect("TextView requires document view state");
         let buffer = buffer_manager.active();
 
-        let display_snapshot = buffer.doc.display_map.snapshot();
+        let display_snapshot = document.display_map.snapshot();
         let doc_buffer = &buffer.buffer;
         let row_count = display_snapshot.row_count();
         let end_line = (display_snapshot.scroll_y + inner_rect.height as u32).min(row_count);
@@ -239,7 +241,7 @@ impl TextView {
                     let mut bg = editor_bg;
 
                     if editor.syntax {
-                        if let Some(style_cache) = buffer.doc.hl.render_row(orig_point.row) {
+                        if let Some(style_cache) = document.hl.render_row(orig_point.row) {
                             if let Some(&(style, _, _)) =
                                 style_cache.styles.iter().find(|(_, start, end)| {
                                     orig_point.column >= *start && orig_point.column < *end
@@ -257,8 +259,7 @@ impl TextView {
                         bg = find_bg;
                     }
 
-                    let (selected, mut selected_line, at_cursor) = buffer
-                        .doc
+                    let (selected, mut selected_line, at_cursor) = document
                         .selections()
                         .is_selected(orig_point.row, orig_point.column, &doc_buffer);
                     if selected && (editor.mode != Mode::Command) {
@@ -354,7 +355,8 @@ impl View for TextView {
         rect: Rect,
         editor: &Editor,
         buffer_manager: &mut crate::editor::buffers::BufferManager,
+        document: Option<&crate::editor::document::Document>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        self.draw_textview(&mut w, rect, editor, buffer_manager)
+        self.draw_textview(&mut w, rect, editor, buffer_manager, document)
     }
 }

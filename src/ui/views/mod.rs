@@ -14,6 +14,7 @@ pub trait View {
         rect: Rect,
         editor: &Editor,
         buffer_manager: &mut crate::editor::buffers::BufferManager,
+        doc: Option<&crate::editor::document::Document>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         Ok(())
     }

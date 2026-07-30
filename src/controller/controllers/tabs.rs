@@ -18,7 +18,7 @@ impl ViewController for TabsController {
         action: Action,
         editor: &mut Editor,
         buffer_manager: &mut crate::editor::buffers::BufferManager,
-        ui: &Ui,
+        ui: &mut crate::ui::Ui,
         window_id: usize,
     ) -> Result<ControllerResult, Box<dyn std::error::Error>> {
         Ok(ControllerResult::None)
