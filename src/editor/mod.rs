@@ -92,7 +92,7 @@ impl Editor {
             should_redraw: true,
             services,
             textmate_highlights: true,
-            treesitter_highlights: true,
+            treesitter_highlights: false,
             map_scope_to_scheme: true,
             last_action: Action::NoOp,
         })

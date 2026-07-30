@@ -95,51 +95,71 @@ impl Document {
     pub fn fold(&mut self, buffer: &Buffer, _count: u32, editor: &Editor, syntax_tree: Option<&crate::services::treesitter::SyntaxTree>) {
         if let Some(syntax_tree) = syntax_tree {
             let mut seen_ranges = std::collections::HashSet::new();
+            let mut updated_selections = Vec::new();
             for selection in self.selections.selections.iter() {
                 let head_point = selection.head().to_point(buffer);
                 let head_offset = head_point.to_offset(buffer);
                 if let Some(block) = syntax_tree.enclosing_block_at_byte(head_offset) {
-                    if !editor.fold_multiline_only
-                        || block.end_position.row > block.start_position.row
-                    {
-                        let mut start_offset = block.byte_range.start;
-                        let mut end_offset = block.byte_range.end;
+                    let mut start_offset = block.byte_range.start;
+                    let mut end_offset = block.byte_range.end;
 
-                        let first_char = buffer
-                            .text_for_range(start_offset..start_offset + 1)
+                    let first_char = buffer
+                        .text_for_range(start_offset..start_offset + 1)
+                        .next()
+                        .and_then(|s| s.chars().next());
+                    let last_char = if end_offset > 0 {
+                        buffer
+                            .text_for_range(end_offset - 1..end_offset)
                             .next()
-                            .and_then(|s| s.chars().next());
-                        let last_char = if end_offset > 0 {
-                            buffer
-                                .text_for_range(end_offset - 1..end_offset)
-                                .next()
-                                .and_then(|s| s.chars().next())
-                        } else {
-                            None
-                        };
+                            .and_then(|s| s.chars().next())
+                    } else {
+                        None
+                    };
 
-                        if let (Some(fc), Some(lc)) = (first_char, last_char) {
-                            if (fc == '{' && lc == '}')
-                                || (fc == '[' && lc == ']')
-                                || (fc == '(' && lc == ')')
-                            {
-                                start_offset += 1;
-                                end_offset -= 1;
-                            }
+                    if let (Some(fc), Some(lc)) = (first_char, last_char) {
+                        if (fc == '{' && lc == '}')
+                            || (fc == '[' && lc == ']')
+                            || (fc == '(' && lc == ')')
+                        {
+                            start_offset += 1;
+                            end_offset -= 1;
                         }
+                    }
 
+                    let start_point = start_offset.to_point(buffer);
+                    let end_point = end_offset.to_point(buffer);
+
+                    if !editor.fold_multiline_only
+                        || (block.end_position.row > block.start_position.row && start_point.row < end_point.row)
+                    {
                         let range = block.byte_range.clone();
                         if seen_ranges.insert(range) {
                             let fold = display::fold_map::Fold {
-                                start: start_offset.to_point(buffer),
-                                end: end_offset.to_point(buffer),
+                                start: start_point,
+                                end: end_point,
                             };
                             if !self.folds.contains(&fold) {
                                 self.folds.push(fold);
                             }
+                            let target_offset = block.byte_range.start;
+                            let target_anchor = buffer.anchor_at(&target_offset.to_point(buffer), Bias::Left);
+                            let new_sel = Selection {
+                                id: selection.id,
+                                start: target_anchor.clone(),
+                                end: target_anchor,
+                                reversed: false,
+                                goal: SelectionGoal::None,
+                            };
+                            updated_selections.push(new_sel);
                         }
                     }
                 }
+            }
+            for new_sel in updated_selections {
+                self.selections.update(buffer, &new_sel);
+            }
+            if let Some(first) = self.selections.first() {
+                self.selections.point = first.head().to_point(buffer);
             }
         }
     }
@@ -149,7 +169,9 @@ impl Document {
         for selection in self.selections.selections.iter() {
             let head_point = selection.head().to_point(buffer);
             for (idx, fold) in self.folds.iter().enumerate() {
-                if head_point >= fold.start && head_point <= fold.end {
+                if (head_point >= fold.start && head_point <= fold.end)
+                    || head_point.row == fold.start.row
+                {
                     to_remove.push(idx);
                 }
             }
@@ -179,13 +201,23 @@ impl Document {
             _ => false,
         };
 
+        let is_move_right = matches!(action, Action::MoveRight { .. });
+
         let mut updated_selections = Vec::new();
         for selection in &self.selections.selections {
             let head = selection.head().to_point(buffer);
             let mut new_head = head;
             for fold in &self.folds {
-                if head > fold.start && head < fold.end {
-                    new_head = if moving_right { fold.end } else { fold.start };
+                if head >= fold.start && head < fold.end {
+                    new_head = if moving_right {
+                        if is_move_right && head == fold.start {
+                            fold.start
+                        } else {
+                            fold.end
+                        }
+                    } else {
+                        fold.start
+                    };
                     break;
                 }
             }
@@ -1465,10 +1497,11 @@ impl Document {
     }
 
     fn remove_overlapping_folds(&mut self, buffer: &Buffer, start: usize, end: usize) {
-        let start_point = start.to_point(buffer);
-        let end_point = end.to_point(buffer);
-        self.folds
-            .retain(|fold| !(fold.end > start_point && fold.start < end_point));
+        self.folds.retain(|fold| {
+            let fold_start = fold.start.to_offset(buffer);
+            let fold_end = fold.end.to_offset(buffer);
+            !(end > fold_start.saturating_sub(1) && start < fold_end + 1)
+        });
     }
 
     pub fn selection(&self) -> Selection<Anchor> {
@@ -1811,8 +1844,53 @@ line 3".into()));
         assert_eq!(fold.end.row, 3);
         assert_eq!(fold.end.column, 0);
 
+        let head = env.doc().selection().head().to_point(env.buffer());
+        assert_eq!(head.row, 0);
+        assert_eq!(head.column, 10);
+
         env.apply_action(&Action::Unfold { count: 1 });
         assert_eq!(env.doc().folds.len(), 0);
+    }
+
+    #[test]
+    fn test_fold_multiline_only() {
+        let mut env = TestEnv::new();
+
+        let text = "fn main() { let x = 1; }";
+        *env.buffer_manager.active_mut() = TextBuffer::new_with_text(text);
+        if let Some(win) = env.ui.windows.get_mut(&0) {
+            let active_buf = env.buffer_manager.active();
+            win.buffer_id = Some(active_buf.id);
+            win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
+        }
+
+        env.buffer_manager.active_mut().grammar = Some(Grammar::Rust);
+
+        let mut parser = TreeSitterParser::new(Grammar::Rust).unwrap();
+        let tree = parser
+            .parse(env.buffer().snapshot(), None)
+            .unwrap();
+        env.buffer_manager.active_mut().syntax_tree = Some(tree);
+
+        // Move to the inside of the block (e.g. column 15)
+        env.apply_action(&Action::MoveRight {
+            select: false,
+            count: 15,
+        });
+
+        // With fold_multiline_only = true, fold should not work
+        env.editor.fold_multiline_only = true;
+        env.apply_action(&Action::Fold { count: 1 });
+        assert_eq!(env.doc().folds.len(), 0);
+
+        // With fold_multiline_only = false, fold should work
+        env.editor.fold_multiline_only = false;
+        env.apply_action(&Action::Fold { count: 1 });
+        assert_eq!(env.doc().folds.len(), 1);
+
+        let head = env.doc().selection().head().to_point(env.buffer());
+        assert_eq!(head.row, 0);
+        assert_eq!(head.column, 10);
     }
 
     #[test]
@@ -1837,12 +1915,59 @@ line 4";
         env.doc_mut().folds.push(fold);
         assert_eq!(env.doc().folds.len(), 1);
 
-        env.apply_action(&Action::MoveDown {
-            select: false,
-            count: 1,
-        });
+        // Manually place cursor at Point::new(1, 0)
+        let anchor = env.buffer_manager.active().buffer.anchor_at(&Point::new(1, 0), Bias::Left);
+        let selection = Selection {
+            id: 0,
+            start: anchor.clone(),
+            end: anchor,
+            reversed: false,
+            goal: SelectionGoal::None,
+        };
+        let buffer = &env.buffer_manager.active().buffer;
+        let doc = env.ui.windows.get_mut(&0).unwrap().doc.as_mut().unwrap();
+        doc.selections.update(buffer, &selection);
+
         env.apply_action(&Action::Delete { count: 1 });
 
+        assert_eq!(env.doc().folds.len(), 0);
+    }
+
+    #[test]
+    fn test_fold_deletion_by_boundary_delete() {
+        let mut env = TestEnv::new();
+
+        let text = "fn main() {\n    let x = 1;\n}";
+        *env.buffer_manager.active_mut() = TextBuffer::new_with_text(text);
+        if let Some(win) = env.ui.windows.get_mut(&0) {
+            let active_buf = env.buffer_manager.active();
+            win.buffer_id = Some(active_buf.id);
+            win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
+        }
+
+        // Fold starts after '{' (offset 11) and ends before '}' (offset 26)
+        let fold = display::fold_map::Fold {
+            start: Point::new(0, 11),
+            end: Point::new(2, 0),
+        };
+        env.doc_mut().folds.push(fold.clone());
+        assert_eq!(env.doc().folds.len(), 1);
+
+        // Place cursor at '}' (row 2, col 0)
+        let anchor = env.buffer_manager.active().buffer.anchor_at(&Point::new(2, 0), Bias::Left);
+        let selection = Selection {
+            id: 0,
+            start: anchor.clone(),
+            end: anchor,
+            reversed: false,
+            goal: SelectionGoal::None,
+        };
+        let buffer = &env.buffer_manager.active().buffer;
+        let doc = env.ui.windows.get_mut(&0).unwrap().doc.as_mut().unwrap();
+        doc.selections.update(buffer, &selection);
+
+        // Delete '}' forward should delete the fold
+        env.apply_action(&Action::Delete { count: 1 });
         assert_eq!(env.doc().folds.len(), 0);
     }
 }

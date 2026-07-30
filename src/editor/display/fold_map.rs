@@ -123,7 +123,7 @@ impl FoldMap {
         match self.mappings.binary_search_by(|mapping| {
             if point < mapping.original_range.start {
                 std::cmp::Ordering::Greater
-            } else if point > mapping.original_range.end {
+            } else if point >= mapping.original_range.end {
                 std::cmp::Ordering::Less
             } else {
                 std::cmp::Ordering::Equal
@@ -133,7 +133,7 @@ impl FoldMap {
                 let mut matched_idx = idx;
                 while matched_idx > 0
                     && point >= self.mappings[matched_idx - 1].original_range.start
-                    && point <= self.mappings[matched_idx - 1].original_range.end
+                    && point < self.mappings[matched_idx - 1].original_range.end
                 {
                     matched_idx -= 1;
                 }
@@ -156,7 +156,7 @@ impl FoldMap {
         match self.mappings.binary_search_by(|mapping| {
             if point < mapping.folded_range.start {
                 std::cmp::Ordering::Greater
-            } else if point > mapping.folded_range.end {
+            } else if point >= mapping.folded_range.end {
                 std::cmp::Ordering::Less
             } else {
                 std::cmp::Ordering::Equal
@@ -166,7 +166,7 @@ impl FoldMap {
                 let mut matched_idx = idx;
                 while matched_idx > 0
                     && point >= self.mappings[matched_idx - 1].folded_range.start
-                    && point <= self.mappings[matched_idx - 1].folded_range.end
+                    && point < self.mappings[matched_idx - 1].folded_range.end
                 {
                     matched_idx -= 1;
                 }
