@@ -28,7 +28,7 @@ impl ViewController for TextViewController {
         let buffer = buffer_manager.active_mut();
 
         // Update layout before wrapping so the wrap width reflects the current gutter.
-        let row_count = buffer.doc.buffer().row_count();
+        let row_count = buffer.buffer.row_count();
         let gutter_width = if editor.show_line_numbers {
             2 + if row_count == 0 {
                 0
@@ -50,7 +50,7 @@ impl ViewController for TextViewController {
             .set_wrap_width(editor.wrap.then_some(wrap_cols as u32));
 
         if buffer.doc.should_sync {
-            let snapshot = buffer.doc.buffer().snapshot().clone();
+            let snapshot = buffer.buffer.snapshot().clone();
             buffer.doc.display_map.fold(
                 buffer.doc.folds.clone(),
                 snapshot.clone(),
@@ -64,7 +64,7 @@ impl ViewController for TextViewController {
                 let (start, _) = buffer
                     .doc
                     .selections()
-                    .rows_in_selection(buffer.doc.buffer());
+                    .rows_in_selection(&buffer.buffer);
                 buffer.doc.hl.invalidate_state(start);
 
                 // Spawn background highlight task
@@ -76,7 +76,7 @@ impl ViewController for TextViewController {
                 let end_buffer_row = display_snapshot.buffer_row_for_display_row(visible_end.saturating_sub(1));
 
                 let hl_start = start_buffer_row.saturating_sub(100).min(start);
-                let hl_end = (end_buffer_row + 100).max(start + 1).min(buffer.doc.buffer().row_count());
+                let hl_end = (end_buffer_row + 100).max(start + 1).min(buffer.buffer.row_count());
 
                 let hl_task_id = buffer
                     .doc
@@ -140,7 +140,7 @@ impl ViewController for TextViewController {
             }
 
             let cursor = buffer.doc.selection();
-            let cursor_point = cursor.head().to_point(buffer.doc.buffer());
+            let cursor_point = cursor.head().to_point(&buffer.buffer);
             let display_cursor = buffer
                 .doc
                 .display_map
@@ -169,7 +169,7 @@ impl ViewController for TextViewController {
                 let end_buffer_row = end_point.row;
                 let end_buffer_row_exclusive = end_buffer_row + 1;
 
-                let snapshot = buffer.doc.buffer().snapshot().clone();
+                let snapshot = buffer.buffer.snapshot().clone();
                 if !buffer.doc.hl.is_sync(&snapshot)
                     || !buffer
                         .doc
@@ -230,7 +230,7 @@ impl ViewController for TextViewController {
                         buf.doc.current_hl_task_id = task_id.0;
                         buf.doc.hl
                             .merge_caches(style_cache.clone(), std::collections::HashMap::new());
-                        buf.doc.hl.last_snapshot_version = Some(buf.doc.buffer().snapshot().version.clone());
+                        buf.doc.hl.last_snapshot_version = Some(buf.buffer.snapshot().version.clone());
                         editor.should_redraw = true;
                     }
                 }

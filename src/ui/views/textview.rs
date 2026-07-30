@@ -38,7 +38,7 @@ impl TextView {
         let buffer = buffer_manager.active();
 
         let display_snapshot = buffer.doc.display_map.snapshot();
-        let doc_buffer = buffer.doc.buffer();
+        let doc_buffer = &buffer.buffer;
         let row_count = display_snapshot.row_count();
         let end_line = (display_snapshot.scroll_y + inner_rect.height as u32).min(row_count);
 

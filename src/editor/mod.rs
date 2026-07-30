@@ -53,12 +53,18 @@ impl Editor {
         action: &controller::actions::Action,
     ) {
         let active_idx = buffer_manager.active_idx;
+        let dummy_buffer = text::Buffer::new(clock::ReplicaId::default(), text::BufferId::new(1).unwrap(), "".to_string());
         let mut document = std::mem::replace(
             &mut buffer_manager.buffers[active_idx].doc,
-            Document::new("").unwrap(),
+            Document::new_with_buffer(0, &dummy_buffer, ""),
         );
-        document.apply_action(action, self, buffer_manager);
+        let mut active_buffer = std::mem::replace(
+            &mut buffer_manager.buffers[active_idx].buffer,
+            dummy_buffer,
+        );
+        document.apply_action(&mut active_buffer, action, self, buffer_manager);
         self.mode = document.mode();
+        buffer_manager.buffers[active_idx].buffer = active_buffer;
         buffer_manager.buffers[active_idx].doc = document;
     }
 

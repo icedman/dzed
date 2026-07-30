@@ -1,9 +1,11 @@
 use crate::editor::document::Document;
 use crate::services::{self};
+use text::Buffer;
 
 pub struct TextBuffer {
     pub id: usize,
     pub file_path: String,
+    pub buffer: Buffer,
     pub doc: Document,
     pub grammar: Option<services::treesitter::grammars::Grammar>,
     pub syntax_tree: Option<services::treesitter::SyntaxTree>,
@@ -11,16 +13,46 @@ pub struct TextBuffer {
 
 impl TextBuffer {
     pub fn new(id: usize, file_path: &str) -> Result<Self, Box<dyn std::error::Error>> {
-        let mut doc = Document::new(file_path)?;
-        doc.id = id;
+        let contents = if std::path::Path::new(file_path).exists() {
+            match std::fs::read_to_string(file_path) {
+                Ok(s) => s,
+                Err(_) => "File not found".to_string(),
+            }
+        } else {
+            "".to_string()
+        };
+        let buffer = Buffer::new(
+            clock::ReplicaId::default(),
+            text::BufferId::new(1).unwrap(),
+            contents,
+        );
+        let doc = Document::new_with_buffer(id, &buffer, file_path);
         let grammar = services::treesitter::grammars::Grammar::from_path(file_path);
         Ok(Self {
             id,
             file_path: file_path.to_string(),
+            buffer,
             doc,
             grammar,
             syntax_tree: None,
         })
+    }
+
+    pub fn new_with_text(contents: &str) -> Self {
+        let buffer = Buffer::new(
+            clock::ReplicaId::default(),
+            text::BufferId::new(1).unwrap(),
+            contents.to_string(),
+        );
+        let doc = Document::new_with_buffer(0, &buffer, "");
+        Self {
+            id: 0,
+            file_path: "".to_string(),
+            buffer,
+            doc,
+            grammar: None,
+            syntax_tree: None,
+        }
     }
 }
 
