@@ -26,7 +26,8 @@ pub struct TextBuffer {
 
 impl TextBuffer {
     pub fn new(id: usize, file_path: &str) -> Result<Self, Box<dyn std::error::Error>> {
-        let doc = Document::new(file_path)?;
+        let mut doc = Document::new(file_path)?;
+        doc.id = id;
         let hl = Highlights::new(file_path);
         let display_map = DisplayMap::new(doc.buffer().snapshot().clone(), None);
         let grammar = services::treesitter::grammars::Grammar::from_path(file_path);
@@ -102,5 +103,9 @@ impl BufferManager {
         if let Some(idx) = self.buffers.iter().position(|b| b.id == id) {
             self.active_idx = idx;
         }
+    }
+
+    pub fn find(&self, doc: &Document) -> Option<&TextBuffer> {
+        self.buffers.iter().find(|b| b.id == doc.id)
     }
 }
