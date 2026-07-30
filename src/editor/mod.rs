@@ -88,7 +88,7 @@ impl Editor {
             tree_sitter: true,
             show_line_numbers: true,
             fold: true,
-            fold_multiline_only: true,
+            fold_multiline_only: false,
             should_redraw: true,
             services,
             textmate_highlights: true,

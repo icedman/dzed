@@ -7,6 +7,7 @@ The goal is not to reproduce either editor exactly. DZed explores what a fast, c
 DZed is currently a proof of concept and an active learning project rather than a production-ready editor.
 
 ![DZed screenshot](https://raw.githubusercontent.com/icedman/dzed/refs/heads/main/screenshots/Screenshot%20from%202026-02-02%2021-56-19.png)
+![DZed screenshot](https://raw.githubusercontent.com/icedman/dzed/refs/heads/main/screenshots/Screenshot%20from%202026-07-31%2007-32-03.png)
 
 ## Project Goals
 
