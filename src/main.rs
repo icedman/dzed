@@ -78,10 +78,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
         controller.dispatch_actions(&mut editor, &mut buffer_manager, &mut ui)?;
 
-        //------------------
-        // 4. Background work
-        //------------------
-        // editor.services.poll(&mut editor)?;
+        services::poll(&mut editor, &mut buffer_manager, &mut ui)?;
     }
 
     crossterm::terminal::disable_raw_mode().unwrap();
