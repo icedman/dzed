@@ -24,11 +24,22 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         Vec::new()
     };
 
+    let mut stdout = stdout();
+
+    let mut buffer_manager = editor::buffers::BufferManager::new();
     let mut ui = ui::Ui::new();
-    let mut editor = editor::Editor::new(file_paths)?;
+    let mut editor = editor::Editor::new()?;
     let mut controller = controller::Controller::new();
 
-    let mut stdout = stdout();
+    let mut next_id = 0;
+    for path in file_paths {
+        buffer_manager.add_buffer(editor::buffers::TextBuffer::new(next_id, &path)?);
+        next_id += 1;
+    }
+
+    if buffer_manager.buffers.is_empty() {
+        buffer_manager.add_buffer(editor::buffers::TextBuffer::new(next_id, "")?);
+    }
 
     crossterm::terminal::enable_raw_mode().unwrap();
     execute!(
@@ -49,15 +60,15 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     execute!(stdout, crossterm::cursor::Hide).unwrap();
 
     loop {
-        ui.update(&mut editor)?;
+        ui.update(&mut editor, &mut buffer_manager)?;
         if editor.should_redraw {
-            ui.draw(&mut stdout, &mut editor)?;
+            ui.draw(&mut stdout, &mut editor, &mut buffer_manager)?;
             editor.should_redraw = false;
         }
 
         if event::poll(Duration::from_millis(50))? {
             let event = event::read()?;
-            match controller.handle_event(event, &mut editor)? {
+            match controller.handle_event(event, &mut editor, &mut buffer_manager)? {
                 controller::ControllerResult::Exit => {
                     break;
                 }
@@ -65,7 +76,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        controller.dispatch_actions(&mut editor, &mut ui)?;
+        controller.dispatch_actions(&mut editor, &mut buffer_manager, &mut ui)?;
 
         //------------------
         // 4. Background work

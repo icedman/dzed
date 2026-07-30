@@ -24,6 +24,7 @@ impl StatusBarView {
         w: &mut W,
         rect: Rect,
         editor: &Editor,
+        buffer_manager: &mut crate::editor::buffers::BufferManager,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let remaining = rect
             .width
@@ -47,7 +48,8 @@ impl View for StatusBarView {
         mut w: &mut dyn Write,
         rect: Rect,
         editor: &Editor,
+        buffer_manager: &mut crate::editor::buffers::BufferManager,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        self.draw_statusbar(&mut w, rect, editor)
+        self.draw_statusbar(&mut w, rect, editor, buffer_manager)
     }
 }

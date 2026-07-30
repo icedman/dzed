@@ -58,6 +58,7 @@ impl Command {
         &self,
         cmd: &ex::ExCommand,
         _editor: &mut Editor,
+        _buffer_manager: &mut crate::editor::buffers::BufferManager,
     ) -> actions::Action {
         if let Some(range) = &cmd.range {
             if let (Some(start), Some(end)) = (range.start_line, range.end_line) {
@@ -81,12 +82,12 @@ impl Command {
         actions::Action::NoOp
     }
 
-    pub fn ex(&mut self, editor: &mut Editor) -> Option<ExResult> {
+    pub fn ex(&mut self, editor: &mut Editor, buffer_manager: &mut crate::editor::buffers::BufferManager) -> Option<ExResult> {
         let cmd_text = self.get_text();
         if let Some(resolved) = self.exmap.try_resolve(&cmd_text) {
-            let action = self.try_resolve_action(&resolved, editor);
+            let action = self.try_resolve_action(&resolved, editor, buffer_manager);
             if action != actions::Action::NoOp {
-                editor.apply_active_action(&action);
+                editor.apply_active_action(buffer_manager, &action);
             }
             match resolved.op {
                 ex::Ex::Set => {
@@ -103,10 +104,10 @@ impl Command {
                                 "nofold" => editor.fold = false,
                                 "foldmultiline" => editor.fold_multiline_only = true,
                                 "nofoldmultiline" => editor.fold_multiline_only = false,
-                                "tree" => editor.set_tree_sitter_enabled(true),
-                                "notree" => editor.set_tree_sitter_enabled(false),
-                                "treesitter" => editor.set_tree_sitter_enabled(true),
-                                "notreesitter" => editor.set_tree_sitter_enabled(false),
+                                "tree" => editor.set_tree_sitter_enabled(buffer_manager, true),
+                                "notree" => editor.set_tree_sitter_enabled(buffer_manager, false),
+                                "treesitter" => editor.set_tree_sitter_enabled(buffer_manager, true),
+                                "notreesitter" => editor.set_tree_sitter_enabled(buffer_manager, false),
                                 _ => {}
                             }
                         }
@@ -140,11 +141,11 @@ impl Command {
                     None
                 }
                 ex::Ex::Bnext => {
-                    editor.buffer_manager.switch_next();
+                    buffer_manager.switch_next();
                     None
                 }
                 ex::Ex::Bprev => {
-                    editor.buffer_manager.switch_prev();
+                    buffer_manager.switch_prev();
                     None
                 }
                 _ => None,
@@ -169,11 +170,12 @@ mod tests {
 
     #[test]
     fn test_try_resolve_action() {
-        let mut editor = Editor::new(Vec::new()).unwrap();
+        let mut editor = Editor::new().unwrap();
+        let mut buffer_manager = crate::editor::buffers::BufferManager::new();
         let cmd = Command::new();
 
         let resolved = cmd.exmap.try_resolve("1,10d").unwrap();
-        let act = cmd.try_resolve_action(&resolved, &mut editor);
+        let act = cmd.try_resolve_action(&resolved, &mut editor, &mut buffer_manager);
         assert_eq!(
             act,
             Action::DeleteLines {
@@ -183,7 +185,7 @@ mod tests {
         );
 
         let resolved2 = cmd.exmap.try_resolve("5y").unwrap();
-        let act2 = cmd.try_resolve_action(&resolved2, &mut editor);
+        let act2 = cmd.try_resolve_action(&resolved2, &mut editor, &mut buffer_manager);
         assert_eq!(
             act2,
             Action::YankLines {
@@ -195,88 +197,89 @@ mod tests {
 
     #[test]
     fn test_ex_set() {
-        let mut editor = Editor::new(Vec::new()).unwrap();
+        let mut editor = Editor::new().unwrap();
+        let mut buffer_manager = crate::editor::buffers::BufferManager::new();
         let mut cmd = Command::new();
 
         cmd.set("set wrap");
-        cmd.ex(&mut editor);
+        cmd.ex(&mut editor, &mut buffer_manager);
         assert!(editor.wrap);
 
         cmd.set("set nowrap");
-        cmd.ex(&mut editor);
+        cmd.ex(&mut editor, &mut buffer_manager);
         assert!(!editor.wrap);
 
         cmd.set("set nonu");
-        cmd.ex(&mut editor);
+        cmd.ex(&mut editor, &mut buffer_manager);
         assert!(!editor.show_line_numbers);
 
         cmd.set("set nu");
-        cmd.ex(&mut editor);
+        cmd.ex(&mut editor, &mut buffer_manager);
         assert!(editor.show_line_numbers);
 
         cmd.set("set nofold");
-        cmd.ex(&mut editor);
+        cmd.ex(&mut editor, &mut buffer_manager);
         assert!(!editor.fold);
 
         cmd.set("set fold");
-        cmd.ex(&mut editor);
+        cmd.ex(&mut editor, &mut buffer_manager);
         assert!(editor.fold);
 
         cmd.set("set nofoldmultiline");
-        cmd.ex(&mut editor);
+        cmd.ex(&mut editor, &mut buffer_manager);
         assert!(!editor.fold_multiline_only);
 
         cmd.set("set foldmultiline");
-        cmd.ex(&mut editor);
+        cmd.ex(&mut editor, &mut buffer_manager);
         assert!(editor.fold_multiline_only);
 
         cmd.set("set notreesitter");
-        cmd.ex(&mut editor);
+        cmd.ex(&mut editor, &mut buffer_manager);
         assert!(!editor.tree_sitter);
 
         cmd.set("set treesitter");
-        cmd.ex(&mut editor);
+        cmd.ex(&mut editor, &mut buffer_manager);
         assert!(editor.tree_sitter);
 
         // Test colorschemes command and aliases
         cmd.set("colorschemes catppuccin");
-        cmd.ex(&mut editor);
+        cmd.ex(&mut editor, &mut buffer_manager);
         assert_eq!(editor.colorscheme.metadata.name, "catppuccin-mocha");
 
         cmd.set("colorscheme kanagawa");
-        cmd.ex(&mut editor);
+        cmd.ex(&mut editor, &mut buffer_manager);
         assert_eq!(editor.colorscheme.metadata.name, "kanagawa");
 
         cmd.set("colo catppuccin");
-        cmd.ex(&mut editor);
+        cmd.ex(&mut editor, &mut buffer_manager);
         assert_eq!(editor.colorscheme.metadata.name, "catppuccin-mocha");
 
         cmd.set("colorscheme unknown_colorscheme");
-        cmd.ex(&mut editor);
+        cmd.ex(&mut editor, &mut buffer_manager);
         assert_eq!(editor.colorscheme.metadata.name, "tokyonight-moon");
 
         // Test syntax command
         cmd.set("syntax off");
-        cmd.ex(&mut editor);
+        cmd.ex(&mut editor, &mut buffer_manager);
         assert!(!editor.syntax);
 
         cmd.set("syn on");
-        cmd.ex(&mut editor);
+        cmd.ex(&mut editor, &mut buffer_manager);
         assert!(editor.syntax);
 
         // Test bnext / bprev commands
         let buf2 = TextBuffer::new(99, "temp_test_file2.txt").unwrap();
-        editor.buffer_manager.add_buffer(buf2);
+        buffer_manager.add_buffer(buf2);
         // Switch active index to first buffer (index 0)
-        editor.buffer_manager.active_idx = 0;
-        assert_eq!(editor.buffer_manager.active_idx, 0);
+        buffer_manager.active_idx = 0;
+        assert_eq!(buffer_manager.active_idx, 0);
 
         cmd.set("bnext");
-        cmd.ex(&mut editor);
-        assert_eq!(editor.buffer_manager.active_idx, 1);
+        cmd.ex(&mut editor, &mut buffer_manager);
+        assert_eq!(buffer_manager.active_idx, 1);
 
         cmd.set("bprev");
-        cmd.ex(&mut editor);
-        assert_eq!(editor.buffer_manager.active_idx, 0);
+        cmd.ex(&mut editor, &mut buffer_manager);
+        assert_eq!(buffer_manager.active_idx, 0);
     }
 }

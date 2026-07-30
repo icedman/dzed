@@ -17,6 +17,7 @@ impl ViewController for CommandLineController {
         &self,
         action: Action,
         editor: &mut Editor,
+        buffer_manager: &mut crate::editor::buffers::BufferManager,
         ui: &Ui,
         window_id: usize,
     ) -> Result<ControllerResult, Box<dyn std::error::Error>> {

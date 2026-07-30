@@ -118,7 +118,7 @@ impl Ui {
             .and_then(|id| self.windows.get_mut(&id))
     }
 
-    pub fn update(&mut self, editor: &mut Editor) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn update(&mut self, editor: &mut Editor, buffer_manager: &mut crate::editor::buffers::BufferManager) -> Result<(), Box<dyn std::error::Error>> {
         // Handle terminal resize.
         let (screen_cols, screen_rows) = {
             let (cols, rows) = crossterm::terminal::size().unwrap();
@@ -136,7 +136,7 @@ impl Ui {
         for &(window_id, rect) in computed {
             if let Some(window) = self.windows.get(&window_id) {
                 if let Some(ref controller) = window.controller {
-                    controller.update(editor, self, window_id, rect)?;
+                    controller.update(editor, buffer_manager, self, window_id, rect)?;
                 }
             }
         }
@@ -151,11 +151,12 @@ impl Ui {
         &mut self,
         stdout: &mut W,
         editor: &mut Editor,
+        buffer_manager: &mut crate::editor::buffers::BufferManager,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let computed = &self.cached_layouts;
         for &(win_id, rect) in computed {
             if let Some(win) = self.windows.get_mut(&win_id) {
-                win.draw(stdout, rect, editor)?;
+                win.draw(stdout, rect, editor, buffer_manager)?;
             }
         }
         Ok(())

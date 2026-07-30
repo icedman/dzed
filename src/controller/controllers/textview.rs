@@ -21,11 +21,12 @@ impl ViewController for TextViewController {
     fn update(
         &self,
         editor: &mut Editor,
+        buffer_manager: &mut crate::editor::buffers::BufferManager,
         ui: &Ui,
         window_id: usize,
         rect: Rect,
     ) -> Result<ControllerResult, Box<dyn std::error::Error>> {
-        let buffer = editor.buffer_manager.active_mut();
+        let buffer = buffer_manager.active_mut();
 
         // Update layout before wrapping so the wrap width reflects the current gutter.
         let row_count = buffer.doc.buffer().row_count();
@@ -189,11 +190,12 @@ impl ViewController for TextViewController {
         &self,
         action: Action,
         editor: &mut Editor,
+        buffer_manager: &mut crate::editor::buffers::BufferManager,
         ui: &Ui,
         window_id: usize,
     ) -> Result<ControllerResult, Box<dyn std::error::Error>> {
         if action != Action::NoOp {
-            editor.apply_active_action(&action);
+            editor.apply_active_action(buffer_manager, &action);
             editor.should_sync = true;
             editor.should_redraw = true;
         }
@@ -204,6 +206,7 @@ impl ViewController for TextViewController {
         &mut self,
         result: &background::BackgroundResult,
         editor: &mut Editor,
+        buffer_manager: &mut crate::editor::buffers::BufferManager,
     ) -> Result<ControllerResult, Box<dyn std::error::Error>> {
         match result {
             background::BackgroundResult::HighlightComplete {
@@ -212,8 +215,7 @@ impl ViewController for TextViewController {
                 task_id,
                 ..
             } => {
-                if let Some(buf) = editor
-                    .buffer_manager
+                if let Some(buf) = buffer_manager
                     .buffers
                     .iter_mut()
                     .find(|b| &b.file_path == file_path)
@@ -233,8 +235,7 @@ impl ViewController for TextViewController {
                 task_id,
                 ..
             } => {
-                if let Some(buf) = editor
-                    .buffer_manager
+                if let Some(buf) = buffer_manager
                     .buffers
                     .iter_mut()
                     .find(|b| &b.file_path == file_path)
@@ -253,8 +254,7 @@ impl ViewController for TextViewController {
                 ..
             } => {
                 if editor.tree_sitter {
-                    if let Some(buf) = editor
-                        .buffer_manager
+                    if let Some(buf) = buffer_manager
                         .buffers
                         .iter_mut()
                         .find(|b| &b.file_path == file_path)

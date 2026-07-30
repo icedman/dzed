@@ -30,18 +30,16 @@ pub struct Editor {
     pub theme: Theme,
     pub colorscheme: ColorScheme,
 
-    pub buffer_manager: BufferManager,
-
     pub services: Services,
 
     pub last_action: Action,
 }
 
 impl Editor {
-    pub fn set_tree_sitter_enabled(&mut self, enabled: bool) {
+    pub fn set_tree_sitter_enabled(&mut self, buffer_manager: &mut BufferManager, enabled: bool) {
         self.tree_sitter = enabled;
         if !enabled {
-            for buffer in &mut self.buffer_manager.buffers {
+            for buffer in &mut buffer_manager.buffers {
                 buffer
                     .latest_parse_task_id
                     .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -50,35 +48,27 @@ impl Editor {
         }
     }
 
-    pub fn apply_active_action(&mut self, action: &controller::actions::Action) {
-        let active_idx = self.buffer_manager.active_idx;
+    pub fn apply_active_action(
+        &mut self,
+        buffer_manager: &mut BufferManager,
+        action: &controller::actions::Action,
+    ) {
+        let active_idx = buffer_manager.active_idx;
         let mut document = std::mem::replace(
-            &mut self.buffer_manager.buffers[active_idx].doc,
+            &mut buffer_manager.buffers[active_idx].doc,
             Document::new("").unwrap(),
         );
-        document.apply_action(action, self);
+        document.apply_action(action, self, buffer_manager);
         self.mode = document.mode();
-        self.buffer_manager.buffers[active_idx].doc = document;
+        buffer_manager.buffers[active_idx].doc = document;
     }
 
-    pub fn new(file_paths: Vec<String>) -> Result<Self, Box<dyn std::error::Error>> {
-        let mut buffer_manager = BufferManager::new();
-        let mut next_id = 0;
-        for path in file_paths {
-            buffer_manager.add_buffer(TextBuffer::new(next_id, &path)?);
-            next_id += 1;
-        }
-
-        if buffer_manager.buffers.is_empty() {
-            buffer_manager.add_buffer(TextBuffer::new(next_id, "")?);
-        }
-
+    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let theme = Theme::new("base16-ocean.dark");
         let colorscheme = ColorScheme::load_default();
         let services = Services::new();
 
         Ok(Self {
-            buffer_manager,
             mode: Mode::Normal,
             theme,
             colorscheme,

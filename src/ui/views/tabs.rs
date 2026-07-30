@@ -23,6 +23,7 @@ impl TabsView {
         w: &mut W,
         rect: Rect,
         editor: &Editor,
+        buffer_manager: &mut crate::editor::buffers::BufferManager,
     ) -> Result<(), Box<dyn std::error::Error>> {
         execute!(
             w,
@@ -33,7 +34,7 @@ impl TabsView {
             ResetColor,
         )?;
 
-        for (idx, buf) in editor.buffer_manager.buffers.iter().enumerate() {
+        for (idx, buf) in buffer_manager.buffers.iter().enumerate() {
             let name = if buf.file_path.is_empty() {
                 "[No Name]".to_string()
             } else {
@@ -44,7 +45,7 @@ impl TabsView {
                     .into_owned()
             };
 
-            let is_active = idx == editor.buffer_manager.active_idx;
+            let is_active = idx == buffer_manager.active_idx;
             let tab_text = if is_active {
                 format!(" [{}] ", name)
             } else {
@@ -64,7 +65,8 @@ impl View for TabsView {
         mut w: &mut dyn Write,
         rect: Rect,
         editor: &Editor,
+        buffer_manager: &mut crate::editor::buffers::BufferManager,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        self.draw_tabs(&mut w, rect, editor)
+        self.draw_tabs(&mut w, rect, editor, buffer_manager)
     }
 }

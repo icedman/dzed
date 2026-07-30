@@ -46,6 +46,7 @@ impl Window {
         w: &mut W,
         rect: Rect,
         editor: &Editor,
+        buffer_manager: &mut crate::editor::buffers::BufferManager,
     ) -> std::io::Result<()> {
         if rect.width == 0 || rect.height == 0 {
             return Ok(());
@@ -126,7 +127,7 @@ impl Window {
             } else {
                 rect
             };
-            _ = view.draw(w, inner_rect, editor);
+            _ = view.draw(w, inner_rect, editor, buffer_manager);
         }
 
         Ok(())

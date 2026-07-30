@@ -103,8 +103,8 @@ impl Document {
         }
     }
 
-    pub fn fold(&mut self, _count: u32, editor: &Editor) {
-        let buffer = match editor.buffer_manager.find(self) {
+    pub fn fold(&mut self, _count: u32, editor: &Editor, buffer_manager: &crate::editor::buffers::BufferManager) {
+        let buffer = match buffer_manager.find(self) {
             Some(b) => b,
             None => return,
         };
@@ -160,7 +160,7 @@ impl Document {
         }
     }
 
-    pub fn unfold(&mut self, _count: u32, editor: &Editor) {
+    pub fn unfold(&mut self, _count: u32, editor: &Editor, buffer_manager: &crate::editor::buffers::BufferManager) {
         let mut to_remove = Vec::new();
         for selection in self.selections.selections.iter() {
             let head_point = selection.head().to_point(&self.buffer);
@@ -314,7 +314,7 @@ impl Document {
         // }
     }
 
-    pub fn apply_action(&mut self, action: &Action, editor: &Editor) {
+    pub fn apply_action(&mut self, action: &Action, editor: &Editor, buffer_manager: &crate::editor::buffers::BufferManager) {
         let mut action_owned = action.clone();
         if self.mode.is_visual() {
             action_owned = action_owned.with_select(true);
@@ -606,7 +606,7 @@ impl Document {
                         updated = true;
                     } else if editor.tree_sitter {
                         if let Some(syntax_tree) =
-                            editor.buffer_manager.find(self).and_then(|b| b.syntax_tree.as_ref())
+                            buffer_manager.find(self).and_then(|b| b.syntax_tree.as_ref())
                         {
                             let byte = self.buffer.offset_for_anchor(&cursor.head());
                             if let Some((start_node, end_node)) =
@@ -710,7 +710,7 @@ impl Document {
                         updated = true;
                     } else if editor.tree_sitter {
                         if let Some(syntax_tree) =
-                            editor.buffer_manager.find(self).and_then(|b| b.syntax_tree.as_ref())
+                            buffer_manager.find(self).and_then(|b| b.syntax_tree.as_ref())
                         {
                             let byte = self.buffer.offset_for_anchor(&cursor.head());
                             if let Some((start_node, end_node)) =
@@ -758,7 +758,7 @@ impl Document {
 
             Action::MoveToNextFunction { select, count } => {
                 if editor.tree_sitter && *count > 0 {
-                    if let Some(syntax_tree) = editor.buffer_manager.find(self).and_then(|b| b.syntax_tree.as_ref()) {
+                    if let Some(syntax_tree) = buffer_manager.find(self).and_then(|b| b.syntax_tree.as_ref()) {
                         self.selections.move_to_syntax_target(
                             *select,
                             *count,
@@ -771,7 +771,7 @@ impl Document {
             }
             Action::MoveToPreviousFunction { select, count } => {
                 if editor.tree_sitter && *count > 0 {
-                    if let Some(syntax_tree) = editor.buffer_manager.find(self).and_then(|b| b.syntax_tree.as_ref()) {
+                    if let Some(syntax_tree) = buffer_manager.find(self).and_then(|b| b.syntax_tree.as_ref()) {
                         self.selections.move_to_syntax_target(
                             *select,
                             *count,
@@ -784,7 +784,7 @@ impl Document {
             }
             Action::MoveToNextBlock { select, count } => {
                 if editor.tree_sitter && *count > 0 {
-                    if let Some(syntax_tree) = editor.buffer_manager.find(self).and_then(|b| b.syntax_tree.as_ref()) {
+                    if let Some(syntax_tree) = buffer_manager.find(self).and_then(|b| b.syntax_tree.as_ref()) {
                         self.selections.move_to_syntax_target(
                             *select,
                             *count,
@@ -797,7 +797,7 @@ impl Document {
             }
             Action::MoveToPreviousBlock { select, count } => {
                 if editor.tree_sitter && *count > 0 {
-                    if let Some(syntax_tree) = editor.buffer_manager.find(self).and_then(|b| b.syntax_tree.as_ref()) {
+                    if let Some(syntax_tree) = buffer_manager.find(self).and_then(|b| b.syntax_tree.as_ref()) {
                         self.selections.move_to_syntax_target(
                             *select,
                             *count,
@@ -810,7 +810,7 @@ impl Document {
             }
             Action::MoveToBlockStart { select, count } => {
                 if editor.tree_sitter && *count > 0 {
-                    if let Some(syntax_tree) = editor.buffer_manager.find(self).and_then(|b| b.syntax_tree.as_ref()) {
+                    if let Some(syntax_tree) = buffer_manager.find(self).and_then(|b| b.syntax_tree.as_ref()) {
                         self.selections.move_to_syntax_target(
                             *select,
                             *count,
@@ -823,7 +823,7 @@ impl Document {
             }
             Action::MoveToBlockEnd { select, count } => {
                 if editor.tree_sitter && *count > 0 {
-                    if let Some(syntax_tree) = editor.buffer_manager.find(self).and_then(|b| b.syntax_tree.as_ref()) {
+                    if let Some(syntax_tree) = buffer_manager.find(self).and_then(|b| b.syntax_tree.as_ref()) {
                         self.selections.move_to_syntax_target_end(
                             *select,
                             *count,
@@ -836,7 +836,7 @@ impl Document {
             }
             Action::MoveToNextClass { select, count } => {
                 if editor.tree_sitter && *count > 0 {
-                    if let Some(syntax_tree) = editor.buffer_manager.find(self).and_then(|b| b.syntax_tree.as_ref()) {
+                    if let Some(syntax_tree) = buffer_manager.find(self).and_then(|b| b.syntax_tree.as_ref()) {
                         self.selections.move_to_syntax_target(
                             *select,
                             *count,
@@ -849,7 +849,7 @@ impl Document {
             }
             Action::MoveToPreviousClass { select, count } => {
                 if editor.tree_sitter && *count > 0 {
-                    if let Some(syntax_tree) = editor.buffer_manager.find(self).and_then(|b| b.syntax_tree.as_ref()) {
+                    if let Some(syntax_tree) = buffer_manager.find(self).and_then(|b| b.syntax_tree.as_ref()) {
                         self.selections.move_to_syntax_target(
                             *select,
                             *count,
@@ -862,7 +862,7 @@ impl Document {
             }
             Action::MoveToNextArgument { select, count } => {
                 if editor.tree_sitter && *count > 0 {
-                    if let Some(syntax_tree) = editor.buffer_manager.find(self).and_then(|b| b.syntax_tree.as_ref()) {
+                    if let Some(syntax_tree) = buffer_manager.find(self).and_then(|b| b.syntax_tree.as_ref()) {
                         self.selections.move_to_syntax_target(
                             *select,
                             *count,
@@ -875,7 +875,7 @@ impl Document {
             }
             Action::MoveToPreviousArgument { select, count } => {
                 if editor.tree_sitter && *count > 0 {
-                    if let Some(syntax_tree) = editor.buffer_manager.find(self).and_then(|b| b.syntax_tree.as_ref()) {
+                    if let Some(syntax_tree) = buffer_manager.find(self).and_then(|b| b.syntax_tree.as_ref()) {
                         self.selections.move_to_syntax_target(
                             *select,
                             *count,
@@ -915,35 +915,35 @@ impl Document {
                 .selections
                 .move_to_end_of_next_line(*select, &self.buffer),
             Action::MovePageUp { count, select } => {
-                if let Some(buffer) = editor.buffer_manager.find(self) {
+                if let Some(buffer) = buffer_manager.find(self) {
                     let page_size = buffer.display_map.snapshot().visible_rows.saturating_sub(4).max(1);
                     self.selections
                         .move_up(*select, page_size * *count, &self.buffer);
                 }
             }
             Action::MovePageDown { count, select } => {
-                if let Some(buffer) = editor.buffer_manager.find(self) {
+                if let Some(buffer) = buffer_manager.find(self) {
                     let page_size = buffer.display_map.snapshot().visible_rows.saturating_sub(4).max(1);
                     self.selections
                         .move_down(*select, page_size * *count, &self.buffer);
                 }
             }
             Action::ScrollHalfPageUp { count } => {
-                if let Some(buffer) = editor.buffer_manager.find(self) {
+                if let Some(buffer) = buffer_manager.find(self) {
                     let half_page_size = (buffer.display_map.snapshot().visible_rows.saturating_sub(4).max(2) / 2).max(1);
                     self.selections
                         .move_up(false, half_page_size * *count, &self.buffer);
                 }
             }
             Action::ScrollHalfPageDown { count } => {
-                if let Some(buffer) = editor.buffer_manager.find(self) {
+                if let Some(buffer) = buffer_manager.find(self) {
                     let half_page_size = (buffer.display_map.snapshot().visible_rows.saturating_sub(4).max(2) / 2).max(1);
                     self.selections
                         .move_down(false, half_page_size * *count, &self.buffer);
                 }
             }
             Action::MoveToScreenTop { select, count } => {
-                if let Some(buffer) = editor.buffer_manager.find(self) {
+                if let Some(buffer) = buffer_manager.find(self) {
                     let display_snapshot = buffer.display_map.snapshot();
                     let target_point = display_snapshot.display_point_to_point(
                         display::display_map::DisplayPoint::new(display_snapshot.scroll_y, 0),
@@ -953,7 +953,7 @@ impl Document {
                 }
             }
             Action::MoveToScreenMiddle { select, count } => {
-                if let Some(buffer) = editor.buffer_manager.find(self) {
+                if let Some(buffer) = buffer_manager.find(self) {
                     let display_snapshot = buffer.display_map.snapshot();
                     let middle_display_row =
                         display_snapshot.scroll_y + display_snapshot.visible_rows / 2;
@@ -965,7 +965,7 @@ impl Document {
                 }
             }
             Action::MoveToScreenBottom { select, count } => {
-                if let Some(buffer) = editor.buffer_manager.find(self) {
+                if let Some(buffer) = buffer_manager.find(self) {
                     let display_snapshot = buffer.display_map.snapshot();
                     let bottom_display_row =
                         display_snapshot.scroll_y + display_snapshot.visible_rows.saturating_sub(1);
@@ -1219,7 +1219,7 @@ impl Document {
                 let anchor = self.selections.anchor.clone();
 
                 for _ in 0..*count {
-                    self.apply_action(&motion, editor);
+                    self.apply_action(&motion, editor, buffer_manager);
                 }
 
                 let text = self.selections.text(&self.buffer);
@@ -1235,12 +1235,12 @@ impl Document {
                         Action::MoveWithinCharacter { .. } | Action::MoveAroundCharacter { .. }
                     );
                     for _idx in 0..*count {
-                        self.apply_action(&motion, editor);
+                        self.apply_action(&motion, editor, buffer_manager);
                         self.delete_text_object(inclusive);
                     }
                 } else {
                     for _ in 0..*count {
-                        self.apply_action(&motion, editor);
+                        self.apply_action(&motion, editor, buffer_manager);
                         self.delete_text(0);
                     }
                 }
@@ -1265,7 +1265,7 @@ impl Document {
             Action::InsertNewLineMotion { count, motion } => {
                 let mut motion = (**motion).clone();
                 for _ in 0..*count {
-                    self.apply_action(&motion, editor);
+                    self.apply_action(&motion, editor, buffer_manager);
                     self.insert_text(&self.new_line().to_string());
                     motion = Action::NoOp;
                 }
@@ -1277,7 +1277,7 @@ impl Document {
                 }
             }
             Action::YankMotion { count, motion } => {
-                self.yank_motion(*count, motion, editor);
+                self.yank_motion(*count, motion, editor, buffer_manager);
             }
             Action::YankLine { count } => {
                 self.yank_current_line(*count, editor);
@@ -1288,10 +1288,10 @@ impl Document {
             Action::Undo { count } => self.undo(*count),
             Action::Redo { count } => self.redo(*count),
             Action::Fold { count } => {
-                self.fold(*count, editor);
+                self.fold(*count, editor, buffer_manager);
             }
             Action::Unfold { count } => {
-                self.unfold(*count, editor);
+                self.unfold(*count, editor, buffer_manager);
             }
             Action::NoOp | Action::Quit => {
                 return;
@@ -1299,17 +1299,17 @@ impl Document {
             _ => {}
         }
 
-        self.apply_action(&next_action, editor);
+        self.apply_action(&next_action, editor, buffer_manager);
         self.snap_selections_to_folds(action);
     }
 
-    fn yank_motion(&mut self, count: u32, motion: &Action, editor: &Editor) {
+    fn yank_motion(&mut self, count: u32, motion: &Action, editor: &Editor, buffer_manager: &crate::editor::buffers::BufferManager) {
         let selections = self.selections.selections.clone();
         let point = self.selections.point;
         let anchor = self.selections.anchor.clone();
 
         for _ in 0..count {
-            self.apply_action(motion, editor);
+            self.apply_action(motion, editor, buffer_manager);
         }
         let text = self.selections.text(&self.buffer);
         editor.services.clipboard.borrow_mut().set_text(text);
@@ -1552,7 +1552,7 @@ mod tests {
         editor.apply_active_action(&Action::InsertText("x".into()));
         editor.apply_active_action(&Action::InsertText("y".into()));
 
-        let document = &editor.buffer_manager.active().doc;
+        let document = &buffer_manager.active().doc;
         assert_eq!(document.buffer().row_text(0), "axybc");
         assert_eq!(
             document
@@ -1579,7 +1579,7 @@ mod tests {
         });
         newline_editor.apply_active_action(&Action::InsertNewLine { count: 1 });
 
-        let newline_document = &newline_editor.buffer_manager.active().doc;
+        let newline_document = &newline_buffer_manager.active().doc;
         assert_eq!(newline_document.buffer().row_text(0), "a");
         assert_eq!(newline_document.buffer().row_text(1), "bc");
         assert_eq!(
@@ -1603,7 +1603,7 @@ mod tests {
         });
         tab_editor.apply_active_action(&Action::InsertTab);
 
-        let tab_document = &tab_editor.buffer_manager.active().doc;
+        let tab_document = &tab_buffer_manager.active().doc;
         assert_eq!(tab_document.buffer().row_text(0), "a    bc");
         assert_eq!(
             tab_document
@@ -1622,11 +1622,11 @@ mod tests {
     //     editor.apply_active_action(&Action::InsertText(source.into()));
 
     //     let syntax_tree = {
-    //         let document = &editor.buffer_manager.active().doc;
+    //         let document = &buffer_manager.active().doc;
     //         let mut parser = TreeSitterParser::new(Grammar::Rust).unwrap();
     //         parser.parse(document.buffer().snapshot(), None).unwrap()
     //     };
-    //     editor.buffer_manager.active_mut().syntax_tree = Some(syntax_tree);
+    //     buffer_manager.active_mut().syntax_tree = Some(syntax_tree);
 
     //     editor.apply_active_action(&Action::MoveToStartOfDocument { select: false, count: 1 });
     //     editor.apply_active_action(&Action::MoveToNextWord {
@@ -1640,7 +1640,7 @@ mod tests {
     //             .doc
     //             .selection()
     //             .head()
-    //             .to_point(editor.buffer_manager.active().doc.buffer()),
+    //             .to_point(buffer_manager.active().doc.buffer()),
     //         Point::new(1, 0)
     //     );
 
@@ -1656,7 +1656,7 @@ mod tests {
     //             .doc
     //             .selection()
     //             .head()
-    //             .to_point(editor.buffer_manager.active().doc.buffer()),
+    //             .to_point(buffer_manager.active().doc.buffer()),
     //         Point::new(3, 0)
     //     );
     //     editor.apply_active_action(&Action::MoveToPreviousFunction {
@@ -1670,7 +1670,7 @@ mod tests {
     //             .doc
     //             .selection()
     //             .head()
-    //             .to_point(editor.buffer_manager.active().doc.buffer()),
+    //             .to_point(buffer_manager.active().doc.buffer()),
     //         Point::new(2, 0)
     //     );
 
@@ -1679,7 +1679,7 @@ mod tests {
     //         select: false,
     //         count: 2,
     //     });
-    //     let document = &editor.buffer_manager.active().doc;
+    //     let document = &buffer_manager.active().doc;
     //     let offset = document
     //         .buffer()
     //         .offset_for_anchor(&document.selection().head());
@@ -1689,7 +1689,7 @@ mod tests {
     //         select: false,
     //         count: 1,
     //     });
-    //     let document = &editor.buffer_manager.active().doc;
+    //     let document = &buffer_manager.active().doc;
     //     let offset = document
     //         .buffer()
     //         .offset_for_anchor(&document.selection().head());
@@ -1709,7 +1709,7 @@ mod tests {
     //         select: false,
     //         count: 1,
     //     });
-    //     let document = &editor.buffer_manager.active().doc;
+    //     let document = &buffer_manager.active().doc;
     //     assert_eq!(
     //         document.selection().head().to_point(document.buffer()),
     //         Point::new(1, 0)
@@ -1720,7 +1720,7 @@ mod tests {
     //         select: false,
     //         count: 1,
     //     });
-    //     let document = &editor.buffer_manager.active().doc;
+    //     let document = &buffer_manager.active().doc;
     //     assert_eq!(
     //         document.selection().head().to_point(document.buffer()),
     //         Point::new(2, 0)
@@ -1730,7 +1730,7 @@ mod tests {
     //         select: false,
     //         count: 1,
     //     });
-    //     let document = &editor.buffer_manager.active().doc;
+    //     let document = &buffer_manager.active().doc;
     //     assert_eq!(
     //         document.selection().head().to_point(document.buffer()),
     //         Point::new(2, 0)
@@ -1741,7 +1741,7 @@ mod tests {
     //         select: false,
     //         count: 1,
     //     });
-    //     let document = &editor.buffer_manager.active().doc;
+    //     let document = &buffer_manager.active().doc;
     //     assert_eq!(
     //         document.selection().head().to_point(document.buffer()),
     //         Point::new(2, 9)
@@ -1751,7 +1751,7 @@ mod tests {
     //         select: false,
     //         count: 1,
     //     });
-    //     let document = &editor.buffer_manager.active().doc;
+    //     let document = &buffer_manager.active().doc;
     //     assert_eq!(
     //         document.selection().head().to_point(document.buffer()),
     //         Point::new(2, 17)
@@ -1765,7 +1765,7 @@ mod tests {
     //         select: false,
     //         count: 1,
     //     }); // move to {
-    //     let document = &editor.buffer_manager.active().doc;
+    //     let document = &buffer_manager.active().doc;
     //     assert_eq!(
     //         document.selection().head().to_point(document.buffer()),
     //         Point::new(2, 25)
@@ -1775,7 +1775,7 @@ mod tests {
     //         select: false,
     //         count: 1,
     //     });
-    //     let document = &editor.buffer_manager.active().doc;
+    //     let document = &buffer_manager.active().doc;
     //     // In the source: "\nstruct Alpha {}\nfn first(a: i32, b: i32) {}\nfn second(c: i32) {}"
     //     // fn first is at row 2. { is at (2, 25).
     //     assert_eq!(
@@ -1787,7 +1787,7 @@ mod tests {
     //         select: false,
     //         count: 1,
     //     });
-    //     let document = &editor.buffer_manager.active().doc;
+    //     let document = &buffer_manager.active().doc;
     //     // end of {} block is at (2, 26)
     //     assert_eq!(
     //         document.selection().head().to_point(document.buffer()),
@@ -1820,7 +1820,7 @@ mod tests {
                 .doc
                 .selection()
                 .head()
-                .to_point(editor.buffer_manager.active().doc.buffer())
+                .to_point(buffer_manager.active().doc.buffer())
                 .column,
             1
         );
@@ -1828,7 +1828,7 @@ mod tests {
         editor.apply_active_action(&Action::Put { count: 1 });
 
         assert_eq!(
-            editor.buffer_manager.active().doc.buffer().row_text(0),
+            buffer_manager.active().doc.buffer().row_text(0),
             "abbccde"
         );
     }
@@ -1850,7 +1850,7 @@ mod tests {
         );
 
         editor.apply_active_action(&Action::Put { count: 1 });
-        let document = &editor.buffer_manager.active().doc;
+        let document = &buffer_manager.active().doc;
         assert_eq!(document.buffer().row_text(0), "abc");
         assert_eq!(document.buffer().row_text(1), "abc");
     }
@@ -1868,7 +1868,7 @@ mod tests {
         // Join line 1 and line 2
         editor.apply_active_action(&Action::JoinLines { count: 1 });
 
-        let document = &editor.buffer_manager.active().doc;
+        let document = &buffer_manager.active().doc;
         assert_eq!(document.buffer().row_text(0), "line 1 line 2");
         assert_eq!(document.buffer().row_text(1), "line 3");
 
@@ -1895,7 +1895,7 @@ mod tests {
             motion: Box::new(Action::MoveAroundCharacter { count: 1, ch: '(' }),
         });
 
-        let document = &editor.buffer_manager.active().doc;
+        let document = &buffer_manager.active().doc;
         assert_eq!(document.buffer().row_text(0), "a  b");
     }
 
@@ -1916,7 +1916,7 @@ mod tests {
             }),
         });
 
-        let document = &editor.buffer_manager.active().doc;
+        let document = &buffer_manager.active().doc;
         assert_eq!(document.buffer().row_text(0), "def");
     }
 
@@ -1936,7 +1936,7 @@ mod tests {
             motion: Box::new(Action::MoveWithinCharacter { count: 1, ch: 'w' }),
         });
 
-        let document = &editor.buffer_manager.active().doc;
+        let document = &buffer_manager.active().doc;
         assert_eq!(document.buffer().row_text(0), "abc  ghi");
     }
 
@@ -1956,7 +1956,7 @@ mod tests {
             motion: Box::new(Action::MoveAroundCharacter { count: 1, ch: 'w' }),
         });
 
-        let document = &editor.buffer_manager.active().doc;
+        let document = &buffer_manager.active().doc;
         assert_eq!(document.buffer().row_text(0), "abc ghi");
     }
 
@@ -1964,14 +1964,14 @@ mod tests {
     fn test_treesitter_folding() {
         let mut editor = Editor::new(Vec::new()).unwrap();
         let text = "fn main() {\n    let x = 1;\n    let y = 2;\n}";
-        editor.buffer_manager.active_mut().doc = Document::new_with_text(text);
-        editor.buffer_manager.active_mut().grammar = Some(Grammar::Rust);
+        buffer_manager.active_mut().doc = Document::new_with_text(text);
+        buffer_manager.active_mut().grammar = Some(Grammar::Rust);
 
         let mut parser = TreeSitterParser::new(Grammar::Rust).unwrap();
         let tree = parser
-            .parse(editor.buffer_manager.active().doc.buffer().snapshot(), None)
+            .parse(buffer_manager.active().doc.buffer().snapshot(), None)
             .unwrap();
-        editor.buffer_manager.active_mut().syntax_tree = Some(tree);
+        buffer_manager.active_mut().syntax_tree = Some(tree);
 
         editor.apply_active_action(&Action::MoveDown {
             select: false,
@@ -1980,7 +1980,7 @@ mod tests {
 
         editor.apply_active_action(&Action::Fold { count: 1 });
 
-        let active_buffer = editor.buffer_manager.active();
+        let active_buffer = buffer_manager.active();
         assert_eq!(active_buffer.doc.folds.len(), 1);
         let fold = &active_buffer.doc.folds[0];
         assert_eq!(fold.start.row, 0);
@@ -1989,7 +1989,7 @@ mod tests {
         assert_eq!(fold.end.column, 0);
 
         editor.apply_active_action(&Action::Unfold { count: 1 });
-        let active_buffer = editor.buffer_manager.active();
+        let active_buffer = buffer_manager.active();
         assert_eq!(active_buffer.doc.folds.len(), 0);
     }
 
@@ -1997,14 +1997,14 @@ mod tests {
     fn test_fold_deletion() {
         let mut editor = Editor::new(Vec::new()).unwrap();
         let text = "line 1\nline 2\nline 3\nline 4";
-        editor.buffer_manager.active_mut().doc = Document::new_with_text(text);
+        buffer_manager.active_mut().doc = Document::new_with_text(text);
 
         let fold = display::fold_map::Fold {
             start: Point::new(1, 0),
             end: Point::new(2, 6),
         };
-        editor.buffer_manager.active_mut().doc.folds.push(fold);
-        assert_eq!(editor.buffer_manager.active().doc.folds.len(), 1);
+        buffer_manager.active_mut().doc.folds.push(fold);
+        assert_eq!(buffer_manager.active().doc.folds.len(), 1);
 
         editor.apply_active_action(&Action::MoveDown {
             select: false,
@@ -2012,6 +2012,6 @@ mod tests {
         });
         editor.apply_active_action(&Action::Delete { count: 1 });
 
-        assert_eq!(editor.buffer_manager.active().doc.folds.len(), 0);
+        assert_eq!(buffer_manager.active().doc.folds.len(), 0);
     }
 }

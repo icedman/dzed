@@ -13,6 +13,7 @@ pub trait View {
         w: &mut dyn Write,
         rect: Rect,
         editor: &Editor,
+        buffer_manager: &mut crate::editor::buffers::BufferManager,
     ) -> Result<(), Box<dyn std::error::Error>> {
         Ok(())
     }

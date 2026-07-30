@@ -14,6 +14,7 @@ pub trait ViewController {
     fn update(
         &self,
         editor: &mut Editor,
+        buffer_manager: &mut crate::editor::buffers::BufferManager,
         ui: &Ui,
         window_id: usize,
         rect: Rect,
@@ -25,6 +26,7 @@ pub trait ViewController {
         &self,
         action: actions::Action,
         editor: &mut Editor,
+        buffer_manager: &mut crate::editor::buffers::BufferManager,
         ui: &Ui,
         window_id: usize,
     ) -> Result<ControllerResult, Box<dyn std::error::Error>> {
@@ -35,6 +37,7 @@ pub trait ViewController {
         &mut self,
         _result: &background::BackgroundResult,
         _editor: &mut Editor,
+        _buffer_manager: &mut crate::editor::buffers::BufferManager,
     ) -> Result<ControllerResult, Box<dyn std::error::Error>> {
         Ok(ControllerResult::None)
     }

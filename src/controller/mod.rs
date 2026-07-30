@@ -44,6 +44,7 @@ impl Controller {
         &mut self,
         event: crossterm::event::Event,
         editor: &mut crate::editor::Editor,
+        buffer_manager: &mut crate::editor::buffers::BufferManager,
     ) -> Result<ControllerResult, Box<dyn std::error::Error>> {
         match event {
             Event::Key(key_event) => {
@@ -70,29 +71,16 @@ impl Controller {
     pub fn dispatch_actions(
         &mut self,
         editor: &mut crate::editor::Editor,
+        buffer_manager: &mut crate::editor::buffers::BufferManager,
         ui: &mut crate::ui::Ui,
     ) -> Result<ControllerResult, Box<dyn std::error::Error>> {
-        // draing background services
-        while let Some(result) = editor.services.background_worker.try_recv() {
-            let owner_id = match &result {
-                background::BackgroundResult::HighlightComplete { owner_id, .. } => *owner_id,
-                background::BackgroundResult::WrapComplete { owner_id, .. } => *owner_id,
-                background::BackgroundResult::ParseComplete { owner_id, .. } => *owner_id,
-            };
-            if let Some(win) = ui.windows.get_mut(&owner_id) {
-                if let Some(ref mut controller) = win.controller {
-                    let _ = controller.handle_task(&result, editor);
-                }
-            }
-        }
-
         let mut last_result = ControllerResult::None;
 
         while let Some(action) = self.pending_actions.pop_front() {
             editor.last_action = action.clone();
             if let Some(window) = ui.get_focused_window() {
                 if let Some(ref controller) = window.controller {
-                    last_result = controller.handle_action(action, editor, ui, window.id)?;
+                    last_result = controller.handle_action(action, editor, buffer_manager, ui, window.id)?;
                 }
             }
         }

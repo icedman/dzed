@@ -28,8 +28,14 @@ impl TextView {
         w: &mut W,
         inner_rect: Rect,
         editor: &Editor,
+        buffer_manager: &mut crate::editor::buffers::BufferManager,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let buffer = editor.buffer_manager.active();
+        let (screen_cols, _) = {
+            let (cols, rows) = crossterm::terminal::size().unwrap();
+            (cols as i32, rows as i32)
+        };
+
+        let buffer = buffer_manager.active();
 
         let display_snapshot = buffer.display_map.snapshot();
         let doc_buffer = buffer.doc.buffer();
@@ -347,7 +353,8 @@ impl View for TextView {
         mut w: &mut dyn Write,
         rect: Rect,
         editor: &Editor,
+        buffer_manager: &mut crate::editor::buffers::BufferManager,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        self.draw_textview(&mut w, rect, editor)
+        self.draw_textview(&mut w, rect, editor, buffer_manager)
     }
 }
