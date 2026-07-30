@@ -40,35 +40,36 @@ impl ViewController for TextViewController {
             0
         };
 
-        buffer.display_map.margin_left = gutter_width as u32;
+        buffer.doc.display_map.margin_left = gutter_width as u32;
         let wrap_cols = (rect.width as i32)
-            .saturating_sub(buffer.display_map.margin_left as i32)
-            .saturating_sub(buffer.display_map.margin_right as i32)
+            .saturating_sub(buffer.doc.display_map.margin_left as i32)
+            .saturating_sub(buffer.doc.display_map.margin_right as i32)
             .max(1);
         buffer
+            .doc
             .display_map
             .set_wrap_width(editor.wrap.then_some(wrap_cols as u32));
 
-        if editor.should_sync {
+        if buffer.doc.should_sync {
             let snapshot = buffer.doc.buffer().snapshot().clone();
-            buffer.display_map.fold(
+            buffer.doc.display_map.fold(
                 buffer.doc.folds.clone(),
                 snapshot.clone(),
             );
 
-            let text_changed = !buffer.hl.is_sync(&snapshot);
+            let text_changed = !buffer.doc.hl.is_sync(&snapshot);
             let wrap_width = editor.wrap.then_some(wrap_cols as u32);
-            let wrap_changed = text_changed || buffer.display_map.wrap_width != wrap_width;
+            let wrap_changed = text_changed || buffer.doc.display_map.wrap_width != wrap_width;
 
             if text_changed {
                 let (start, _) = buffer
                     .doc
                     .selections()
                     .rows_in_selection(buffer.doc.buffer());
-                buffer.hl.invalidate_state(start);
+                buffer.doc.hl.invalidate_state(start);
 
                 // Spawn background highlight task
-                let display_snapshot = buffer.display_map.snapshot();
+                let display_snapshot = buffer.doc.display_map.snapshot();
                 let total_rows = display_snapshot.row_count();
                 let visible_start = display_snapshot.scroll_y;
                 let visible_end = (visible_start + display_snapshot.visible_rows + 4).min(total_rows);
@@ -79,6 +80,7 @@ impl ViewController for TextViewController {
                 let hl_end = (end_buffer_row + 100).max(start + 1).min(buffer.doc.buffer().row_count());
 
                 let hl_task_id = buffer
+                    .doc
                     .latest_hl_task_id
                     .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
                     + 1;
@@ -93,7 +95,7 @@ impl ViewController for TextViewController {
                         theme: std::sync::Arc::new(editor.theme.theme.clone()),
                         use_colorscheme: editor.use_colorscheme,
                         task_id: TaskId(hl_task_id),
-                        latest_task_id: buffer.latest_hl_task_id.clone(),
+                        latest_task_id: buffer.doc.latest_hl_task_id.clone(),
                     },
                 );
 
@@ -101,6 +103,7 @@ impl ViewController for TextViewController {
                     && let Some(grammar) = buffer.grammar
                 {
                     let parse_task_id = buffer
+                        .doc
                         .latest_parse_task_id
                         .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
                         + 1;
@@ -111,7 +114,7 @@ impl ViewController for TextViewController {
                             snapshot: snapshot.clone(),
                             grammar,
                             task_id: TaskId(parse_task_id),
-                            latest_task_id: buffer.latest_parse_task_id.clone(),
+                            latest_task_id: buffer.doc.latest_parse_task_id.clone(),
                         },
                     );
                 }
@@ -120,6 +123,7 @@ impl ViewController for TextViewController {
             if wrap_changed {
                 // Spawn background wrap task
                 let wrap_task_id = buffer
+                    .doc
                     .latest_wrap_task_id
                     .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
                     + 1;
@@ -131,7 +135,7 @@ impl ViewController for TextViewController {
                         folds: buffer.doc.folds.clone(),
                         wrap_width,
                         task_id: TaskId(wrap_task_id),
-                        latest_task_id: buffer.latest_wrap_task_id.clone(),
+                        latest_task_id: buffer.doc.latest_wrap_task_id.clone(),
                     },
                 );
             }
@@ -139,17 +143,18 @@ impl ViewController for TextViewController {
             let cursor = buffer.doc.selection();
             let cursor_point = cursor.head().to_point(buffer.doc.buffer());
             let display_cursor = buffer
+                .doc
                 .display_map
                 .snapshot()
                 .point_to_display_point(cursor_point);
-            buffer.display_map.scroll_to_cursor(
+            buffer.doc.display_map.scroll_to_cursor(
                 display_cursor,
                 rect.height as i32,
                 rect.width as i32,
             );
 
             // highlighting code
-            let display_snapshot = buffer.display_map.snapshot();
+            let display_snapshot = buffer.doc.display_map.snapshot();
             let total_rows = display_snapshot.row_count();
             let end_line =
                 (display_snapshot.scroll_y + display_snapshot.visible_rows + 4).min(total_rows);
@@ -165,13 +170,15 @@ impl ViewController for TextViewController {
                 let end_buffer_row = end_point.row;
                 let end_buffer_row_exclusive = end_buffer_row + 1;
 
-                if !buffer.hl.is_sync(&buffer.doc.buffer().snapshot())
+                let snapshot = buffer.doc.buffer().snapshot().clone();
+                if !buffer.doc.hl.is_sync(&snapshot)
                     || !buffer
+                        .doc
                         .hl
                         .contains_rows(start_buffer_row, end_buffer_row_exclusive)
                 {
-                    buffer.hl.highlight_lines(
-                        &buffer.doc.buffer().snapshot(),
+                    buffer.doc.hl.highlight_lines(
+                        &snapshot,
                         start_buffer_row,
                         end_buffer_row_exclusive - start_buffer_row,
                         &editor.colorscheme,
@@ -180,7 +187,7 @@ impl ViewController for TextViewController {
                     );
                 }
             }
-            editor.should_sync = false;
+            buffer.doc.should_sync = false;
         }
 
         Ok(ControllerResult::None)
@@ -196,7 +203,7 @@ impl ViewController for TextViewController {
     ) -> Result<ControllerResult, Box<dyn std::error::Error>> {
         if action != Action::NoOp {
             editor.apply_active_action(buffer_manager, &action);
-            editor.should_sync = true;
+            buffer_manager.active_mut().doc.should_sync = true;
             editor.should_redraw = true;
         }
         Ok(ControllerResult::None)
@@ -220,11 +227,11 @@ impl ViewController for TextViewController {
                     .iter_mut()
                     .find(|b| &b.file_path == file_path)
                 {
-                    if *task_id >= background::TaskId(buf.current_hl_task_id) {
-                        buf.current_hl_task_id = task_id.0;
-                        buf.hl
+                    if *task_id >= background::TaskId(buf.doc.current_hl_task_id) {
+                        buf.doc.current_hl_task_id = task_id.0;
+                        buf.doc.hl
                             .merge_caches(style_cache.clone(), std::collections::HashMap::new());
-                        buf.hl.last_snapshot_version = Some(buf.doc.buffer().snapshot().version.clone());
+                        buf.doc.hl.last_snapshot_version = Some(buf.doc.buffer().snapshot().version.clone());
                         editor.should_redraw = true;
                     }
                 }
@@ -240,9 +247,9 @@ impl ViewController for TextViewController {
                     .iter_mut()
                     .find(|b| &b.file_path == file_path)
                 {
-                    if *task_id >= background::TaskId(buf.current_wrap_task_id) {
-                        buf.current_wrap_task_id = task_id.0;
-                        buf.display_map.apply_wrap_snapshot(wrap_snapshot.clone());
+                    if *task_id >= background::TaskId(buf.doc.current_wrap_task_id) {
+                        buf.doc.current_wrap_task_id = task_id.0;
+                        buf.doc.display_map.apply_wrap_snapshot(wrap_snapshot.clone());
                         editor.should_redraw = true;
                     }
                 }
@@ -259,8 +266,8 @@ impl ViewController for TextViewController {
                         .iter_mut()
                         .find(|b| &b.file_path == file_path)
                     {
-                        if *task_id >= background::TaskId(buf.current_parse_task_id) {
-                            buf.current_parse_task_id = task_id.0;
+                        if *task_id >= background::TaskId(buf.doc.current_parse_task_id) {
+                            buf.doc.current_parse_task_id = task_id.0;
                             buf.syntax_tree = Some(syntax_tree.clone());
                             editor.should_redraw = true;
                         }

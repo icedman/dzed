@@ -37,7 +37,7 @@ impl TextView {
 
         let buffer = buffer_manager.active();
 
-        let display_snapshot = buffer.display_map.snapshot();
+        let display_snapshot = buffer.doc.display_map.snapshot();
         let doc_buffer = buffer.doc.buffer();
         let row_count = display_snapshot.row_count();
         let end_line = (display_snapshot.scroll_y + inner_rect.height as u32).min(row_count);
@@ -239,7 +239,7 @@ impl TextView {
                     let mut bg = editor_bg;
 
                     if editor.syntax {
-                        if let Some(style_cache) = buffer.hl.render_row(orig_point.row) {
+                        if let Some(style_cache) = buffer.doc.hl.render_row(orig_point.row) {
                             if let Some(&(style, _, _)) =
                                 style_cache.styles.iter().find(|(_, start, end)| {
                                     orig_point.column >= *start && orig_point.column < *end

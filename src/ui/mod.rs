@@ -128,7 +128,9 @@ impl Ui {
         // Recompute layout if needed.
         // Update window rects.
         if self.layout(screen_cols as u32, screen_rows as u32) {
-            editor.should_sync = true;
+            for buffer in &mut buffer_manager.buffers {
+                buffer.doc.should_sync = true;
+            }
             editor.should_redraw = true;
         }
 

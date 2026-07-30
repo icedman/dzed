@@ -6,8 +6,10 @@ use crate::services::clipboard::ClipboardKind;
 
 use clock::ReplicaId;
 use rope::Point;
-use std::{cmp::Ordering, io};
+use std::{cmp::Ordering, io, sync::Arc, sync::atomic::AtomicU64};
 use sum_tree::Bias;
+use crate::editor::display::display_map::DisplayMap;
+use crate::editor::display::highlight::Highlights;
 use text::{Anchor, Buffer, BufferId, BufferSnapshot, Selection, SelectionGoal, ToOffset, ToPoint};
 
 pub trait BufferText {
@@ -36,6 +38,15 @@ pub struct Document {
     selections: SelectionCollection,
     mode: Mode,
     pub folds: Vec<display::fold_map::Fold>,
+    pub display_map: DisplayMap,
+    pub hl: Highlights,
+    pub latest_hl_task_id: Arc<AtomicU64>,
+    pub latest_wrap_task_id: Arc<AtomicU64>,
+    pub latest_parse_task_id: Arc<AtomicU64>,
+    pub current_hl_task_id: u64,
+    pub current_wrap_task_id: u64,
+    pub current_parse_task_id: u64,
+    pub should_sync: bool,
 }
 
 impl Document {
@@ -47,6 +58,8 @@ impl Document {
         );
         let mut selections = SelectionCollection::new();
         selections.add(&buffer, 0);
+        let hl = Highlights::new("");
+        let display_map = DisplayMap::new(buffer.snapshot().clone(), None);
 
         Self {
             id: 0,
@@ -54,6 +67,15 @@ impl Document {
             selections,
             mode: Mode::Normal,
             folds: Vec::new(),
+            display_map,
+            hl,
+            latest_hl_task_id: Arc::new(AtomicU64::new(0)),
+            latest_wrap_task_id: Arc::new(AtomicU64::new(0)),
+            latest_parse_task_id: Arc::new(AtomicU64::new(0)),
+            current_hl_task_id: 0,
+            current_wrap_task_id: 0,
+            current_parse_task_id: 0,
+            should_sync: true,
         }
     }
 
@@ -69,6 +91,8 @@ impl Document {
         let buffer = Buffer::new(ReplicaId::default(), BufferId::new(1).unwrap(), contents);
         let mut selections = SelectionCollection::new();
         selections.add(&buffer, 0);
+        let hl = Highlights::new(file_path);
+        let display_map = DisplayMap::new(buffer.snapshot().clone(), None);
 
         Ok(Self {
             id: 0,
@@ -76,6 +100,15 @@ impl Document {
             selections,
             mode: Mode::Normal,
             folds: Vec::new(),
+            display_map,
+            hl,
+            latest_hl_task_id: Arc::new(AtomicU64::new(0)),
+            latest_wrap_task_id: Arc::new(AtomicU64::new(0)),
+            latest_parse_task_id: Arc::new(AtomicU64::new(0)),
+            current_hl_task_id: 0,
+            current_wrap_task_id: 0,
+            current_parse_task_id: 0,
+            should_sync: true,
         })
     }
 
@@ -915,66 +948,52 @@ impl Document {
                 .selections
                 .move_to_end_of_next_line(*select, &self.buffer),
             Action::MovePageUp { count, select } => {
-                if let Some(buffer) = buffer_manager.find(self) {
-                    let page_size = buffer.display_map.snapshot().visible_rows.saturating_sub(4).max(1);
-                    self.selections
-                        .move_up(*select, page_size * *count, &self.buffer);
-                }
+                let page_size = self.display_map.snapshot().visible_rows.saturating_sub(4).max(1);
+                self.selections
+                    .move_up(*select, page_size * *count, &self.buffer);
             }
             Action::MovePageDown { count, select } => {
-                if let Some(buffer) = buffer_manager.find(self) {
-                    let page_size = buffer.display_map.snapshot().visible_rows.saturating_sub(4).max(1);
-                    self.selections
-                        .move_down(*select, page_size * *count, &self.buffer);
-                }
+                let page_size = self.display_map.snapshot().visible_rows.saturating_sub(4).max(1);
+                self.selections
+                    .move_down(*select, page_size * *count, &self.buffer);
             }
             Action::ScrollHalfPageUp { count } => {
-                if let Some(buffer) = buffer_manager.find(self) {
-                    let half_page_size = (buffer.display_map.snapshot().visible_rows.saturating_sub(4).max(2) / 2).max(1);
-                    self.selections
-                        .move_up(false, half_page_size * *count, &self.buffer);
-                }
+                let half_page_size = (self.display_map.snapshot().visible_rows.saturating_sub(4).max(2) / 2).max(1);
+                self.selections
+                    .move_up(false, half_page_size * *count, &self.buffer);
             }
             Action::ScrollHalfPageDown { count } => {
-                if let Some(buffer) = buffer_manager.find(self) {
-                    let half_page_size = (buffer.display_map.snapshot().visible_rows.saturating_sub(4).max(2) / 2).max(1);
-                    self.selections
-                        .move_down(false, half_page_size * *count, &self.buffer);
-                }
+                let half_page_size = (self.display_map.snapshot().visible_rows.saturating_sub(4).max(2) / 2).max(1);
+                self.selections
+                    .move_down(false, half_page_size * *count, &self.buffer);
             }
             Action::MoveToScreenTop { select, count } => {
-                if let Some(buffer) = buffer_manager.find(self) {
-                    let display_snapshot = buffer.display_map.snapshot();
-                    let target_point = display_snapshot.display_point_to_point(
-                        display::display_map::DisplayPoint::new(display_snapshot.scroll_y, 0),
-                    );
-                    self.selections
-                        .move_to_line(*select, target_point.row, &self.buffer);
-                }
+                let display_snapshot = self.display_map.snapshot();
+                let target_point = display_snapshot.display_point_to_point(
+                    display::display_map::DisplayPoint::new(display_snapshot.scroll_y, 0),
+                );
+                self.selections
+                    .move_to_line(*select, target_point.row, &self.buffer);
             }
             Action::MoveToScreenMiddle { select, count } => {
-                if let Some(buffer) = buffer_manager.find(self) {
-                    let display_snapshot = buffer.display_map.snapshot();
-                    let middle_display_row =
-                        display_snapshot.scroll_y + display_snapshot.visible_rows / 2;
-                    let target_point = display_snapshot.display_point_to_point(
-                        display::display_map::DisplayPoint::new(middle_display_row, 0),
-                    );
-                    self.selections
-                        .move_to_line(*select, target_point.row, &self.buffer);
-                }
+                let display_snapshot = self.display_map.snapshot();
+                let middle_display_row =
+                    display_snapshot.scroll_y + display_snapshot.visible_rows / 2;
+                let target_point = display_snapshot.display_point_to_point(
+                    display::display_map::DisplayPoint::new(middle_display_row, 0),
+                );
+                self.selections
+                    .move_to_line(*select, target_point.row, &self.buffer);
             }
             Action::MoveToScreenBottom { select, count } => {
-                if let Some(buffer) = buffer_manager.find(self) {
-                    let display_snapshot = buffer.display_map.snapshot();
-                    let bottom_display_row =
-                        display_snapshot.scroll_y + display_snapshot.visible_rows.saturating_sub(1);
-                    let target_point = display_snapshot.display_point_to_point(
-                        display::display_map::DisplayPoint::new(bottom_display_row, 0),
-                    );
-                    self.selections
-                        .move_to_line(*select, target_point.row, &self.buffer);
-                }
+                let display_snapshot = self.display_map.snapshot();
+                let bottom_display_row =
+                    display_snapshot.scroll_y + display_snapshot.visible_rows.saturating_sub(1);
+                let target_point = display_snapshot.display_point_to_point(
+                    display::display_map::DisplayPoint::new(bottom_display_row, 0),
+                );
+                self.selections
+                    .move_to_line(*select, target_point.row, &self.buffer);
             }
             Action::InsertText(text) => {
                 self.delete_text(0);

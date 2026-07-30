@@ -7,19 +7,12 @@ use crate::ui::colorscheme::ColorScheme;
 use crate::ui::theme::Theme;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
+use text;
 
 pub struct TextBuffer {
     pub id: usize,
     pub file_path: String,
     pub doc: Document,
-    pub display_map: DisplayMap,
-    pub hl: Highlights,
-    pub latest_hl_task_id: Arc<AtomicU64>,
-    pub latest_wrap_task_id: Arc<AtomicU64>,
-    pub latest_parse_task_id: Arc<AtomicU64>,
-    pub current_hl_task_id: u64,
-    pub current_wrap_task_id: u64,
-    pub current_parse_task_id: u64,
     pub grammar: Option<services::treesitter::grammars::Grammar>,
     pub syntax_tree: Option<services::treesitter::SyntaxTree>,
 }
@@ -28,21 +21,11 @@ impl TextBuffer {
     pub fn new(id: usize, file_path: &str) -> Result<Self, Box<dyn std::error::Error>> {
         let mut doc = Document::new(file_path)?;
         doc.id = id;
-        let hl = Highlights::new(file_path);
-        let display_map = DisplayMap::new(doc.buffer().snapshot().clone(), None);
         let grammar = services::treesitter::grammars::Grammar::from_path(file_path);
         Ok(Self {
             id,
             file_path: file_path.to_string(),
             doc,
-            display_map,
-            hl,
-            latest_hl_task_id: Arc::new(AtomicU64::new(0)),
-            latest_wrap_task_id: Arc::new(AtomicU64::new(0)),
-            latest_parse_task_id: Arc::new(AtomicU64::new(0)),
-            current_hl_task_id: 0,
-            current_wrap_task_id: 0,
-            current_parse_task_id: 0,
             grammar,
             syntax_tree: None,
         })

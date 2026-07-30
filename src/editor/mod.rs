@@ -25,7 +25,6 @@ pub struct Editor {
     pub fold_multiline_only: bool,
     // state
     pub should_redraw: bool,
-    pub should_sync: bool,
 
     pub theme: Theme,
     pub colorscheme: ColorScheme,
@@ -41,6 +40,7 @@ impl Editor {
         if !enabled {
             for buffer in &mut buffer_manager.buffers {
                 buffer
+                    .doc
                     .latest_parse_task_id
                     .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 buffer.syntax_tree = None;
@@ -80,7 +80,6 @@ impl Editor {
             fold: true,
             fold_multiline_only: true,
             should_redraw: true,
-            should_sync: true,
             services,
             last_action: Action::NoOp,
         })
