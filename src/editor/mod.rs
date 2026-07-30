@@ -28,6 +28,7 @@ pub struct Editor {
 
     pub services: Services,
 
+    pub textmate_highlights: bool,
     pub treesitter_highlights: bool,
     pub last_action: Action,
 }
@@ -89,6 +90,7 @@ impl Editor {
             fold_multiline_only: true,
             should_redraw: true,
             services,
+            textmate_highlights: true,
             treesitter_highlights: true,
             last_action: Action::NoOp,
         })

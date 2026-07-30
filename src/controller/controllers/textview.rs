@@ -91,6 +91,7 @@ impl ViewController for TextViewController {
                         row_count: hl_end - hl_start,
                         colorscheme: std::sync::Arc::new(editor.colorscheme.clone()),
                         syntax_tree: buffer.syntax_tree.clone(),
+                        textmate_highlights: editor.textmate_highlights,
                         treesitter_highlights: editor.treesitter_highlights,
                         task_id: TaskId(hl_task_id),
                         latest_task_id: document.latest_hl_task_id.clone(),
@@ -177,6 +178,7 @@ impl ViewController for TextViewController {
                         end_buffer_row_exclusive - start_buffer_row,
                         &editor.colorscheme,
                         buffer.syntax_tree.as_ref(),
+                        editor.textmate_highlights,
                         editor.treesitter_highlights,
                     );
                 }

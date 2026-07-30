@@ -27,6 +27,7 @@ pub enum BackgroundTask {
         row_count: u32,
         colorscheme: Arc<crate::ui::colorscheme::ColorScheme>,
         syntax_tree: Option<crate::services::treesitter::tree_sitter::SyntaxTree>,
+        textmate_highlights: bool,
         treesitter_highlights: bool,
         task_id: TaskId,
         latest_task_id: Arc<AtomicU64>,
@@ -102,6 +103,7 @@ impl BackgroundWorker {
                         row_count,
                         colorscheme,
                         syntax_tree,
+                        textmate_highlights,
                         treesitter_highlights,
                         task_id,
                         latest_task_id,
@@ -121,7 +123,8 @@ impl BackgroundWorker {
                             row_count,
                             &colorscheme,
                             syntax_tree.as_ref(),
-                            treesitter_highlights,
+                            textmate_highlights,
+                        treesitter_highlights,
                         );
 
                         // Extract computed style cache

@@ -266,6 +266,7 @@ impl Highlights {
         row_count: u32,
         colorscheme: &colorscheme::ColorScheme,
         syntax_tree: Option<&crate::services::treesitter::tree_sitter::SyntaxTree>,
+        textmate_highlights: bool,
         treesitter_highlights: bool,
     ) {
         self.last_snapshot_version = Some(buffer.version.clone());
@@ -305,19 +306,25 @@ impl Highlights {
 
         for row in start..end_row {
             let text = row_text(buffer, row) + "\n";
-            let ops = parser
-                .parse_line(&text, &self.syntax_set)
-                .expect("syntax parsing failed");
-
             let mut styles = Vec::new();
-            let mut column = 0_u32;
-            for (range, op) in ScopeRangeIterator::new(&ops, &text) {
-                let _ = stack.apply(&op);
-                let start_column = column;
-                let len = range.end - range.start;
-                column += len as u32;
-                let style = map_scope_to_style(stack.as_slice(), colorscheme);
-                styles.push((style, start_column, column));
+
+            if textmate_highlights {
+                let ops = parser
+                    .parse_line(&text, &self.syntax_set)
+                    .expect("syntax parsing failed");
+
+                let mut column = 0_u32;
+                for (range, op) in ScopeRangeIterator::new(&ops, &text) {
+                    let _ = stack.apply(&op);
+                    let start_column = column;
+                    let len = range.end - range.start;
+                    column += len as u32;
+                    let style = map_scope_to_style(stack.as_slice(), colorscheme);
+                    styles.push((style, start_column, column));
+                }
+            } else {
+                let resolved_style = map_scope_to_style(&[], colorscheme);
+                styles.push((resolved_style, 0, text.len() as u32));
             }
 
             if row >= start_row {
@@ -419,7 +426,7 @@ mod tests {
         let mut highlights = Highlights::new("test.rs");
         let colorscheme = colorscheme::ColorScheme::load_default();
                 
-        highlights.highlight_lines(&buffer.snapshot(), 2, 2, &colorscheme, None, false);
+        highlights.highlight_lines(&buffer.snapshot(), 2, 2, &colorscheme, None, true, false);
 
         assert!(highlights.render_row(0).is_none());
         assert!(highlights.render_row(1).is_none());
@@ -435,7 +442,7 @@ mod tests {
         let mut highlights = Highlights::new("test.rs");
         let colorscheme = colorscheme::ColorScheme::load_default();
                 
-        highlights.highlight_lines(&buffer.snapshot(), 0, 1, &colorscheme, None, false);
+        highlights.highlight_lines(&buffer.snapshot(), 0, 1, &colorscheme, None, true, false);
 
         let styles = &highlights.render_row(0).unwrap().styles;
         assert_eq!(styles.first().unwrap().1, 0);
@@ -448,10 +455,10 @@ mod tests {
         let mut highlights = Highlights::new("test.rs");
         let colorscheme = colorscheme::ColorScheme::load_default();
                 
-        highlights.highlight_lines(&buffer.snapshot(), 0, 2, &colorscheme, None, false);
+        highlights.highlight_lines(&buffer.snapshot(), 0, 2, &colorscheme, None, true, false);
         assert!(highlights.contains_rows(0, 2));
 
-        highlights.highlight_lines(&buffer.snapshot(), 2, 2, &colorscheme, None, false);
+        highlights.highlight_lines(&buffer.snapshot(), 2, 2, &colorscheme, None, true, false);
         assert!(!highlights.contains_rows(0, 2));
         assert!(highlights.contains_rows(2, 4));
     }
@@ -475,6 +482,7 @@ mod tests {
             1,
             &colorscheme,
             Some(&syntax_tree),
+            true,
             true,
         );
 
