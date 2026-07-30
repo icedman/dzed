@@ -164,9 +164,11 @@ impl TextView {
                 let relative_row = (screen_row - inner_rect.y) as u32;
                 let is_handle = relative_row >= start_y && relative_row < start_y + handle_h;
 
-                for (column, ch) in text.chars().enumerate() {
+                let mut byte_column = 0;
+                for (_column, ch) in text.chars().enumerate() {
                     let orig_point = display_snapshot
-                        .display_point_to_point(DisplayPoint::new(row, column as u32));
+                        .display_point_to_point(DisplayPoint::new(row, byte_column as u32));
+                    byte_column += ch.len_utf8();
 
                     // Determine if current column is within a search match range
                     let mut in_match = false;
