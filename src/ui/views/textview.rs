@@ -188,13 +188,12 @@ impl TextView {
 
                     if editor.syntax {
                         if let Some(style_cache) = document.hl.render_row(orig_point.row) {
-                            if let Some(&(style, _, _)) =
-                                style_cache.styles.iter().find(|(_, start, end)| {
-                                    orig_point.column >= *start && orig_point.column < *end
+                            if let Some(span) =
+                                style_cache.styles.iter().find(|span| {
+                                    orig_point.column >= span.start && orig_point.column < span.end
                                 })
                             {
-                                fg = style.foreground.rgb();
-                                bg = style.background.rgb();
+                                fg = span.style.color;
                             }
                         }
                     }

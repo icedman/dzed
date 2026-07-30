@@ -49,6 +49,7 @@ impl Window {
         rect: Rect,
         editor: &Editor,
         buffer_manager: &mut crate::editor::buffers::BufferManager,
+        active_doc: Option<&crate::editor::document::Document>,
     ) -> std::io::Result<()> {
         if rect.width == 0 || rect.height == 0 {
             return Ok(());
@@ -129,7 +130,8 @@ impl Window {
             } else {
                 rect
             };
-            _ = view.draw(w, inner_rect, editor, buffer_manager, self.doc.as_ref());
+            let doc_to_pass = self.doc.as_ref().or(active_doc);
+            _ = view.draw(w, inner_rect, editor, buffer_manager, doc_to_pass);
         }
 
         Ok(())

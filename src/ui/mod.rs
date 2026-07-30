@@ -160,12 +160,33 @@ impl Ui {
         editor: &mut Editor,
         buffer_manager: &mut crate::editor::buffers::BufferManager,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        // Temporarily take the active document to bypass borrow checker
+        let mut active_doc = self.focused_window_id
+            .and_then(|id| self.windows.get_mut(&id))
+            .and_then(|win| win.doc.take());
+
         let computed = &self.cached_layouts;
         for &(win_id, rect) in computed {
             if let Some(win) = self.windows.get_mut(&win_id) {
-                win.draw(stdout, rect, editor, buffer_manager)?;
+                if Some(win_id) == self.focused_window_id {
+                    win.doc = active_doc.take();
+                }
+
+                win.draw(stdout, rect, editor, buffer_manager, active_doc.as_ref())?;
+
+                if Some(win_id) == self.focused_window_id {
+                    active_doc = win.doc.take();
+                }
             }
         }
+
+        // Put it back permanently
+        if let Some(id) = self.focused_window_id {
+            if let Some(win) = self.windows.get_mut(&id) {
+                win.doc = active_doc;
+            }
+        }
+
         Ok(())
     }
 }

@@ -29,6 +29,7 @@ pub enum BackgroundTask {
         syntax_tree: Option<crate::services::treesitter::tree_sitter::SyntaxTree>,
         textmate_highlights: bool,
         treesitter_highlights: bool,
+        map_scope_to_scheme: bool,
         task_id: TaskId,
         latest_task_id: Arc<AtomicU64>,
     },
@@ -105,6 +106,7 @@ impl BackgroundWorker {
                         syntax_tree,
                         textmate_highlights,
                         treesitter_highlights,
+                        map_scope_to_scheme,
                         task_id,
                         latest_task_id,
                     } => {
@@ -124,11 +126,12 @@ impl BackgroundWorker {
                             &colorscheme,
                             syntax_tree.as_ref(),
                             textmate_highlights,
-                        treesitter_highlights,
+                            treesitter_highlights,
+                            map_scope_to_scheme,
                         );
 
                         // Extract computed style cache
-                        let style_cache = hl.get_style_cache().clone();
+                        let style_cache = hl.textmate_style_cache.clone();
 
                         // Final cancellation check before committing channel payload
                         if latest_task_id.load(Ordering::SeqCst) > task_id.0 {

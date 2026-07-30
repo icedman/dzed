@@ -30,6 +30,7 @@ pub struct Editor {
 
     pub textmate_highlights: bool,
     pub treesitter_highlights: bool,
+    pub map_scope_to_scheme: bool,
     pub last_action: Action,
 }
 
@@ -92,6 +93,7 @@ impl Editor {
             services,
             textmate_highlights: true,
             treesitter_highlights: true,
+            map_scope_to_scheme: true,
             last_action: Action::NoOp,
         })
     }

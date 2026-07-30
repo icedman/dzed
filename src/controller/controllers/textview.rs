@@ -93,6 +93,7 @@ impl ViewController for TextViewController {
                         syntax_tree: buffer.syntax_tree.clone(),
                         textmate_highlights: editor.textmate_highlights,
                         treesitter_highlights: editor.treesitter_highlights,
+                        map_scope_to_scheme: editor.map_scope_to_scheme,
                         task_id: TaskId(hl_task_id),
                         latest_task_id: document.latest_hl_task_id.clone(),
                     },
@@ -180,6 +181,7 @@ impl ViewController for TextViewController {
                         buffer.syntax_tree.as_ref(),
                         editor.textmate_highlights,
                         editor.treesitter_highlights,
+                        editor.map_scope_to_scheme,
                     );
                 }
             }
@@ -264,6 +266,12 @@ impl ViewController for TextViewController {
                         if *task_id >= background::TaskId(document.current_parse_task_id) {
                             document.current_parse_task_id = task_id.0;
                             buf.syntax_tree = Some(syntax_tree.clone());
+                            document.hl.update_treesitter_highlights(
+                                &buf.buffer.snapshot(),
+                                Some(&syntax_tree),
+                                &editor.colorscheme,
+                                editor.treesitter_highlights,
+                            );
                             editor.should_redraw = true;
                         }
                     }

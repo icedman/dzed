@@ -1,11 +1,11 @@
 use std::sync::OnceLock;
-use crate::ui::colorscheme::{self};
+use crate::ui::colorscheme::{self, Style};
 use clock::Global;
 use rope::Point;
 use std::{collections::HashMap, path::Path};
 use syntect::{
     easy::ScopeRangeIterator,
-    highlighting::Style,
+    highlighting::{Highlighter, HighlightState},
     parsing::{ParseState, ScopeStack, SyntaxReference, SyntaxSet},
 };
 use text::{BufferSnapshot, ToOffset, ToPoint};
@@ -38,15 +38,24 @@ pub struct StateCache {
     pub scope_stack: Option<ScopeStack>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StyledSpan {
+    pub style: Style,
+    pub start: u32,
+    pub end: u32,
+}
+
+#[derive(Clone, Debug)]
 pub struct StyleCache {
-    pub styles: Vec<(Style, u32, u32)>,
+    pub styles: Vec<StyledSpan>,
 }
 
 pub struct Highlights {
     syntax_set: SyntaxSet,
     syntax: SyntaxReference,
     state_cache: HashMap<usize, StateCache>,
+    pub textmate_style_cache: HashMap<u32, StyleCache>,
+    pub treesitter_style_cache: HashMap<u32, Vec<StyledSpan>>,
     style_cache: HashMap<u32, StyleCache>,
     highlight_start: u32,
     pub last_snapshot_version: Option<Global>,
@@ -90,6 +99,7 @@ const SCOPE_MAPPINGS: &[(&str, &str)] = &[
     ("support.other.namespace", "module"),
     ("namespace", "module"),
     ("meta.path", "module"),
+    ("meta.block", "module"),
     ("entity.other.inherited-class", "type"),
     ("entity.name.type", "type"),
     ("support.type", "type"),
@@ -111,42 +121,57 @@ const SCOPE_MAPPINGS: &[(&str, &str)] = &[
 ];
 
 
-fn get_treesitter_query(grammar: crate::services::treesitter::grammars::Grammar) -> &'static str {
-    match grammar {
-        crate::services::treesitter::grammars::Grammar::Rust => {
-            r#"
-            (call_expression function: (scoped_identifier name: (identifier) @function))
-            (call_expression function: (field_expression field: (field_identifier) @function))
-            (call_expression function: (identifier) @function)
-            (struct_expression name: (type_identifier) @type)
-            (type_identifier) @type
-            "#
-        }
-        _ => "",
+fn map_node_kind_to_syntax_key(kind: &str) -> Option<&'static str> {
+    if kind.contains("comment") {
+        Some("comment")
+    } else if kind.contains("keyword") || kind == "use_declaration" || kind == "let_declaration" || kind == "const_declaration" {
+        Some("keyword")
+    } else if kind.contains("string") {
+        Some("string")
+    } else if kind.contains("function") || kind == "call_expression" || kind == "field_identifier" {
+        Some("function")
+    } else if kind.contains("type") || kind == "struct_item" || kind == "enum_item" {
+        Some("type")
+    } else if kind.contains("integer") || kind.contains("float") || kind == "number" {
+        Some("number")
+    } else if kind.contains("boolean") {
+        Some("boolean")
+    } else {
+        None
     }
 }
 
 fn override_row_style(
-    styles: &mut Vec<(syntect::highlighting::Style, u32, u32)>,
+    styles: &mut Vec<StyledSpan>,
     target_start: u32,
     target_end: u32,
-    override_color: syntect::highlighting::Color,
+    override_style: Style,
 ) {
     let mut new_styles = Vec::new();
-    for (style, start, end) in styles.drain(..) {
-        if end <= target_start || start >= target_end {
-            new_styles.push((style, start, end));
+    for span in styles.drain(..) {
+        if span.end <= target_start || span.start >= target_end {
+            new_styles.push(span);
         } else {
-            if start < target_start {
-                new_styles.push((style, start, target_start));
+            if span.start < target_start {
+                new_styles.push(StyledSpan {
+                    style: span.style.clone(),
+                    start: span.start,
+                    end: target_start,
+                });
             }
-            let overlap_start = start.max(target_start);
-            let overlap_end = end.min(target_end);
-            let mut overridden_style = style;
-            overridden_style.foreground = override_color;
-            new_styles.push((overridden_style, overlap_start, overlap_end));
-            if end > target_end {
-                new_styles.push((style, target_end, end));
+            let overlap_start = span.start.max(target_start);
+            let overlap_end = span.end.min(target_end);
+            new_styles.push(StyledSpan {
+                style: override_style.clone(),
+                start: overlap_start,
+                end: overlap_end,
+            });
+            if span.end > target_end {
+                new_styles.push(StyledSpan {
+                    style: span.style,
+                    start: target_end,
+                    end: span.end,
+                });
             }
         }
     }
@@ -182,39 +207,18 @@ fn map_scope_to_style(
         }
     }
 
-    let mut font_style = syntect::highlighting::FontStyle::empty();
-    if resolved_style.bold {
-        font_style.insert(syntect::highlighting::FontStyle::BOLD);
-    }
-    if resolved_style.italic {
-        font_style.insert(syntect::highlighting::FontStyle::ITALIC);
-    }
-    if resolved_style.underline {
-        font_style.insert(syntect::highlighting::FontStyle::UNDERLINE);
-    }
+    resolved_style
+}
 
-    let r_fg = match resolved_style.color {
-        crossterm::style::Color::Rgb { r, g, b } => {
-            syntect::highlighting::Color { r, g, b, a: 255 }
-        }
-        _ => syntect::highlighting::Color::WHITE,
-    };
-    let r_bg = match colorscheme
-        .ui
-        .get("background")
-        .map(|s| s.color)
-        .unwrap_or(crossterm::style::Color::Black)
-    {
-        crossterm::style::Color::Rgb { r, g, b } => {
-            syntect::highlighting::Color { r, g, b, a: 255 }
-        }
-        _ => syntect::highlighting::Color::BLACK,
-    };
-
+fn convert_to_style(syntect_style: syntect::highlighting::Style) -> Style {
+    let fg = syntect_style.foreground;
+    let color = crossterm::style::Color::Rgb { r: fg.r, g: fg.g, b: fg.b };
     Style {
-        foreground: r_fg,
-        background: r_bg,
-        font_style,
+        color,
+        bold: syntect_style.font_style.contains(syntect::highlighting::FontStyle::BOLD),
+        italic: syntect_style.font_style.contains(syntect::highlighting::FontStyle::ITALIC),
+        underline: syntect_style.font_style.contains(syntect::highlighting::FontStyle::UNDERLINE),
+        strikethrough: false,
     }
 }
 
@@ -222,7 +226,7 @@ fn map_scope_to_style(
 fn get_catppuccin_theme() -> &'static syntect::highlighting::Theme {
     static THEME: OnceLock<syntect::highlighting::Theme> = OnceLock::new();
     THEME.get_or_init(|| {
-        let theme_bytes = include_bytes!("../../../data/themes/catppuccin-mocha.tmTheme");
+        let theme_bytes = include_bytes!("catppuccin-mocha.tmTheme");
         let mut cursor = std::io::Cursor::new(theme_bytes);
         syntect::highlighting::ThemeSet::load_from_reader(&mut cursor).unwrap_or_else(|_| {
             let theme_set = syntect::highlighting::ThemeSet::load_defaults();
@@ -249,10 +253,20 @@ impl Highlights {
             syntax_set: syntax_set.clone(),
             syntax: syntax.clone(),
             state_cache: HashMap::new(),
+            textmate_style_cache: HashMap::new(),
+            treesitter_style_cache: HashMap::new(),
             style_cache: HashMap::new(),
             highlight_start: 0,
             last_snapshot_version: None,
         }
+    }
+
+    pub fn syntax_set(&self) -> &SyntaxSet {
+        &self.syntax_set
+    }
+
+    pub fn syntax(&self) -> &SyntaxReference {
+        &self.syntax
     }
 
     pub fn is_sync(&self, buffer: &BufferSnapshot) -> bool {
@@ -268,16 +282,22 @@ impl Highlights {
         syntax_tree: Option<&crate::services::treesitter::tree_sitter::SyntaxTree>,
         textmate_highlights: bool,
         treesitter_highlights: bool,
+        map_scope_to_scheme: bool,
     ) {
         self.last_snapshot_version = Some(buffer.version.clone());
-        self.style_cache.clear();
+        self.textmate_style_cache.clear();
+        self.treesitter_style_cache.clear();
         let mut cached_state: Option<StateCache> = None;
 
         if row_count == 0 || start_row >= buffer.row_count() {
             return;
         }
 
-        let mut start: u32 = start_row.saturating_sub(START_OFFSET);
+        let mut start: u32 = if textmate_highlights {
+            start_row.saturating_sub(START_OFFSET)
+        } else {
+            start_row
+        };
 
         if ENABLE_STATE_CACHE {
             if let Some((_key, value)) = find_entry::<StateCache>(
@@ -304,6 +324,15 @@ impl Highlights {
             None => ScopeStack::new(),
         };
 
+        let theme = get_catppuccin_theme();
+        let highlighter = Highlighter::new(theme);
+        let mut highlighter_state = match cached_state {
+            Some(ref state) => state.highlight_state.clone().unwrap_or_else(|| {
+                HighlightState::new(&highlighter, ScopeStack::new())
+            }),
+            None => HighlightState::new(&highlighter, ScopeStack::new()),
+        };
+
         for row in start..end_row {
             let text = row_text(buffer, row) + "\n";
             let mut styles = Vec::new();
@@ -313,22 +342,41 @@ impl Highlights {
                     .parse_line(&text, &self.syntax_set)
                     .expect("syntax parsing failed");
 
-                let mut column = 0_u32;
-                for (range, op) in ScopeRangeIterator::new(&ops, &text) {
-                    let _ = stack.apply(&op);
-                    let start_column = column;
-                    let len = range.end - range.start;
-                    column += len as u32;
-                    let style = map_scope_to_style(stack.as_slice(), colorscheme);
-                    styles.push((style, start_column, column));
+                if map_scope_to_scheme {
+                    let mut column = 0_u32;
+                    for (range, op) in ScopeRangeIterator::new(&ops, &text) {
+                        let _ = stack.apply(&op);
+                        let start_column = column;
+                        let len = range.end - range.start;
+                        column += len as u32;
+                        let style = map_scope_to_style(stack.as_slice(), colorscheme);
+                        styles.push(StyledSpan { style, start: start_column, end: column });
+                    }
+                } else {
+                    let mut column = 0_u32;
+                    let highlight_iter = syntect::highlighting::HighlightIterator::new(
+                        &mut highlighter_state,
+                        &ops,
+                        &text,
+                        &highlighter,
+                    );
+                    for (syntect_style, token_text) in highlight_iter {
+                        let start_column = column;
+                        column += token_text.len() as u32;
+                        let style = convert_to_style(syntect_style);
+                        styles.push(StyledSpan { style, start: start_column, end: column });
+                    }
+                    for op in ops {
+                        let _ = stack.apply(&op.1);
+                    }
                 }
             } else {
                 let resolved_style = map_scope_to_style(&[], colorscheme);
-                styles.push((resolved_style, 0, text.len() as u32));
+                styles.push(StyledSpan { style: resolved_style, start: 0, end: text.len() as u32 });
             }
 
             if row >= start_row {
-                self.style_cache.insert(row, StyleCache { styles });
+                self.textmate_style_cache.insert(row, StyleCache { styles });
             }
 
             if ENABLE_STATE_CACHE && row % CACHE_INTERVAL == 0 {
@@ -337,7 +385,7 @@ impl Highlights {
                     StateCache {
                         line_number: row,
                         parser_state: parser.clone(),
-                        highlight_state: None,
+                        highlight_state: Some(highlighter_state.clone()),
                         scope_stack: Some(stack.clone()),
                     },
                 );
@@ -346,33 +394,27 @@ impl Highlights {
 
         if treesitter_highlights {
             if let Some(tree) = syntax_tree {
-                let query_str = get_treesitter_query(tree.grammar());
-                if !query_str.is_empty() {
-                    if let Ok(captures) = tree.query(buffer, query_str) {
-                        for capture in captures {
-                            let start_point = capture.node.byte_range.start.to_point(buffer);
-                            let end_point = capture.node.byte_range.end.to_point(buffer);
-                            let row = start_point.row;
-                            if row >= start_row && row < end_row {
-                                if let Some(style_cache) = self.style_cache.get_mut(&row) {
-                                    if let Some(func_style) = colorscheme.syntax.get(&capture.name) {
-                                        if let crossterm::style::Color::Rgb { r, g, b } = func_style.color {
-                                            let override_color = syntect::highlighting::Color { r, g, b, a: 255 };
-                                            override_row_style(
-                                                &mut style_cache.styles,
-                                                start_point.column,
-                                                end_point.column,
-                                                override_color,
-                                            );
-                                        }
-                                    }
-                                }
+                for node in tree.named_nodes() {
+                    let row = node.start_position.row as u32;
+                    if row >= start_row && row < end_row {
+                        if let Some(key) = map_node_kind_to_syntax_key(&node.kind) {
+                            if let Some(func_style) = colorscheme.syntax.get(key) {
+                                self.treesitter_style_cache
+                                    .entry(row)
+                                    .or_insert_with(Vec::new)
+                                    .push(StyledSpan {
+                                        style: func_style.clone(),
+                                        start: node.start_position.column as u32,
+                                        end: node.end_position.column as u32,
+                                    });
                             }
                         }
                     }
                 }
             }
         }
+
+        self.rebuild_merged_cache();
     }
 
     pub fn name(&self) -> String {
@@ -389,7 +431,8 @@ impl Highlights {
 
     pub fn invalidate_state(&mut self, start_row: u32) {
         self.state_cache.retain(|&row, _| row < start_row as usize);
-        self.style_cache.retain(|&row, _| row < start_row);
+        self.textmate_style_cache.retain(|&row, _| row < start_row);
+        self.rebuild_merged_cache();
     }
 
     pub fn get_style_cache(&self) -> &HashMap<u32, StyleCache> {
@@ -405,8 +448,52 @@ impl Highlights {
         style_cache: HashMap<u32, StyleCache>,
         state_cache: HashMap<usize, StateCache>,
     ) {
-        self.style_cache.extend(style_cache);
+        self.textmate_style_cache.extend(style_cache);
         self.state_cache.extend(state_cache);
+        self.rebuild_merged_cache();
+    }
+
+    pub fn rebuild_merged_cache(&mut self) {
+        self.style_cache.clear();
+        for (&row, base_cache) in &self.textmate_style_cache {
+            let mut styles = base_cache.styles.clone();
+            if let Some(overrides) = self.treesitter_style_cache.get(&row) {
+                for span in overrides {
+                    override_row_style(&mut styles, span.start, span.end, span.style.clone());
+                }
+            }
+            self.style_cache.insert(row, StyleCache { styles });
+        }
+    }
+
+    pub fn update_treesitter_highlights(
+        &mut self,
+        buffer: &BufferSnapshot,
+        syntax_tree: Option<&crate::services::treesitter::tree_sitter::SyntaxTree>,
+        colorscheme: &colorscheme::ColorScheme,
+        treesitter_highlights: bool,
+    ) {
+        self.treesitter_style_cache.clear();
+        if treesitter_highlights {
+            if let Some(tree) = syntax_tree {
+                for node in tree.named_nodes() {
+                    let row = node.start_position.row as u32;
+                    if let Some(key) = map_node_kind_to_syntax_key(&node.kind) {
+                        if let Some(func_style) = colorscheme.syntax.get(key) {
+                            self.treesitter_style_cache
+                                .entry(row)
+                                .or_insert_with(Vec::new)
+                                .push(StyledSpan {
+                                    style: func_style.clone(),
+                                    start: node.start_position.column as u32,
+                                    end: node.end_position.column as u32,
+                                });
+                        }
+                    }
+                }
+            }
+        }
+        self.rebuild_merged_cache();
     }
 }
 
@@ -426,7 +513,7 @@ mod tests {
         let mut highlights = Highlights::new("test.rs");
         let colorscheme = colorscheme::ColorScheme::load_default();
                 
-        highlights.highlight_lines(&buffer.snapshot(), 2, 2, &colorscheme, None, true, false);
+        highlights.highlight_lines(&buffer.snapshot(), 2, 2, &colorscheme, None, true, false, true);
 
         assert!(highlights.render_row(0).is_none());
         assert!(highlights.render_row(1).is_none());
@@ -442,11 +529,11 @@ mod tests {
         let mut highlights = Highlights::new("test.rs");
         let colorscheme = colorscheme::ColorScheme::load_default();
                 
-        highlights.highlight_lines(&buffer.snapshot(), 0, 1, &colorscheme, None, true, false);
+        highlights.highlight_lines(&buffer.snapshot(), 0, 1, &colorscheme, None, true, false, true);
 
         let styles = &highlights.render_row(0).unwrap().styles;
-        assert_eq!(styles.first().unwrap().1, 0);
-        assert_eq!(styles.last().unwrap().2, buffer.line_len(0) + 1);
+        assert_eq!(styles.first().unwrap().start, 0);
+        assert_eq!(styles.last().unwrap().end, buffer.line_len(0) + 1);
     }
 
     #[test]
@@ -455,10 +542,10 @@ mod tests {
         let mut highlights = Highlights::new("test.rs");
         let colorscheme = colorscheme::ColorScheme::load_default();
                 
-        highlights.highlight_lines(&buffer.snapshot(), 0, 2, &colorscheme, None, true, false);
+        highlights.highlight_lines(&buffer.snapshot(), 0, 2, &colorscheme, None, true, false, true);
         assert!(highlights.contains_rows(0, 2));
 
-        highlights.highlight_lines(&buffer.snapshot(), 2, 2, &colorscheme, None, true, false);
+        highlights.highlight_lines(&buffer.snapshot(), 2, 2, &colorscheme, None, true, false, true);
         assert!(!highlights.contains_rows(0, 2));
         assert!(highlights.contains_rows(2, 4));
     }
@@ -484,20 +571,58 @@ mod tests {
             Some(&syntax_tree),
             true,
             true,
+            true,
         );
 
         let row_styles = &highlights.render_row(0).unwrap().styles;
+        println!("--- TS NAMED NODES ---");
+        for node in syntax_tree.named_nodes() {
+            println!("NODE: {} @ {}-{} (row: {}, col: {} to row: {}, col: {})", node.kind, node.byte_range.start, node.byte_range.end, node.start_position.row, node.start_position.column, node.end_position.row, node.end_position.column);
+        }
+        println!("--- TS OVERRIDES ---");
+        if let Some(overrides) = highlights.treesitter_style_cache.get(&0) {
+            for span in overrides {
+                println!("OVERRIDE: {}-{} : {:?}", span.start, span.end, span.style.color);
+            }
+        }
         println!("--- STYLES WITH TREESITTER OVERLAY ---");
-        for (style, start, end) in row_styles {
-            println!("SPAN {}-{} : {:?}", start, end, style.foreground);
+        for span in row_styles {
+            println!("SPAN {}-{} : {:?}", span.start, span.end, span.style.color);
         }
         
-        let new_span = row_styles.iter().find(|(_, start, end)| *start == 32 && *end == 35).unwrap();
+        let new_span = row_styles.iter().find(|span| span.start == 32 && span.end == 35).unwrap();
         let func_color = colorscheme.syntax.get("function").unwrap();
-        if let crossterm::style::Color::Rgb { r, g, b } = func_color.color {
-            assert_eq!(new_span.0.foreground.r, r);
-            assert_eq!(new_span.0.foreground.g, g);
-            assert_eq!(new_span.0.foreground.b, b);
-        }
+        assert_eq!(new_span.style.color, func_color.color);
+    }
+
+    #[test]
+    fn test_treesitter_highlights_without_textmate() {
+        let text = "editor::buffers::BufferManager::new()";
+        let buffer = buffer(text);
+        
+        let mut parser = crate::services::treesitter::tree_sitter::TreeSitterParser::new(
+            crate::services::treesitter::grammars::Grammar::Rust
+        ).unwrap();
+        let syntax_tree = parser.parse(&buffer.snapshot(), None).unwrap();
+        
+        let mut highlights = Highlights::new("test.rs");
+        let colorscheme = colorscheme::ColorScheme::load_default();
+        
+        highlights.highlight_lines(
+            &buffer.snapshot(),
+            0,
+            1,
+            &colorscheme,
+            Some(&syntax_tree),
+            false, // textmate_highlights = false
+            true,  // treesitter_highlights = true
+            true,
+        );
+
+        let row_styles = &highlights.render_row(0).unwrap().styles;
+        
+        let new_span = row_styles.iter().find(|span| 32 >= span.start && 32 < span.end).unwrap();
+        let func_color = colorscheme.syntax.get("function").unwrap();
+        assert_eq!(new_span.style.color, func_color.color);
     }
 }
