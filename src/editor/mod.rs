@@ -5,7 +5,6 @@ pub mod selections;
 
 use crate::controller::{self};
 use crate::editor::buffers::BufferManager;
-use crate::editor::buffers::TextBuffer;
 use crate::editor::document::Document;
 use crate::services::Services;
 use crate::ui::colorscheme::ColorScheme;

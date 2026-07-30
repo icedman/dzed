@@ -6,7 +6,6 @@ use crate::editor::display::display_map::DisplayPoint;
 use crate::ui::Ui;
 use crate::ui::layout::Rect;
 use crate::services::background::{self, BackgroundTask, TaskId};
-use std::io::Write;
 use text::ToPoint;
 
 pub struct TextViewController {}

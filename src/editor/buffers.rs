@@ -1,13 +1,5 @@
-use crate::controller::actions::Mode;
-use crate::editor::display::display_map::DisplayMap;
-use crate::editor::display::highlight::Highlights;
 use crate::editor::document::Document;
 use crate::services::{self};
-use crate::ui::colorscheme::ColorScheme;
-use crate::ui::theme::Theme;
-use std::sync::Arc;
-use std::sync::atomic::AtomicU64;
-use text;
 
 pub struct TextBuffer {
     pub id: usize,
