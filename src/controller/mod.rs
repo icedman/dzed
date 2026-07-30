@@ -9,7 +9,6 @@ pub mod macros;
 
 use crate::controller::controllers::ViewController;
 use crate::controller::controllers::textview::TextViewController;
-use crate::ui::WindowKind;
 use crate::ui::views::View;
 use crate::{controller::input::VimInput, editor, ui::Ui, ui::window};
 

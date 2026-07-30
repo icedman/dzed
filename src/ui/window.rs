@@ -1,7 +1,7 @@
 use super::layout::Rect;
 use super::views::View;
 use crate::controller::controllers::ViewController;
-use crate::{editor::Editor, ui::WindowKind};
+use crate::{editor::Editor};
 
 use crossterm::{
     cursor::MoveTo,

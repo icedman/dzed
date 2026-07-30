@@ -57,6 +57,7 @@ impl Editor {
             Document::new("").unwrap(),
         );
         document.apply_action(action, self);
+        self.mode = document.mode();
         self.buffer_manager.buffers[active_idx].doc = document;
     }
 

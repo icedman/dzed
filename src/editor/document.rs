@@ -76,13 +76,18 @@ impl Document {
         })
     }
 
+    pub fn buffer(&self) -> &Buffer {
+        &self.buffer
+    }
+
+    pub fn mode(&self) -> Mode {
+        return self.mode;
+    }
+    
     pub fn new_line(&self) -> &str {
         self.buffer.line_ending().as_str()
     }
 
-    pub fn buffer(&self) -> &Buffer {
-        &self.buffer
-    }
 
     pub fn undo(&mut self, count: u32) {
         for _ in 0..count {

@@ -1,6 +1,7 @@
 pub mod statusbar;
 pub mod tabs;
 pub mod textview;
+pub mod commandline;
 
 use crate::editor::Editor;
 use crate::ui::layout::Rect;

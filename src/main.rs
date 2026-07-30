@@ -52,6 +52,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         ui.update(&mut editor)?;
         if editor.should_redraw {
             ui.draw(&mut stdout, &mut editor)?;
+            editor.should_redraw = false;
         }
 
         if event::poll(Duration::from_millis(50))? {

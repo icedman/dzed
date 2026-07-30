@@ -5,16 +5,6 @@ pub mod theme;
 pub mod views;
 pub mod window;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum WindowKind {
-    Editor,
-    StatusBar,
-    CommandLine,
-    TabBar,
-    Popup,
-    DirectoryTree,
-}
-
 use crate::controller::controllers;
 use crate::editor::Editor;
 use crossterm::{
@@ -45,11 +35,13 @@ impl Ui {
                 layout::SizeConstraint::Fixed(1),        // Tabs (1 row)
                 layout::SizeConstraint::Percentage(1.0), // Editor
                 layout::SizeConstraint::Fixed(1),        // Statusbar (1 row)
+                layout::SizeConstraint::Fixed(1),        // CommandLine (1 row)
             ],
             children: vec![
                 layout::LayoutNode::Leaf { window_id: 1 }, // Tabs
                 layout::LayoutNode::Leaf { window_id: 0 }, // Editor
                 layout::LayoutNode::Leaf { window_id: 2 }, // Statusbar
+                layout::LayoutNode::Leaf { window_id: 3 }, // CommandLine 
             ],
         };
 
@@ -74,6 +66,12 @@ impl Ui {
         statusbar_win.set_view(Box::new(views::statusbar::StatusBarView {}));
         statusbar_win.draw_border = false;
         windows.insert(2, statusbar_win);
+        
+        // Create command bar window
+        let mut commandline_win = window::Window::new(3, "Command".to_string());
+        commandline_win.set_view(Box::new(views::commandline::CommandLineView {}));
+        commandline_win.draw_border = false;
+        windows.insert(3, commandline_win);
 
         Self {
             layout,
@@ -106,24 +104,7 @@ impl Ui {
 
         return true;
     }
-
-    pub fn update(&mut self, editor: &mut Editor) -> Result<(), Box<dyn std::error::Error>> {
-        // Handle terminal resize.
-        let (screen_cols, screen_rows) = {
-            let (cols, rows) = crossterm::terminal::size().unwrap();
-            (cols as i32, rows as i32)
-        };
-
-        // Recompute layout if needed.
-        // Update window rects.
-        self.layout(screen_cols as u32, screen_rows as u32);
-
-        // Update cursor blinking.
-        // Update animations.
-
-        Ok(())
-    }
-
+    
     pub fn set_focused_window(&mut self, window_id: usize) {
         self.focused_window_id = Some(window_id);
     }
@@ -135,6 +116,35 @@ impl Ui {
     pub fn get_focused_window_mut(&mut self) -> Option<&mut window::Window> {
         self.focused_window_id
             .and_then(|id| self.windows.get_mut(&id))
+    }
+
+    pub fn update(&mut self, editor: &mut Editor) -> Result<(), Box<dyn std::error::Error>> {
+        // Handle terminal resize.
+        let (screen_cols, screen_rows) = {
+            let (cols, rows) = crossterm::terminal::size().unwrap();
+            (cols as i32, rows as i32)
+        };
+
+        // Recompute layout if needed.
+        // Update window rects.
+        if self.layout(screen_cols as u32, screen_rows as u32) {
+            editor.should_sync = true;
+            editor.should_redraw = true;
+        }
+
+        let computed = &self.cached_layouts;
+        for &(window_id, rect) in computed {
+            if let Some(window) = self.windows.get(&window_id) {
+                if let Some(ref controller) = window.controller {
+                    controller.update(editor, self, window_id, rect)?;
+                }
+            }
+        }
+
+        // Update cursor blinking.
+        // Update animations.
+
+        Ok(())
     }
 
     pub fn draw<W: Write>(
