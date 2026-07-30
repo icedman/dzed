@@ -199,6 +199,8 @@ mod tests {
     fn test_ex_set() {
         let mut editor = Editor::new().unwrap();
         let mut buffer_manager = crate::editor::buffers::BufferManager::new();
+        let buf1 = TextBuffer::new(0, "temp_test_file1.txt").unwrap();
+        buffer_manager.add_buffer(buf1);
         let mut cmd = Command::new();
 
         cmd.set("set wrap");

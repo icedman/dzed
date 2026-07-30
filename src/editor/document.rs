@@ -1535,22 +1535,25 @@ mod tests {
     use super::*;
     use crate::services::treesitter::TreeSitterParser;
     use crate::services::treesitter::grammars::Grammar;
+    use crate::editor::buffers::{BufferManager, TextBuffer};
 
     #[test]
     fn consecutive_insert_text_actions_leave_cursor_after_inserted_text() {
-        let mut editor = Editor::new(Vec::new()).unwrap();
-        editor
-            .buffer_manager
+        let mut editor = Editor::new().unwrap();
+        let mut buffer_manager = BufferManager::new();
+        buffer_manager.add_buffer(TextBuffer::new(0, "").unwrap());
+
+        buffer_manager
             .active_mut()
             .doc
             .enter_mode(Mode::Insert);
-        editor.apply_active_action(&Action::InsertText("abc".into()));
-        editor.apply_active_action(&Action::MoveLeft {
+        editor.apply_active_action(&mut buffer_manager, &Action::InsertText("abc".into()));
+        editor.apply_active_action(&mut buffer_manager, &Action::MoveLeft {
             select: false,
             count: 2,
         });
-        editor.apply_active_action(&Action::InsertText("x".into()));
-        editor.apply_active_action(&Action::InsertText("y".into()));
+        editor.apply_active_action(&mut buffer_manager, &Action::InsertText("x".into()));
+        editor.apply_active_action(&mut buffer_manager, &Action::InsertText("y".into()));
 
         let document = &buffer_manager.active().doc;
         assert_eq!(document.buffer().row_text(0), "axybc");
@@ -1566,18 +1569,20 @@ mod tests {
 
     #[test]
     fn newline_and_tab_insertions_do_not_advance_twice() {
-        let mut newline_editor = Editor::new(Vec::new()).unwrap();
-        newline_editor
-            .buffer_manager
+        let mut newline_editor = Editor::new().unwrap();
+        let mut newline_buffer_manager = BufferManager::new();
+        newline_buffer_manager.add_buffer(TextBuffer::new(0, "").unwrap());
+
+        newline_buffer_manager
             .active_mut()
             .doc
             .enter_mode(Mode::Insert);
-        newline_editor.apply_active_action(&Action::InsertText("abc".into()));
-        newline_editor.apply_active_action(&Action::MoveLeft {
+        newline_editor.apply_active_action(&mut newline_buffer_manager, &Action::InsertText("abc".into()));
+        newline_editor.apply_active_action(&mut newline_buffer_manager, &Action::MoveLeft {
             select: false,
             count: 2,
         });
-        newline_editor.apply_active_action(&Action::InsertNewLine { count: 1 });
+        newline_editor.apply_active_action(&mut newline_buffer_manager, &Action::InsertNewLine { count: 1 });
 
         let newline_document = &newline_buffer_manager.active().doc;
         assert_eq!(newline_document.buffer().row_text(0), "a");
@@ -1590,18 +1595,20 @@ mod tests {
             Point::new(1, 0)
         );
 
-        let mut tab_editor = Editor::new(Vec::new()).unwrap();
-        tab_editor
-            .buffer_manager
+        let mut tab_editor = Editor::new().unwrap();
+        let mut tab_buffer_manager = BufferManager::new();
+        tab_buffer_manager.add_buffer(TextBuffer::new(0, "").unwrap());
+
+        tab_buffer_manager
             .active_mut()
             .doc
             .enter_mode(Mode::Insert);
-        tab_editor.apply_active_action(&Action::InsertText("abc".into()));
-        tab_editor.apply_active_action(&Action::MoveLeft {
+        tab_editor.apply_active_action(&mut tab_buffer_manager, &Action::InsertText("abc".into()));
+        tab_editor.apply_active_action(&mut tab_buffer_manager, &Action::MoveLeft {
             select: false,
             count: 2,
         });
-        tab_editor.apply_active_action(&Action::InsertTab);
+        tab_editor.apply_active_action(&mut tab_buffer_manager, &Action::InsertTab);
 
         let tab_document = &tab_buffer_manager.active().doc;
         assert_eq!(tab_document.buffer().row_text(0), "a    bc");
@@ -1615,196 +1622,19 @@ mod tests {
         );
     }
 
-    // #[test]
-    // fn tree_sitter_actions_navigate_functions_classes_and_arguments() {
-    //     let source = "\nstruct Alpha {}\nfn first(a: i32, b: i32) {}\nfn second(c: i32) {}";
-    //     let mut editor = Editor::new(Vec::new()).unwrap();
-    //     editor.apply_active_action(&Action::InsertText(source.into()));
-
-    //     let syntax_tree = {
-    //         let document = &buffer_manager.active().doc;
-    //         let mut parser = TreeSitterParser::new(Grammar::Rust).unwrap();
-    //         parser.parse(document.buffer().snapshot(), None).unwrap()
-    //     };
-    //     buffer_manager.active_mut().syntax_tree = Some(syntax_tree);
-
-    //     editor.apply_active_action(&Action::MoveToStartOfDocument { select: false, count: 1 });
-    //     editor.apply_active_action(&Action::MoveToNextWord {
-    //         select: false,
-    //         count: 1,
-    //     });
-    //     assert_eq!(
-    //         editor
-    //             .buffer_manager
-    //             .active()
-    //             .doc
-    //             .selection()
-    //             .head()
-    //             .to_point(buffer_manager.active().doc.buffer()),
-    //         Point::new(1, 0)
-    //     );
-
-    //     editor.apply_active_action(&Action::MoveToStartOfDocument { select: false, count: 1 });
-    //     editor.apply_active_action(&Action::MoveToNextFunction {
-    //         select: false,
-    //         count: 2,
-    //     });
-    //     assert_eq!(
-    //         editor
-    //             .buffer_manager
-    //             .active()
-    //             .doc
-    //             .selection()
-    //             .head()
-    //             .to_point(buffer_manager.active().doc.buffer()),
-    //         Point::new(3, 0)
-    //     );
-    //     editor.apply_active_action(&Action::MoveToPreviousFunction {
-    //         select: false,
-    //         count: 1,
-    //     });
-    //     assert_eq!(
-    //         editor
-    //             .buffer_manager
-    //             .active()
-    //             .doc
-    //             .selection()
-    //             .head()
-    //             .to_point(buffer_manager.active().doc.buffer()),
-    //         Point::new(2, 0)
-    //     );
-
-    //     editor.apply_active_action(&Action::MoveToStartOfDocument { select: false, count: 1 });
-    //     editor.apply_active_action(&Action::MoveToNextArgument {
-    //         select: false,
-    //         count: 2,
-    //     });
-    //     let document = &buffer_manager.active().doc;
-    //     let offset = document
-    //         .buffer()
-    //         .offset_for_anchor(&document.selection().head());
-    //     assert_eq!(&source[offset..offset + 1], "b");
-
-    //     editor.apply_active_action(&Action::MoveToPreviousArgument {
-    //         select: false,
-    //         count: 1,
-    //     });
-    //     let document = &buffer_manager.active().doc;
-    //     let offset = document
-    //         .buffer()
-    //         .offset_for_anchor(&document.selection().head());
-    //     assert_eq!(&source[offset..offset + 1], "a");
-    // }
-
-    // Test movement with selection
-    // #[test]
-    // fn tree_sitter_motions() {
-    //     let mut editor = Editor::new(Vec::new()).unwrap();
-    //     editor.set_tree_sitter_enabled(true);
-    //     editor.apply_active_action(&Action::InsertText(
-    //         "\nstruct Alpha {}\nfn first(a: i32, b: i32) {}\nfn second(c: i32) {}".into(),
-    //     ));
-    //     editor.apply_active_action(&Action::MoveToStartOfDocument { select: false, count: 1 });
-    //     editor.apply_active_action(&Action::MoveToNextClass {
-    //         select: false,
-    //         count: 1,
-    //     });
-    //     let document = &buffer_manager.active().doc;
-    //     assert_eq!(
-    //         document.selection().head().to_point(document.buffer()),
-    //         Point::new(1, 0)
-    //     );
-
-    //     editor.apply_active_action(&Action::MoveToStartOfDocument { select: false, count: 1 });
-    //     editor.apply_active_action(&Action::MoveToNextFunction {
-    //         select: false,
-    //         count: 1,
-    //     });
-    //     let document = &buffer_manager.active().doc;
-    //     assert_eq!(
-    //         document.selection().head().to_point(document.buffer()),
-    //         Point::new(2, 0)
-    //     );
-
-    //     editor.apply_active_action(&Action::MoveToPreviousFunction {
-    //         select: false,
-    //         count: 1,
-    //     });
-    //     let document = &buffer_manager.active().doc;
-    //     assert_eq!(
-    //         document.selection().head().to_point(document.buffer()),
-    //         Point::new(2, 0)
-    //     );
-
-    //     editor.apply_active_action(&Action::MoveToStartOfDocument { select: false, count: 1 });
-    //     editor.apply_active_action(&Action::MoveToNextArgument {
-    //         select: false,
-    //         count: 1,
-    //     });
-    //     let document = &buffer_manager.active().doc;
-    //     assert_eq!(
-    //         document.selection().head().to_point(document.buffer()),
-    //         Point::new(2, 9)
-    //     );
-
-    //     editor.apply_active_action(&Action::MoveToNextArgument {
-    //         select: false,
-    //         count: 1,
-    //     });
-    //     let document = &buffer_manager.active().doc;
-    //     assert_eq!(
-    //         document.selection().head().to_point(document.buffer()),
-    //         Point::new(2, 17)
-    //     );
-
-    //     editor.apply_active_action(&Action::MoveToNextFunction {
-    //         select: false,
-    //         count: 1,
-    //     }); // move to fn first
-    //     editor.apply_active_action(&Action::MoveToNextBlock {
-    //         select: false,
-    //         count: 1,
-    //     }); // move to {
-    //     let document = &buffer_manager.active().doc;
-    //     assert_eq!(
-    //         document.selection().head().to_point(document.buffer()),
-    //         Point::new(2, 25)
-    //     );
-
-    //     editor.apply_active_action(&Action::MoveToBlockStart {
-    //         select: false,
-    //         count: 1,
-    //     });
-    //     let document = &buffer_manager.active().doc;
-    //     // In the source: "\nstruct Alpha {}\nfn first(a: i32, b: i32) {}\nfn second(c: i32) {}"
-    //     // fn first is at row 2. { is at (2, 25).
-    //     assert_eq!(
-    //         document.selection().head().to_point(document.buffer()),
-    //         Point::new(2, 25)
-    //     );
-
-    //     editor.apply_active_action(&Action::MoveToBlockEnd {
-    //         select: false,
-    //         count: 1,
-    //     });
-    //     let document = &buffer_manager.active().doc;
-    //     // end of {} block is at (2, 26)
-    //     assert_eq!(
-    //         document.selection().head().to_point(document.buffer()),
-    //         Point::new(2, 26)
-    //     );
-    // }
-
     #[test]
     fn yank_motion_copies_selection_and_paste_inserts_after_cursor() {
-        let mut editor = Editor::new(Vec::new()).unwrap();
-        editor.apply_active_action(&Action::InsertText("abcde".into()));
-        editor.apply_active_action(&Action::MoveLeft {
+        let mut editor = Editor::new().unwrap();
+        let mut buffer_manager = BufferManager::new();
+        buffer_manager.add_buffer(TextBuffer::new(0, "").unwrap());
+
+        editor.apply_active_action(&mut buffer_manager, &Action::InsertText("abcde".into()));
+        editor.apply_active_action(&mut buffer_manager, &Action::MoveLeft {
             select: false,
             count: 4,
         });
 
-        editor.apply_active_action(&Action::YankMotion {
+        editor.apply_active_action(&mut buffer_manager, &Action::YankMotion {
             count: 1,
             motion: Box::new(Action::MoveRight {
                 select: true,
@@ -1814,8 +1644,7 @@ mod tests {
 
         assert_eq!(editor.services.clipboard.borrow().text(), "bc");
         assert_eq!(
-            editor
-                .buffer_manager
+            buffer_manager
                 .active()
                 .doc
                 .selection()
@@ -1825,7 +1654,7 @@ mod tests {
             1
         );
 
-        editor.apply_active_action(&Action::Put { count: 1 });
+        editor.apply_active_action(&mut buffer_manager, &Action::Put { count: 1 });
 
         assert_eq!(
             buffer_manager.active().doc.buffer().row_text(0),
@@ -1835,21 +1664,24 @@ mod tests {
 
     #[test]
     fn yank_current_line_and_paste_create_a_line_below() {
-        let mut editor = Editor::new(Vec::new()).unwrap();
-        editor.apply_active_action(&Action::InsertText("abc".into()));
-        editor.apply_active_action(&Action::MoveLeft {
+        let mut editor = Editor::new().unwrap();
+        let mut buffer_manager = BufferManager::new();
+        buffer_manager.add_buffer(TextBuffer::new(0, "").unwrap());
+
+        editor.apply_active_action(&mut buffer_manager, &Action::InsertText("abc".into()));
+        editor.apply_active_action(&mut buffer_manager, &Action::MoveLeft {
             select: false,
             count: 1,
         });
 
-        editor.apply_active_action(&Action::YankLine { count: 1 });
+        editor.apply_active_action(&mut buffer_manager, &Action::YankLine { count: 1 });
         assert_eq!(editor.services.clipboard.borrow().text(), "abc\n");
         assert_eq!(
             editor.services.clipboard.borrow().kind(),
             ClipboardKind::Line
         );
 
-        editor.apply_active_action(&Action::Put { count: 1 });
+        editor.apply_active_action(&mut buffer_manager, &Action::Put { count: 1 });
         let document = &buffer_manager.active().doc;
         assert_eq!(document.buffer().row_text(0), "abc");
         assert_eq!(document.buffer().row_text(1), "abc");
@@ -1857,16 +1689,19 @@ mod tests {
 
     #[test]
     fn test_join_lines() {
-        let mut editor = Editor::new(Vec::new()).unwrap();
-        editor.apply_active_action(&Action::InsertText("line 1\n  line 2\nline 3".into()));
+        let mut editor = Editor::new().unwrap();
+        let mut buffer_manager = BufferManager::new();
+        buffer_manager.add_buffer(TextBuffer::new(0, "").unwrap());
+
+        editor.apply_active_action(&mut buffer_manager, &Action::InsertText("line 1\n  line 2\nline 3".into()));
         // Move back to line 1
-        editor.apply_active_action(&Action::MoveUp {
+        editor.apply_active_action(&mut buffer_manager, &Action::MoveUp {
             select: false,
             count: 2,
         });
 
         // Join line 1 and line 2
-        editor.apply_active_action(&Action::JoinLines { count: 1 });
+        editor.apply_active_action(&mut buffer_manager, &Action::JoinLines { count: 1 });
 
         let document = &buffer_manager.active().doc;
         assert_eq!(document.buffer().row_text(0), "line 1 line 2");
@@ -1881,16 +1716,19 @@ mod tests {
 
     #[test]
     fn test_delete_around_character() {
-        let mut editor = Editor::new(Vec::new()).unwrap();
-        editor.apply_active_action(&Action::InsertText("a (hello) b".into()));
+        let mut editor = Editor::new().unwrap();
+        let mut buffer_manager = BufferManager::new();
+        buffer_manager.add_buffer(TextBuffer::new(0, "").unwrap());
+
+        editor.apply_active_action(&mut buffer_manager, &Action::InsertText("a (hello) b".into()));
         // Move cursor inside parens
-        editor.apply_active_action(&Action::MoveLeft {
+        editor.apply_active_action(&mut buffer_manager, &Action::MoveLeft {
             select: false,
             count: 7,
         });
 
         // Execute DeleteMotion around '('
-        editor.apply_active_action(&Action::DeleteMotion {
+        editor.apply_active_action(&mut buffer_manager, &Action::DeleteMotion {
             count: 1,
             motion: Box::new(Action::MoveAroundCharacter { count: 1, ch: '(' }),
         });
@@ -1901,14 +1739,17 @@ mod tests {
 
     #[test]
     fn test_delete_word() {
-        let mut editor = Editor::new(Vec::new()).unwrap();
-        editor.apply_active_action(&Action::InsertText("abc def".into()));
-        editor.apply_active_action(&Action::MoveLeft {
+        let mut editor = Editor::new().unwrap();
+        let mut buffer_manager = BufferManager::new();
+        buffer_manager.add_buffer(TextBuffer::new(0, "").unwrap());
+
+        editor.apply_active_action(&mut buffer_manager, &Action::InsertText("abc def".into()));
+        editor.apply_active_action(&mut buffer_manager, &Action::MoveLeft {
             select: false,
             count: 7,
         });
 
-        editor.apply_active_action(&Action::DeleteMotion {
+        editor.apply_active_action(&mut buffer_manager, &Action::DeleteMotion {
             count: 1,
             motion: Box::new(Action::MoveToWord {
                 count: 1,
@@ -1922,16 +1763,19 @@ mod tests {
 
     #[test]
     fn test_delete_inner_word() {
-        let mut editor = Editor::new(Vec::new()).unwrap();
-        editor.apply_active_action(&Action::InsertText("abc def ghi".into()));
+        let mut editor = Editor::new().unwrap();
+        let mut buffer_manager = BufferManager::new();
+        buffer_manager.add_buffer(TextBuffer::new(0, "").unwrap());
+
+        editor.apply_active_action(&mut buffer_manager, &Action::InsertText("abc def ghi".into()));
         // Move to 'e' in 'def'
-        editor.apply_active_action(&Action::MoveLeft {
+        editor.apply_active_action(&mut buffer_manager, &Action::MoveLeft {
             select: false,
             count: 6,
         });
 
         // diw
-        editor.apply_active_action(&Action::DeleteMotion {
+        editor.apply_active_action(&mut buffer_manager, &Action::DeleteMotion {
             count: 1,
             motion: Box::new(Action::MoveWithinCharacter { count: 1, ch: 'w' }),
         });
@@ -1942,16 +1786,19 @@ mod tests {
 
     #[test]
     fn test_delete_around_word() {
-        let mut editor = Editor::new(Vec::new()).unwrap();
-        editor.apply_active_action(&Action::InsertText("abc def ghi".into()));
+        let mut editor = Editor::new().unwrap();
+        let mut buffer_manager = BufferManager::new();
+        buffer_manager.add_buffer(TextBuffer::new(0, "").unwrap());
+
+        editor.apply_active_action(&mut buffer_manager, &Action::InsertText("abc def ghi".into()));
         // Move to 'e' in 'def'
-        editor.apply_active_action(&Action::MoveLeft {
+        editor.apply_active_action(&mut buffer_manager, &Action::MoveLeft {
             select: false,
             count: 6,
         });
 
         // daw
-        editor.apply_active_action(&Action::DeleteMotion {
+        editor.apply_active_action(&mut buffer_manager, &Action::DeleteMotion {
             count: 1,
             motion: Box::new(Action::MoveAroundCharacter { count: 1, ch: 'w' }),
         });
@@ -1962,7 +1809,10 @@ mod tests {
 
     #[test]
     fn test_treesitter_folding() {
-        let mut editor = Editor::new(Vec::new()).unwrap();
+        let mut editor = Editor::new().unwrap();
+        let mut buffer_manager = BufferManager::new();
+        buffer_manager.add_buffer(TextBuffer::new(0, "").unwrap());
+
         let text = "fn main() {\n    let x = 1;\n    let y = 2;\n}";
         buffer_manager.active_mut().doc = Document::new_with_text(text);
         buffer_manager.active_mut().grammar = Some(Grammar::Rust);
@@ -1973,12 +1823,12 @@ mod tests {
             .unwrap();
         buffer_manager.active_mut().syntax_tree = Some(tree);
 
-        editor.apply_active_action(&Action::MoveDown {
+        editor.apply_active_action(&mut buffer_manager, &Action::MoveDown {
             select: false,
             count: 1,
         });
 
-        editor.apply_active_action(&Action::Fold { count: 1 });
+        editor.apply_active_action(&mut buffer_manager, &Action::Fold { count: 1 });
 
         let active_buffer = buffer_manager.active();
         assert_eq!(active_buffer.doc.folds.len(), 1);
@@ -1988,14 +1838,17 @@ mod tests {
         assert_eq!(fold.end.row, 3);
         assert_eq!(fold.end.column, 0);
 
-        editor.apply_active_action(&Action::Unfold { count: 1 });
+        editor.apply_active_action(&mut buffer_manager, &Action::Unfold { count: 1 });
         let active_buffer = buffer_manager.active();
         assert_eq!(active_buffer.doc.folds.len(), 0);
     }
 
     #[test]
     fn test_fold_deletion() {
-        let mut editor = Editor::new(Vec::new()).unwrap();
+        let mut editor = Editor::new().unwrap();
+        let mut buffer_manager = BufferManager::new();
+        buffer_manager.add_buffer(TextBuffer::new(0, "").unwrap());
+
         let text = "line 1\nline 2\nline 3\nline 4";
         buffer_manager.active_mut().doc = Document::new_with_text(text);
 
@@ -2006,11 +1859,11 @@ mod tests {
         buffer_manager.active_mut().doc.folds.push(fold);
         assert_eq!(buffer_manager.active().doc.folds.len(), 1);
 
-        editor.apply_active_action(&Action::MoveDown {
+        editor.apply_active_action(&mut buffer_manager, &Action::MoveDown {
             select: false,
             count: 1,
         });
-        editor.apply_active_action(&Action::Delete { count: 1 });
+        editor.apply_active_action(&mut buffer_manager, &Action::Delete { count: 1 });
 
         assert_eq!(buffer_manager.active().doc.folds.len(), 0);
     }
