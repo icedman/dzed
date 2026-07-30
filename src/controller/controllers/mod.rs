@@ -4,6 +4,7 @@ use crate::editor::Editor;
 use crate::ui::Ui;
 use crate::ui::layout::Rect;
 
+pub mod commandline;
 pub mod tabs;
 pub mod textview;
 

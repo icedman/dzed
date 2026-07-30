@@ -1,13 +1,13 @@
 use crate::controller::ControllerResult;
 use crate::controller::ViewController;
-
+use crate::controller::actions::Action;
 use crate::editor::Editor;
 use crate::editor::display::display_map::DisplayPoint;
 use crate::ui::Ui;
 use crate::ui::layout::Rect;
+use crate::services::background::{BackgroundTask, TaskId};
 use std::io::Write;
 use text::ToPoint;
-use crate::controller::actions::Action;
 
 pub struct TextViewController {}
 
@@ -48,7 +48,6 @@ impl ViewController for TextViewController {
             .display_map
             .set_wrap_width(editor.wrap.then_some(wrap_cols as u32));
 
-
         if editor.should_sync {
             buffer.display_map.fold(
                 buffer.doc.folds.clone(),
@@ -66,10 +65,8 @@ impl ViewController for TextViewController {
                 .latest_hl_task_id
                 .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
                 + 1;
-            editor
-                .services
-                .background_worker
-                .spawn_task(crate::services::background::BackgroundTask::Highlight {
+            editor.services.background_worker.spawn_task(
+                BackgroundTask::Highlight {
                     owner_id: window_id,
                     file_path: buffer.file_path.clone(),
                     snapshot: buffer.doc.buffer().snapshot().clone(),
@@ -78,9 +75,10 @@ impl ViewController for TextViewController {
                     colorscheme: std::sync::Arc::new(editor.colorscheme.clone()),
                     theme: std::sync::Arc::new(editor.theme.theme.clone()),
                     use_colorscheme: editor.use_colorscheme,
-                    task_id: crate::services::background::TaskId(hl_task_id),
+                    task_id: TaskId(hl_task_id),
                     latest_task_id: buffer.latest_hl_task_id.clone(),
-                });
+                },
+            );
 
             // Spawn background wrap task
             let wrap_width = editor.wrap.then_some(wrap_cols as u32);
@@ -88,18 +86,17 @@ impl ViewController for TextViewController {
                 .latest_wrap_task_id
                 .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
                 + 1;
-            editor
-                .services
-                .background_worker
-                .spawn_task(crate::services::background::BackgroundTask::Wrap {
+            editor.services.background_worker.spawn_task(
+                BackgroundTask::Wrap {
                     owner_id: window_id,
                     file_path: buffer.file_path.clone(),
                     snapshot: buffer.doc.buffer().snapshot().clone(),
                     folds: buffer.doc.folds.clone(),
                     wrap_width,
-                    task_id: crate::services::background::TaskId(wrap_task_id),
+                    task_id: TaskId(wrap_task_id),
                     latest_task_id: buffer.latest_wrap_task_id.clone(),
-                });
+                },
+            );
 
             if editor.tree_sitter
                 && let Some(grammar) = buffer.grammar
@@ -108,66 +105,62 @@ impl ViewController for TextViewController {
                     .latest_parse_task_id
                     .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
                     + 1;
-                editor
-                    .services
-                    .background_worker
-                    .spawn_task(crate::services::background::BackgroundTask::Parse {
+                editor.services.background_worker.spawn_task(
+                    BackgroundTask::Parse {
                         owner_id: window_id,
                         file_path: buffer.file_path.clone(),
                         snapshot: buffer.doc.buffer().snapshot().clone(),
                         grammar,
-                        task_id: crate::services::background::TaskId(parse_task_id),
+                        task_id: TaskId(parse_task_id),
                         latest_task_id: buffer.latest_parse_task_id.clone(),
-                    });
-            }
-
-        let cursor = buffer.doc.selection();
-        let cursor_point = cursor.head().to_point(buffer.doc.buffer());
-        let display_cursor = buffer
-            .display_map
-            .snapshot()
-            .point_to_display_point(cursor_point);
-        buffer.display_map.scroll_to_cursor(
-            display_cursor,
-            rect.height as i32,
-            rect.width as i32,
-        );
-
-        // highlighting code
-        let display_snapshot = buffer.display_map.snapshot();
-        let total_rows = display_snapshot.row_count();
-        let end_line =
-            (display_snapshot.scroll_y + display_snapshot.visible_rows + 4).min(total_rows);
-
-        if editor.syntax && end_line > display_snapshot.scroll_y {
-            let start_buffer_row =
-                display_snapshot.buffer_row_for_display_row(display_snapshot.scroll_y);
-            let last_visible_display_row = end_line.saturating_sub(1);
-            let end_point = display_snapshot.display_point_to_point(DisplayPoint::new(
-                last_visible_display_row,
-                display_snapshot.line_len(last_visible_display_row),
-            ));
-            let end_buffer_row = end_point.row;
-            let end_buffer_row_exclusive = end_buffer_row + 1;
-
-            if !buffer
-                .hl
-                .is_sync(&buffer.doc.buffer().snapshot())
-                || !buffer
-                    .hl
-                    .contains_rows(start_buffer_row, end_buffer_row_exclusive)
-            {
-                buffer.hl.highlight_lines(
-                    &buffer.doc.buffer().snapshot(),
-                    start_buffer_row,
-                    end_buffer_row_exclusive - start_buffer_row,
-                    &editor.colorscheme,
-                    &editor.theme.theme,
-                    editor.use_colorscheme,
+                    },
                 );
             }
-        }
 
+            let cursor = buffer.doc.selection();
+            let cursor_point = cursor.head().to_point(buffer.doc.buffer());
+            let display_cursor = buffer
+                .display_map
+                .snapshot()
+                .point_to_display_point(cursor_point);
+            buffer.display_map.scroll_to_cursor(
+                display_cursor,
+                rect.height as i32,
+                rect.width as i32,
+            );
+
+            // highlighting code
+            let display_snapshot = buffer.display_map.snapshot();
+            let total_rows = display_snapshot.row_count();
+            let end_line =
+                (display_snapshot.scroll_y + display_snapshot.visible_rows + 4).min(total_rows);
+
+            if editor.syntax && end_line > display_snapshot.scroll_y {
+                let start_buffer_row =
+                    display_snapshot.buffer_row_for_display_row(display_snapshot.scroll_y);
+                let last_visible_display_row = end_line.saturating_sub(1);
+                let end_point = display_snapshot.display_point_to_point(DisplayPoint::new(
+                    last_visible_display_row,
+                    display_snapshot.line_len(last_visible_display_row),
+                ));
+                let end_buffer_row = end_point.row;
+                let end_buffer_row_exclusive = end_buffer_row + 1;
+
+                if !buffer.hl.is_sync(&buffer.doc.buffer().snapshot())
+                    || !buffer
+                        .hl
+                        .contains_rows(start_buffer_row, end_buffer_row_exclusive)
+                {
+                    buffer.hl.highlight_lines(
+                        &buffer.doc.buffer().snapshot(),
+                        start_buffer_row,
+                        end_buffer_row_exclusive - start_buffer_row,
+                        &editor.colorscheme,
+                        &editor.theme.theme,
+                        editor.use_colorscheme,
+                    );
+                }
+            }
         }
 
         Ok(ControllerResult::None)
@@ -175,9 +168,9 @@ impl ViewController for TextViewController {
 
     fn handle_action(
         &self,
-        action: crate::controller::actions::Action,
+        action: Action,
         editor: &mut Editor,
-        ui: &crate::ui::Ui,
+        ui: &Ui,
         window_id: usize,
     ) -> Result<ControllerResult, Box<dyn std::error::Error>> {
         if action != Action::NoOp {
@@ -188,3 +181,4 @@ impl ViewController for TextViewController {
         Ok(ControllerResult::None)
     }
 }
+

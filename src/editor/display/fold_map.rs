@@ -1,6 +1,6 @@
-use std::ops::Range;
 use clock::ReplicaId;
-use text::{Buffer, BufferId, BufferSnapshot, Point, ToPoint, Bias};
+use std::ops::Range;
+use text::{Bias, Buffer, BufferId, BufferSnapshot, Point, ToPoint};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Fold {
@@ -48,7 +48,7 @@ impl FoldMap {
 
         let mut folded_text = String::with_capacity(buffer.len());
         let mut mappings = Vec::new();
-        
+
         let mut current_orig = Point::zero();
         let mut current_fold = Point::zero();
 
@@ -101,7 +101,8 @@ impl FoldMap {
             });
         }
 
-        let virtual_buffer = Buffer::new(ReplicaId::LOCAL, BufferId::new(9999).unwrap(), &folded_text);
+        let virtual_buffer =
+            Buffer::new(ReplicaId::LOCAL, BufferId::new(9999).unwrap(), &folded_text);
         let folded_buffer = virtual_buffer.snapshot();
 
         Self {
@@ -130,7 +131,10 @@ impl FoldMap {
         }) {
             Ok(idx) => {
                 let mut matched_idx = idx;
-                while matched_idx > 0 && point >= self.mappings[matched_idx - 1].original_range.start && point <= self.mappings[matched_idx - 1].original_range.end {
+                while matched_idx > 0
+                    && point >= self.mappings[matched_idx - 1].original_range.start
+                    && point <= self.mappings[matched_idx - 1].original_range.end
+                {
                     matched_idx -= 1;
                 }
                 let mapping = &self.mappings[matched_idx];
@@ -160,7 +164,10 @@ impl FoldMap {
         }) {
             Ok(idx) => {
                 let mut matched_idx = idx;
-                while matched_idx > 0 && point >= self.mappings[matched_idx - 1].folded_range.start && point <= self.mappings[matched_idx - 1].folded_range.end {
+                while matched_idx > 0
+                    && point >= self.mappings[matched_idx - 1].folded_range.start
+                    && point <= self.mappings[matched_idx - 1].folded_range.end
+                {
                     matched_idx -= 1;
                 }
                 let mapping = &self.mappings[matched_idx];

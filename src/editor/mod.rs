@@ -61,13 +61,6 @@ impl Editor {
         self.buffer_manager.buffers[active_idx].doc = document;
     }
 
-    pub fn apply_command_action(&mut self, action: &controller::actions::Action) {
-        // let mut command =
-        //     std::mem::replace(&mut self.controller.command.cmd, Document::new("").unwrap());
-        // command.apply_action(action, self);
-        // self.controller.command.cmd = command;
-    }
-
     pub fn new(file_paths: Vec<String>) -> Result<Self, Box<dyn std::error::Error>> {
         let mut buffer_manager = BufferManager::new();
         let mut next_id = 0;

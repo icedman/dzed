@@ -1,4 +1,3 @@
-
 use crate::ui::layout::Rect;
 use crate::ui::views::View;
 use crate::{controller::controllers::ViewController, editor::Editor};

@@ -237,8 +237,28 @@ pub const BLOCK_KINDS: &[&str] = &[
 ];
 
 /// Anonymous delimiter tokens recognized as structural boundaries.
-pub const OPEN_DELIMITERS: &[&str] = &["{", "(", "[", "<", "\"", "'", "`", "start_tag", "jsx_opening_element"];
-pub const CLOSE_DELIMITERS: &[&str] = &["}", ")", "]", ">", "\"", "'", "`", "end_tag", "jsx_closing_element"];
+pub const OPEN_DELIMITERS: &[&str] = &[
+    "{",
+    "(",
+    "[",
+    "<",
+    "\"",
+    "'",
+    "`",
+    "start_tag",
+    "jsx_opening_element",
+];
+pub const CLOSE_DELIMITERS: &[&str] = &[
+    "}",
+    ")",
+    "]",
+    ">",
+    "\"",
+    "'",
+    "`",
+    "end_tag",
+    "jsx_closing_element",
+];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SyntaxNode {
@@ -623,7 +643,9 @@ impl SyntaxTree {
         // 2. HTML/JSX Elements & Tags
         if (fk == "start_tag" && lk == "end_tag")
             || (fk == "jsx_opening_element" && lk == "jsx_closing_element")
-            || (node.kind() == "element" || node.kind() == "jsx_element" || node.kind() == "jsx_fragment")
+            || (node.kind() == "element"
+                || node.kind() == "jsx_element"
+                || node.kind() == "jsx_fragment")
         {
             return Some((first, last));
         }

@@ -1,7 +1,7 @@
 use super::layout::Rect;
 use super::views::View;
 use crate::controller::controllers::ViewController;
-use crate::{editor::Editor};
+use crate::editor::Editor;
 
 use crossterm::{
     cursor::MoveTo,
@@ -14,6 +14,7 @@ pub struct Window {
     pub id: usize,
     pub title: String,
     pub draw_border: bool,
+    pub draw_title: bool,
     pub view: Option<Box<dyn View>>,
     pub controller: Option<Box<dyn ViewController>>,
     pub buffer_id: Option<usize>,
@@ -25,6 +26,7 @@ impl Window {
             id,
             title,
             draw_border: true,
+            draw_title: false,
             view: None,
             controller: None,
             buffer_id: None,
@@ -59,7 +61,7 @@ impl Window {
             execute!(w, MoveTo(rect.x, rect.y))?;
             if rect.width > 2 {
                 let title_len = self.title.chars().count();
-                if title_len + 4 < rect.width as usize {
+                if self.draw_title && title_len + 4 < rect.width as usize {
                     let left_len = (rect.width as usize - title_len - 4) / 2;
                     let right_len = rect.width as usize - title_len - 4 - left_len;
                     execute!(

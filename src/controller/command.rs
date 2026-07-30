@@ -2,6 +2,7 @@ use crate::controller::actions;
 use crate::controller::ex;
 use crate::controller::exmap;
 use crate::editor::document::Document;
+use crate::editor::Editor;
 use crate::ui::colorscheme;
 use onig::Regex;
 
@@ -56,7 +57,7 @@ impl Command {
     pub fn try_resolve_action(
         &self,
         cmd: &ex::ExCommand,
-        _editor: &mut crate::editor::Editor,
+        _editor: &mut Editor,
     ) -> actions::Action {
         if let Some(range) = &cmd.range {
             if let (Some(start), Some(end)) = (range.start_line, range.end_line) {
@@ -80,7 +81,7 @@ impl Command {
         actions::Action::NoOp
     }
 
-    pub fn ex(&mut self, editor: &mut crate::editor::Editor) -> Option<ExResult> {
+    pub fn ex(&mut self, editor: &mut Editor) -> Option<ExResult> {
         let cmd_text = self.get_text();
         if let Some(resolved) = self.exmap.try_resolve(&cmd_text) {
             let action = self.try_resolve_action(&resolved, editor);
@@ -163,6 +164,7 @@ pub enum ExResult {
 mod tests {
     use super::*;
     use crate::editor::Editor;
+    use crate::editor::buffers::TextBuffer;
     use actions::Action;
 
     #[test]
@@ -263,7 +265,7 @@ mod tests {
         assert!(editor.syntax);
 
         // Test bnext / bprev commands
-        let buf2 = crate::editor::buffers::TextBuffer::new(99, "temp_test_file2.txt").unwrap();
+        let buf2 = TextBuffer::new(99, "temp_test_file2.txt").unwrap();
         editor.buffer_manager.add_buffer(buf2);
         // Switch active index to first buffer (index 0)
         editor.buffer_manager.active_idx = 0;

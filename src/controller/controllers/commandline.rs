@@ -4,15 +4,15 @@ use crate::controller::actions::Action;
 use crate::editor::Editor;
 use crate::ui::Ui;
 
-pub struct TabsController {}
+pub struct CommandLineController {}
 
-impl TabsController {
+impl CommandLineController {
     pub fn new() -> Self {
-        TabsController {}
+        CommandLineController {}
     }
 }
 
-impl ViewController for TabsController {
+impl ViewController for CommandLineController {
     fn handle_action(
         &self,
         action: Action,

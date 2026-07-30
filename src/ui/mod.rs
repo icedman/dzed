@@ -41,7 +41,7 @@ impl Ui {
                 layout::LayoutNode::Leaf { window_id: 1 }, // Tabs
                 layout::LayoutNode::Leaf { window_id: 0 }, // Editor
                 layout::LayoutNode::Leaf { window_id: 2 }, // Statusbar
-                layout::LayoutNode::Leaf { window_id: 3 }, // CommandLine 
+                layout::LayoutNode::Leaf { window_id: 3 }, // CommandLine
             ],
         };
 
@@ -66,7 +66,7 @@ impl Ui {
         statusbar_win.set_view(Box::new(views::statusbar::StatusBarView {}));
         statusbar_win.draw_border = false;
         windows.insert(2, statusbar_win);
-        
+
         // Create command bar window
         let mut commandline_win = window::Window::new(3, "Command".to_string());
         commandline_win.set_view(Box::new(views::commandline::CommandLineView {}));
@@ -104,7 +104,7 @@ impl Ui {
 
         return true;
     }
-    
+
     pub fn set_focused_window(&mut self, window_id: usize) {
         self.focused_window_id = Some(window_id);
     }
