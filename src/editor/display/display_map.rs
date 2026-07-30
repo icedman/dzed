@@ -75,10 +75,15 @@ impl DisplayMap {
         if self.folds == folds && self.original_buffer.version == buffer.version {
             return;
         }
+        let folds_changed = self.folds != folds;
         self.folds = folds;
         self.original_buffer = buffer.clone();
         self.fold_map = display::fold_map::FoldMap::new(&buffer, self.folds.clone());
-        self.wrap_map = WrapMap::new(self.fold_map.folded_buffer().clone(), self.wrap_width);
+        if folds_changed {
+            self.wrap_map = WrapMap::new(self.fold_map.folded_buffer().clone(), self.wrap_width);
+        } else {
+            self.wrap_map.sync(self.fold_map.folded_buffer().clone());
+        }
     }
 
     pub fn snapshot(&self) -> DisplaySnapshot {

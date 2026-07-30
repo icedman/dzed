@@ -67,6 +67,16 @@ impl ViewController for TextViewController {
                 buffer.hl.invalidate_state(start);
 
                 // Spawn background highlight task
+                let display_snapshot = buffer.display_map.snapshot();
+                let total_rows = display_snapshot.row_count();
+                let visible_start = display_snapshot.scroll_y;
+                let visible_end = (visible_start + display_snapshot.visible_rows + 4).min(total_rows);
+                let start_buffer_row = display_snapshot.buffer_row_for_display_row(visible_start);
+                let end_buffer_row = display_snapshot.buffer_row_for_display_row(visible_end.saturating_sub(1));
+
+                let hl_start = start_buffer_row.saturating_sub(100).min(start);
+                let hl_end = (end_buffer_row + 100).max(start + 1).min(buffer.doc.buffer().row_count());
+
                 let hl_task_id = buffer
                     .latest_hl_task_id
                     .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
@@ -76,8 +86,8 @@ impl ViewController for TextViewController {
                         owner_id: window_id,
                         file_path: buffer.file_path.clone(),
                         snapshot: snapshot.clone(),
-                        start_row: start,
-                        row_count: buffer.doc.buffer().row_count() - start,
+                        start_row: hl_start,
+                        row_count: hl_end - hl_start,
                         colorscheme: std::sync::Arc::new(editor.colorscheme.clone()),
                         theme: std::sync::Arc::new(editor.theme.theme.clone()),
                         use_colorscheme: editor.use_colorscheme,
