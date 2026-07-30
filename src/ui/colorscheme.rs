@@ -38,7 +38,7 @@ pub struct ColorScheme {
 
 impl ColorScheme {
     pub fn load_default() -> Self {
-        Self::get_by_name("tokyonight").expect("Failed to load default tokyonight colorscheme")
+        Self::get_by_name("catppuccin").expect("Failed to load default tokyonight colorscheme")
     }
 
     pub fn get_by_name(name: &str) -> Option<Self> {
@@ -311,7 +311,7 @@ mod tests {
     #[test]
     fn test_load_default() {
         let scheme = ColorScheme::load_default();
-        assert_eq!(scheme.metadata.name, "tokyonight-moon");
+        assert_eq!(scheme.metadata.name, "catppuccin-mocha");
         assert!(scheme.ui.contains_key("background"));
         assert!(scheme.syntax.contains_key("keyword"));
 
@@ -320,5 +320,19 @@ mod tests {
 
         let kanagawa = ColorScheme::get_by_name("kanagawa").unwrap();
         assert_eq!(kanagawa.metadata.name, "kanagawa");
+    }
+}
+
+pub trait ToCrossTerm {
+    fn rgb(&self) -> crossterm::style::Color;
+}
+
+impl ToCrossTerm for syntect::highlighting::Color {
+    fn rgb(&self) -> crossterm::style::Color {
+        crossterm::style::Color::Rgb {
+            r: self.r,
+            g: self.g,
+            b: self.b,
+        }
     }
 }

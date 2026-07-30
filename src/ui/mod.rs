@@ -1,7 +1,6 @@
 pub mod colorscheme;
 pub mod layout;
 pub mod renderer;
-pub mod theme;
 pub mod views;
 pub mod window;
 

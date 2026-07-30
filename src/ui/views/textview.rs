@@ -3,7 +3,7 @@ use crate::editor::display::display_map::DisplayPoint;
 use crate::editor::{Editor, document::BufferText};
 use crate::services::search::TextSearch;
 use crate::ui::layout::Rect;
-use crate::ui::theme::ToCrossTerm;
+use crate::ui::colorscheme::ToCrossTerm;
 use crate::ui::views::View;
 
 use std::io::Write;
@@ -54,65 +54,11 @@ impl TextView {
             0
         };
 
-        let theme_fg = editor
-            .theme
-            .theme
-            .settings
-            .foreground
-            .map(|c| c.rgb())
-            .unwrap_or(crossterm::style::Color::White);
-        let theme_bg = editor
-            .theme
-            .theme
-            .settings
-            .background
-            .map(|c| c.rgb())
-            .unwrap_or(crossterm::style::Color::Black);
-        let theme_caret = editor
-            .theme
-            .theme
-            .settings
-            .caret
-            .map(|c| c.rgb())
-            .unwrap_or(theme_fg);
-        let theme_select = editor
-            .theme
-            .theme
-            .settings
-            .selection
-            .map(|c| c.rgb())
-            .unwrap_or(theme_bg);
-
-        let (editor_fg, editor_bg, caret_bg, caret_fg, selection_bg) = if editor.use_colorscheme {
-            let fg = editor
-                .colorscheme
-                .ui
-                .get("foreground")
-                .map(|s| s.color)
-                .unwrap_or(theme_fg);
-            let bg = editor
-                .colorscheme
-                .ui
-                .get("background")
-                .map(|s| s.color)
-                .unwrap_or(theme_bg);
-            let sel = editor
-                .colorscheme
-                .ui
-                .get("selection")
-                .map(|s| s.color)
-                .unwrap_or(theme_select);
-            let c_bg = editor
-                .colorscheme
-                .ui
-                .get("caret")
-                .map(|s| s.color)
-                .unwrap_or(sel);
-            let c_fg = fg; // editor.colorscheme.ui.get("caret_foreground").map(|s| s.color).unwrap_or(bg);
-            (fg, bg, c_bg, c_fg, sel)
-        } else {
-            (theme_fg, theme_bg, theme_caret, theme_bg, theme_select)
-        };
+        let editor_fg = editor.colorscheme.ui.get("foreground").map(|s| s.color).unwrap_or(crossterm::style::Color::White);
+        let editor_bg = editor.colorscheme.ui.get("background").map(|s| s.color).unwrap_or(crossterm::style::Color::Black);
+        let selection_bg = editor.colorscheme.ui.get("selection").map(|s| s.color).unwrap_or(editor_bg);
+        let caret_bg = editor.colorscheme.ui.get("caret").map(|s| s.color).unwrap_or(selection_bg);
+        let caret_fg = editor_fg;
 
         let gutter_fg = editor
             .colorscheme

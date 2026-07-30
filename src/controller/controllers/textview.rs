@@ -90,8 +90,8 @@ impl ViewController for TextViewController {
                         start_row: hl_start,
                         row_count: hl_end - hl_start,
                         colorscheme: std::sync::Arc::new(editor.colorscheme.clone()),
-                        theme: std::sync::Arc::new(editor.theme.theme.clone()),
-                        use_colorscheme: editor.use_colorscheme,
+                        syntax_tree: buffer.syntax_tree.clone(),
+                        treesitter_highlights: editor.treesitter_highlights,
                         task_id: TaskId(hl_task_id),
                         latest_task_id: document.latest_hl_task_id.clone(),
                     },
@@ -176,8 +176,8 @@ impl ViewController for TextViewController {
                         start_buffer_row,
                         end_buffer_row_exclusive - start_buffer_row,
                         &editor.colorscheme,
-                        &editor.theme.theme,
-                        editor.use_colorscheme,
+                        buffer.syntax_tree.as_ref(),
+                        editor.treesitter_highlights,
                     );
                 }
             }

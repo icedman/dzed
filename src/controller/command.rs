@@ -343,7 +343,7 @@ mod tests {
             win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
         }
         cmd.ex(&mut ui, &mut editor, &mut buffer_manager);
-        assert_eq!(editor.colorscheme.metadata.name, "tokyonight-moon");
+        assert_eq!(editor.colorscheme.metadata.name, "catppuccin-mocha");
 
         // Test syntax command
         cmd.set("syntax off");
