@@ -10,6 +10,7 @@ pub mod macros;
 use crate::controller::controllers::ViewController;
 use crate::controller::controllers::textview::TextViewController;
 use crate::ui::views::View;
+use crate::services::background;
 use crate::{controller::input::VimInput, editor, ui::Ui, ui::window};
 
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers, MouseEventKind};
@@ -69,8 +70,22 @@ impl Controller {
     pub fn dispatch_actions(
         &mut self,
         editor: &mut crate::editor::Editor,
-        ui: &crate::ui::Ui,
+        ui: &mut crate::ui::Ui,
     ) -> Result<ControllerResult, Box<dyn std::error::Error>> {
+        // draing background services
+        while let Some(result) = editor.services.background_worker.try_recv() {
+            let owner_id = match &result {
+                background::BackgroundResult::HighlightComplete { owner_id, .. } => *owner_id,
+                background::BackgroundResult::WrapComplete { owner_id, .. } => *owner_id,
+                background::BackgroundResult::ParseComplete { owner_id, .. } => *owner_id,
+            };
+            if let Some(win) = ui.windows.get_mut(&owner_id) {
+                if let Some(ref mut controller) = win.controller {
+                    let _ = controller.handle_task(&result, editor);
+                }
+            }
+        }
+
         let mut last_result = ControllerResult::None;
 
         while let Some(action) = self.pending_actions.pop_front() {

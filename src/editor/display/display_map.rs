@@ -25,7 +25,7 @@ pub struct DisplayMap {
     folds: Vec<display::fold_map::Fold>,
     fold_map: display::fold_map::FoldMap,
     wrap_map: WrapMap,
-    wrap_width: Option<u32>,
+    pub wrap_width: Option<u32>,
     pub scroll_x: u32,
     pub scroll_y: u32,
     pub visible_cols: u32,

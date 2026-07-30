@@ -5,7 +5,7 @@ use crate::editor::Editor;
 use crate::editor::display::display_map::DisplayPoint;
 use crate::ui::Ui;
 use crate::ui::layout::Rect;
-use crate::services::background::{BackgroundTask, TaskId};
+use crate::services::background::{self, BackgroundTask, TaskId};
 use std::io::Write;
 use text::ToPoint;
 
@@ -49,70 +49,78 @@ impl ViewController for TextViewController {
             .set_wrap_width(editor.wrap.then_some(wrap_cols as u32));
 
         if editor.should_sync {
+            let snapshot = buffer.doc.buffer().snapshot().clone();
             buffer.display_map.fold(
                 buffer.doc.folds.clone(),
-                buffer.doc.buffer().snapshot().clone(),
+                snapshot.clone(),
             );
 
-            let (start, _) = buffer
-                .doc
-                .selections()
-                .rows_in_selection(buffer.doc.buffer());
-            buffer.hl.invalidate_state(start);
-
-            // Spawn background highlight task
-            let hl_task_id = buffer
-                .latest_hl_task_id
-                .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
-                + 1;
-            editor.services.background_worker.spawn_task(
-                BackgroundTask::Highlight {
-                    owner_id: window_id,
-                    file_path: buffer.file_path.clone(),
-                    snapshot: buffer.doc.buffer().snapshot().clone(),
-                    start_row: start,
-                    row_count: buffer.doc.buffer().row_count() - start,
-                    colorscheme: std::sync::Arc::new(editor.colorscheme.clone()),
-                    theme: std::sync::Arc::new(editor.theme.theme.clone()),
-                    use_colorscheme: editor.use_colorscheme,
-                    task_id: TaskId(hl_task_id),
-                    latest_task_id: buffer.latest_hl_task_id.clone(),
-                },
-            );
-
-            // Spawn background wrap task
+            let text_changed = !buffer.hl.is_sync(&snapshot);
             let wrap_width = editor.wrap.then_some(wrap_cols as u32);
-            let wrap_task_id = buffer
-                .latest_wrap_task_id
-                .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
-                + 1;
-            editor.services.background_worker.spawn_task(
-                BackgroundTask::Wrap {
-                    owner_id: window_id,
-                    file_path: buffer.file_path.clone(),
-                    snapshot: buffer.doc.buffer().snapshot().clone(),
-                    folds: buffer.doc.folds.clone(),
-                    wrap_width,
-                    task_id: TaskId(wrap_task_id),
-                    latest_task_id: buffer.latest_wrap_task_id.clone(),
-                },
-            );
+            let wrap_changed = text_changed || buffer.display_map.wrap_width != wrap_width;
 
-            if editor.tree_sitter
-                && let Some(grammar) = buffer.grammar
-            {
-                let parse_task_id = buffer
-                    .latest_parse_task_id
+            if text_changed {
+                let (start, _) = buffer
+                    .doc
+                    .selections()
+                    .rows_in_selection(buffer.doc.buffer());
+                buffer.hl.invalidate_state(start);
+
+                // Spawn background highlight task
+                let hl_task_id = buffer
+                    .latest_hl_task_id
                     .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
                     + 1;
                 editor.services.background_worker.spawn_task(
-                    BackgroundTask::Parse {
+                    BackgroundTask::Highlight {
                         owner_id: window_id,
                         file_path: buffer.file_path.clone(),
-                        snapshot: buffer.doc.buffer().snapshot().clone(),
-                        grammar,
-                        task_id: TaskId(parse_task_id),
-                        latest_task_id: buffer.latest_parse_task_id.clone(),
+                        snapshot: snapshot.clone(),
+                        start_row: start,
+                        row_count: buffer.doc.buffer().row_count() - start,
+                        colorscheme: std::sync::Arc::new(editor.colorscheme.clone()),
+                        theme: std::sync::Arc::new(editor.theme.theme.clone()),
+                        use_colorscheme: editor.use_colorscheme,
+                        task_id: TaskId(hl_task_id),
+                        latest_task_id: buffer.latest_hl_task_id.clone(),
+                    },
+                );
+
+                if editor.tree_sitter
+                    && let Some(grammar) = buffer.grammar
+                {
+                    let parse_task_id = buffer
+                        .latest_parse_task_id
+                        .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+                        + 1;
+                    editor.services.background_worker.spawn_task(
+                        BackgroundTask::Parse {
+                            owner_id: window_id,
+                            file_path: buffer.file_path.clone(),
+                            snapshot: snapshot.clone(),
+                            grammar,
+                            task_id: TaskId(parse_task_id),
+                            latest_task_id: buffer.latest_parse_task_id.clone(),
+                        },
+                    );
+                }
+            }
+
+            if wrap_changed {
+                // Spawn background wrap task
+                let wrap_task_id = buffer
+                    .latest_wrap_task_id
+                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+                    + 1;
+                editor.services.background_worker.spawn_task(
+                    BackgroundTask::Wrap {
+                        owner_id: window_id,
+                        file_path: buffer.file_path.clone(),
+                        snapshot: snapshot.clone(),
+                        folds: buffer.doc.folds.clone(),
+                        wrap_width,
+                        task_id: TaskId(wrap_task_id),
+                        latest_task_id: buffer.latest_wrap_task_id.clone(),
                     },
                 );
             }
@@ -161,6 +169,7 @@ impl ViewController for TextViewController {
                     );
                 }
             }
+            editor.should_sync = false;
         }
 
         Ok(ControllerResult::None)
@@ -178,6 +187,78 @@ impl ViewController for TextViewController {
             editor.should_sync = true;
             editor.should_redraw = true;
         }
+        Ok(ControllerResult::None)
+    }
+
+    fn handle_task(
+        &mut self,
+        result: &background::BackgroundResult,
+        editor: &mut Editor,
+    ) -> Result<ControllerResult, Box<dyn std::error::Error>> {
+        match result {
+            background::BackgroundResult::HighlightComplete {
+                file_path,
+                style_cache,
+                task_id,
+                ..
+            } => {
+                if let Some(buf) = editor
+                    .buffer_manager
+                    .buffers
+                    .iter_mut()
+                    .find(|b| &b.file_path == file_path)
+                {
+                    if *task_id >= background::TaskId(buf.current_hl_task_id) {
+                        buf.current_hl_task_id = task_id.0;
+                        buf.hl
+                            .merge_caches(style_cache.clone(), std::collections::HashMap::new());
+                        buf.hl.last_snapshot_version = Some(buf.doc.buffer().snapshot().version.clone());
+                        editor.should_redraw = true;
+                    }
+                }
+            }
+            background::BackgroundResult::WrapComplete {
+                file_path,
+                wrap_snapshot,
+                task_id,
+                ..
+            } => {
+                if let Some(buf) = editor
+                    .buffer_manager
+                    .buffers
+                    .iter_mut()
+                    .find(|b| &b.file_path == file_path)
+                {
+                    if *task_id >= background::TaskId(buf.current_wrap_task_id) {
+                        buf.current_wrap_task_id = task_id.0;
+                        buf.display_map.apply_wrap_snapshot(wrap_snapshot.clone());
+                        editor.should_redraw = true;
+                    }
+                }
+            }
+            background::BackgroundResult::ParseComplete {
+                file_path,
+                syntax_tree,
+                task_id,
+                ..
+            } => {
+                if editor.tree_sitter {
+                    if let Some(buf) = editor
+                        .buffer_manager
+                        .buffers
+                        .iter_mut()
+                        .find(|b| &b.file_path == file_path)
+                    {
+                        if *task_id >= background::TaskId(buf.current_parse_task_id) {
+                            buf.current_parse_task_id = task_id.0;
+                            buf.syntax_tree = Some(syntax_tree.clone());
+                            editor.should_redraw = true;
+                        }
+                    }
+                }
+            }
+        }
+
         Ok(ControllerResult::None)
     }
 }
