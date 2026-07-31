@@ -10,6 +10,16 @@ use crossterm::{
 };
 use std::io::Write;
 
+#[repr(usize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum WindowId {
+    MainWindow = 1,
+    StatusBar = 2,
+    Tabs = 3,
+    CommandLine = 4,
+    Any = 0,
+}
+
 pub struct Window {
     pub id: usize,
     pub title: String,

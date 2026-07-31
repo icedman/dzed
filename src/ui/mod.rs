@@ -4,6 +4,8 @@ pub mod renderer;
 pub mod views;
 pub mod window;
 
+pub use window::WindowId;
+
 use crate::controller::controllers;
 use crate::editor::Editor;
 use crossterm::{
@@ -24,6 +26,7 @@ pub struct Ui {
     pub cached_layouts: Vec<(usize, layout::Rect)>,
     pub windows: HashMap<usize, window::Window>,
     pub focused_window_id: Option<usize>,
+    next_window_id: usize,
 }
 
 impl Ui {
@@ -37,17 +40,17 @@ impl Ui {
                 layout::SizeConstraint::Fixed(1),        // CommandLine (1 row)
             ],
             children: vec![
-                layout::LayoutNode::Leaf { window_id: 1 }, // Tabs
-                layout::LayoutNode::Leaf { window_id: 0 }, // Editor
-                layout::LayoutNode::Leaf { window_id: 2 }, // Statusbar
-                layout::LayoutNode::Leaf { window_id: 3 }, // CommandLine
+                layout::LayoutNode::Leaf { window_id: WindowId::Tabs as usize }, // Tabs
+                layout::LayoutNode::Leaf { window_id: WindowId::MainWindow as usize }, // Editor
+                layout::LayoutNode::Leaf { window_id: WindowId::StatusBar as usize }, // Statusbar
+                layout::LayoutNode::Leaf { window_id: WindowId::CommandLine as usize }, // CommandLine
             ],
         };
 
         let mut windows = HashMap::new();
 
         // Create initial default window
-        let main_win_id = 0;
+        let main_win_id = WindowId::MainWindow as usize;
         let mut main_win = window::Window::new(main_win_id, "Editor".to_string());
         main_win.set_view(Box::new(views::textview::TextView::new()));
         main_win.set_controller(Box::new(controllers::textview::TextViewController::new()));
@@ -55,22 +58,25 @@ impl Ui {
         windows.insert(main_win_id, main_win);
 
         // Create tabs window
-        let mut tabs_win = window::Window::new(1, "Tabs".to_string());
+        let tabs_win_id = WindowId::Tabs as usize;
+        let mut tabs_win = window::Window::new(tabs_win_id, "Tabs".to_string());
         tabs_win.set_view(Box::new(views::tabs::TabsView {}));
         tabs_win.draw_border = false;
-        windows.insert(1, tabs_win);
+        windows.insert(tabs_win_id, tabs_win);
 
         // Create status bar window
-        let mut statusbar_win = window::Window::new(2, "Status Bar".to_string());
+        let statusbar_win_id = WindowId::StatusBar as usize;
+        let mut statusbar_win = window::Window::new(statusbar_win_id, "Status Bar".to_string());
         statusbar_win.set_view(Box::new(views::statusbar::StatusBarView {}));
         statusbar_win.draw_border = false;
-        windows.insert(2, statusbar_win);
+        windows.insert(statusbar_win_id, statusbar_win);
 
         // Create command bar window
-        let mut commandline_win = window::Window::new(3, "Command".to_string());
+        let commandline_win_id = WindowId::CommandLine as usize;
+        let mut commandline_win = window::Window::new(commandline_win_id, "Command".to_string());
         commandline_win.set_view(Box::new(views::commandline::CommandLineView {}));
         commandline_win.draw_border = false;
-        windows.insert(3, commandline_win);
+        windows.insert(commandline_win_id, commandline_win);
 
         Self {
             layout,
@@ -80,6 +86,7 @@ impl Ui {
             cached_layouts: Vec::new(),
             windows,
             focused_window_id: Some(main_win_id),
+            next_window_id: 5,
         }
     }
 
@@ -102,6 +109,19 @@ impl Ui {
         }
 
         return true;
+    }
+
+    pub fn create_window(&mut self, id: usize) -> &mut window::Window {
+        let actual_id = if id == WindowId::Any as usize {
+            let nid = self.next_window_id;
+            self.next_window_id += 1;
+            nid
+        } else {
+            id
+        };
+        let win = window::Window::new(actual_id, String::new());
+        self.windows.insert(actual_id, win);
+        self.windows.get_mut(&actual_id).unwrap()
     }
 
     pub fn set_focused_window(&mut self, window_id: usize) {
@@ -192,3 +212,26 @@ impl Ui {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_create_window() {
+        let mut ui = Ui::new();
+        let win_id = 999;
+        assert!(ui.windows.get(&win_id).is_none());
+        
+        {
+            let win = ui.create_window(win_id);
+            assert_eq!(win.id, win_id);
+            win.title = "Test Window".to_string();
+        }
+        
+        let win = ui.windows.get(&win_id).unwrap();
+        assert_eq!(win.id, win_id);
+        assert_eq!(win.title, "Test Window");
+    }
+}
+

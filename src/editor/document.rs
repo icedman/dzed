@@ -1542,6 +1542,8 @@ mod tests {
     use crate::services::treesitter::grammars::Grammar;
     use crate::editor::buffers::{BufferManager, TextBuffer};
 
+    const MAIN_WIN: usize = crate::ui::WindowId::MainWindow as usize;
+
     struct TestEnv {
         editor: Editor,
         buffer_manager: BufferManager,
@@ -1555,7 +1557,7 @@ mod tests {
             buffer_manager.add_buffer_for_path("").unwrap();
             let mut ui = crate::ui::Ui::new();
             let active_buf = &buffer_manager.buffers[0];
-            if let Some(win) = ui.windows.get_mut(&0) {
+            if let Some(win) = ui.windows.get_mut(&MAIN_WIN) {
                 win.buffer_id = Some(active_buf.id);
                 win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
             }
@@ -1567,11 +1569,11 @@ mod tests {
         }
 
         fn doc(&self) -> &Document {
-            self.ui.windows.get(&0).unwrap().doc.as_ref().unwrap()
+            self.ui.windows.get(&MAIN_WIN).unwrap().doc.as_ref().unwrap()
         }
 
         fn doc_mut(&mut self) -> &mut Document {
-            self.ui.windows.get_mut(&0).unwrap().doc.as_mut().unwrap()
+            self.ui.windows.get_mut(&MAIN_WIN).unwrap().doc.as_mut().unwrap()
         }
 
         fn buffer(&self) -> &text::Buffer {
@@ -1584,7 +1586,7 @@ mod tests {
         let mut env = TestEnv::new();
 
         let buffer = &env.buffer_manager.buffers[0].buffer;
-        let doc = env.ui.windows.get_mut(&0).unwrap().doc.as_mut().unwrap();
+        let doc = env.ui.windows.get_mut(&MAIN_WIN).unwrap().doc.as_mut().unwrap();
         doc.enter_mode(buffer, Mode::Insert);
         env.apply_action(&Action::InsertText("abc".into()));
         env.apply_action(&Action::MoveLeft {
@@ -1610,7 +1612,7 @@ mod tests {
         let mut env = TestEnv::new();
 
         let buffer = &env.buffer_manager.buffers[0].buffer;
-        let doc = env.ui.windows.get_mut(&0).unwrap().doc.as_mut().unwrap();
+        let doc = env.ui.windows.get_mut(&MAIN_WIN).unwrap().doc.as_mut().unwrap();
         doc.enter_mode(buffer, Mode::Insert);
         env.apply_action(&Action::InsertText("abc".into()));
         env.apply_action(&Action::MoveLeft {
@@ -1631,7 +1633,7 @@ mod tests {
 
         let mut env2 = TestEnv::new();
         let buffer2 = &env2.buffer_manager.buffers[0].buffer;
-        let doc2 = env2.ui.windows.get_mut(&0).unwrap().doc.as_mut().unwrap();
+        let doc2 = env2.ui.windows.get_mut(&MAIN_WIN).unwrap().doc.as_mut().unwrap();
         doc2.enter_mode(buffer2, Mode::Insert);
         env2.apply_action(&Action::InsertText("abc".into()));
         env2.apply_action(&Action::MoveLeft {
@@ -1826,7 +1828,7 @@ line 3".into()));
     let y = 2;
 }";
         env.buffer_manager.buffers[0] = TextBuffer::new_with_text(text);
-        if let Some(win) = env.ui.windows.get_mut(&0) {
+        if let Some(win) = env.ui.windows.get_mut(&MAIN_WIN) {
             let active_buf = &env.buffer_manager.buffers[0];
             win.buffer_id = Some(active_buf.id);
             win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
@@ -1868,7 +1870,7 @@ line 3".into()));
 
         let text = "fn main() { let x = 1; }";
         env.buffer_manager.buffers[0] = TextBuffer::new_with_text(text);
-        if let Some(win) = env.ui.windows.get_mut(&0) {
+        if let Some(win) = env.ui.windows.get_mut(&MAIN_WIN) {
             let active_buf = &env.buffer_manager.buffers[0];
             win.buffer_id = Some(active_buf.id);
             win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
@@ -1912,7 +1914,7 @@ line 2
 line 3
 line 4";
         env.buffer_manager.buffers[0] = TextBuffer::new_with_text(text);
-        if let Some(win) = env.ui.windows.get_mut(&0) {
+        if let Some(win) = env.ui.windows.get_mut(&MAIN_WIN) {
             let active_buf = &env.buffer_manager.buffers[0];
             win.buffer_id = Some(active_buf.id);
             win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
@@ -1935,7 +1937,7 @@ line 4";
             goal: SelectionGoal::None,
         };
         let buffer = &env.buffer_manager.buffers[0].buffer;
-        let doc = env.ui.windows.get_mut(&0).unwrap().doc.as_mut().unwrap();
+        let doc = env.ui.windows.get_mut(&MAIN_WIN).unwrap().doc.as_mut().unwrap();
         doc.selections.update(buffer, &selection);
 
         env.apply_action(&Action::Delete { count: 1 });
@@ -1949,7 +1951,7 @@ line 4";
 
         let text = "fn main() {\n    let x = 1;\n}";
         env.buffer_manager.buffers[0] = TextBuffer::new_with_text(text);
-        if let Some(win) = env.ui.windows.get_mut(&0) {
+        if let Some(win) = env.ui.windows.get_mut(&MAIN_WIN) {
             let active_buf = &env.buffer_manager.buffers[0];
             win.buffer_id = Some(active_buf.id);
             win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
@@ -1973,7 +1975,7 @@ line 4";
             goal: SelectionGoal::None,
         };
         let buffer = &env.buffer_manager.buffers[0].buffer;
-        let doc = env.ui.windows.get_mut(&0).unwrap().doc.as_mut().unwrap();
+        let doc = env.ui.windows.get_mut(&MAIN_WIN).unwrap().doc.as_mut().unwrap();
         doc.selections.update(buffer, &selection);
 
         // Delete '}' forward should delete the fold
@@ -1988,7 +1990,7 @@ line 4";
         env.buffer_manager.buffers[0] = TextBuffer::new_with_text(text);
         
         let active_buf = &env.buffer_manager.buffers[0];
-        if let Some(win) = env.ui.windows.get_mut(&0) {
+        if let Some(win) = env.ui.windows.get_mut(&MAIN_WIN) {
             win.buffer_id = Some(active_buf.id);
             win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
         }
@@ -2004,7 +2006,7 @@ line 4";
         // Clear the buffer and document
         let buf = &mut env.buffer_manager.buffers[0];
         buf.clear();
-        let doc = env.ui.windows.get_mut(&0).unwrap().doc.as_mut().unwrap();
+        let doc = env.ui.windows.get_mut(&MAIN_WIN).unwrap().doc.as_mut().unwrap();
         doc.clear(&buf.buffer);
 
         // Verify everything was reset

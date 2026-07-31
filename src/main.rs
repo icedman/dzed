@@ -39,7 +39,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         buffer_manager.add_buffer_for_path("")?;
     }
     
-    if let Some(win) = ui.windows.get_mut(&0) {
+    if let Some(win) = ui.windows.get_mut(&(ui::WindowId::MainWindow as usize)) {
         let active_buf = buffer_manager.buffers.first().unwrap();
         win.buffer_id = Some(active_buf.id);
         win.doc = Some(editor::document::Document::new_with_buffer(

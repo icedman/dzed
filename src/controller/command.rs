@@ -236,10 +236,11 @@ mod tests {
         let mut buffer_manager = crate::editor::buffers::BufferManager::new();
         buffer_manager.add_buffer_for_path("temp_test_file1.txt").unwrap();
         let mut cmd = Command::new();
+        let main_win = crate::ui::WindowId::MainWindow as usize;
 
         cmd.set("set wrap");
         let mut ui = crate::ui::Ui::new();
-        if let Some(win) = ui.windows.get_mut(&0) {
+        if let Some(win) = ui.windows.get_mut(&main_win) {
             let active_buf = &buffer_manager.buffers[0];
             win.buffer_id = Some(active_buf.id);
             win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
@@ -249,7 +250,7 @@ mod tests {
 
         cmd.set("set nowrap");
         let mut ui = crate::ui::Ui::new();
-        if let Some(win) = ui.windows.get_mut(&0) {
+        if let Some(win) = ui.windows.get_mut(&main_win) {
             let active_buf = &buffer_manager.buffers[0];
             win.buffer_id = Some(active_buf.id);
             win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
@@ -259,7 +260,7 @@ mod tests {
 
         cmd.set("set nonu");
         let mut ui = crate::ui::Ui::new();
-        if let Some(win) = ui.windows.get_mut(&0) {
+        if let Some(win) = ui.windows.get_mut(&main_win) {
             let active_buf = &buffer_manager.buffers[0];
             win.buffer_id = Some(active_buf.id);
             win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
@@ -269,7 +270,7 @@ mod tests {
 
         cmd.set("set nu");
         let mut ui = crate::ui::Ui::new();
-        if let Some(win) = ui.windows.get_mut(&0) {
+        if let Some(win) = ui.windows.get_mut(&main_win) {
             let active_buf = &buffer_manager.buffers[0];
             win.buffer_id = Some(active_buf.id);
             win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
@@ -279,7 +280,7 @@ mod tests {
 
         cmd.set("set nofold");
         let mut ui = crate::ui::Ui::new();
-        if let Some(win) = ui.windows.get_mut(&0) {
+        if let Some(win) = ui.windows.get_mut(&main_win) {
             let active_buf = &buffer_manager.buffers[0];
             win.buffer_id = Some(active_buf.id);
             win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
@@ -289,7 +290,7 @@ mod tests {
 
         cmd.set("set fold");
         let mut ui = crate::ui::Ui::new();
-        if let Some(win) = ui.windows.get_mut(&0) {
+        if let Some(win) = ui.windows.get_mut(&main_win) {
             let active_buf = &buffer_manager.buffers[0];
             win.buffer_id = Some(active_buf.id);
             win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
@@ -299,7 +300,7 @@ mod tests {
 
         cmd.set("set nofoldmultiline");
         let mut ui = crate::ui::Ui::new();
-        if let Some(win) = ui.windows.get_mut(&0) {
+        if let Some(win) = ui.windows.get_mut(&main_win) {
             let active_buf = &buffer_manager.buffers[0];
             win.buffer_id = Some(active_buf.id);
             win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
@@ -309,7 +310,7 @@ mod tests {
 
         cmd.set("set foldmultiline");
         let mut ui = crate::ui::Ui::new();
-        if let Some(win) = ui.windows.get_mut(&0) {
+        if let Some(win) = ui.windows.get_mut(&main_win) {
             let active_buf = &buffer_manager.buffers[0];
             win.buffer_id = Some(active_buf.id);
             win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
@@ -319,7 +320,7 @@ mod tests {
 
         cmd.set("set notreesitter");
         let mut ui = crate::ui::Ui::new();
-        if let Some(win) = ui.windows.get_mut(&0) {
+        if let Some(win) = ui.windows.get_mut(&main_win) {
             let active_buf = &buffer_manager.buffers[0];
             win.buffer_id = Some(active_buf.id);
             win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
@@ -329,7 +330,7 @@ mod tests {
 
         cmd.set("set treesitter");
         let mut ui = crate::ui::Ui::new();
-        if let Some(win) = ui.windows.get_mut(&0) {
+        if let Some(win) = ui.windows.get_mut(&main_win) {
             let active_buf = &buffer_manager.buffers[0];
             win.buffer_id = Some(active_buf.id);
             win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
@@ -340,7 +341,7 @@ mod tests {
         // Test colorschemes command and aliases
         cmd.set("colorschemes catppuccin");
         let mut ui = crate::ui::Ui::new();
-        if let Some(win) = ui.windows.get_mut(&0) {
+        if let Some(win) = ui.windows.get_mut(&main_win) {
             let active_buf = &buffer_manager.buffers[0];
             win.buffer_id = Some(active_buf.id);
             win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
@@ -350,7 +351,7 @@ mod tests {
 
         cmd.set("colorscheme kanagawa");
         let mut ui = crate::ui::Ui::new();
-        if let Some(win) = ui.windows.get_mut(&0) {
+        if let Some(win) = ui.windows.get_mut(&main_win) {
             let active_buf = &buffer_manager.buffers[0];
             win.buffer_id = Some(active_buf.id);
             win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
@@ -360,7 +361,7 @@ mod tests {
 
         cmd.set("colo catppuccin");
         let mut ui = crate::ui::Ui::new();
-        if let Some(win) = ui.windows.get_mut(&0) {
+        if let Some(win) = ui.windows.get_mut(&main_win) {
             let active_buf = &buffer_manager.buffers[0];
             win.buffer_id = Some(active_buf.id);
             win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
@@ -370,7 +371,7 @@ mod tests {
 
         cmd.set("colorscheme unknown_colorscheme");
         let mut ui = crate::ui::Ui::new();
-        if let Some(win) = ui.windows.get_mut(&0) {
+        if let Some(win) = ui.windows.get_mut(&main_win) {
             let active_buf = &buffer_manager.buffers[0];
             win.buffer_id = Some(active_buf.id);
             win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
@@ -381,7 +382,7 @@ mod tests {
         // Test syntax command
         cmd.set("syntax off");
         let mut ui = crate::ui::Ui::new();
-        if let Some(win) = ui.windows.get_mut(&0) {
+        if let Some(win) = ui.windows.get_mut(&main_win) {
             let active_buf = &buffer_manager.buffers[0];
             win.buffer_id = Some(active_buf.id);
             win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
@@ -391,7 +392,7 @@ mod tests {
 
         cmd.set("syn on");
         let mut ui = crate::ui::Ui::new();
-        if let Some(win) = ui.windows.get_mut(&0) {
+        if let Some(win) = ui.windows.get_mut(&main_win) {
             let active_buf = &buffer_manager.buffers[0];
             win.buffer_id = Some(active_buf.id);
             win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
@@ -403,7 +404,7 @@ mod tests {
         buffer_manager.add_buffer_for_path("temp_test_file2.txt").unwrap();
 
         let mut ui = crate::ui::Ui::new();
-        if let Some(win) = ui.windows.get_mut(&0) {
+        if let Some(win) = ui.windows.get_mut(&main_win) {
             let active_buf = &buffer_manager.buffers[0];
             win.buffer_id = Some(active_buf.id);
             win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
@@ -411,10 +412,10 @@ mod tests {
 
         cmd.set("bnext");
         cmd.ex(&mut ui, &mut editor, &mut buffer_manager);
-        assert_eq!(ui.windows.get(&0).unwrap().buffer_id, Some(1));
+        assert_eq!(ui.windows.get(&main_win).unwrap().buffer_id, Some(1));
 
         cmd.set("bprev");
         cmd.ex(&mut ui, &mut editor, &mut buffer_manager);
-        assert_eq!(ui.windows.get(&0).unwrap().buffer_id, Some(0));
+        assert_eq!(ui.windows.get(&main_win).unwrap().buffer_id, Some(0));
     }
 }
