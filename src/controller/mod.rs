@@ -130,6 +130,32 @@ impl Controller {
                         editor.should_redraw = true;
                     }
                 }
+                actions::Action::SplitHorizontal { file_path } => {
+                    ui.split_focused_window(
+                        crate::ui::layout::SplitDirection::Vertical,
+                        file_path.clone(),
+                        buffer_manager,
+                    );
+                    editor.should_redraw = true;
+                }
+                actions::Action::SplitVertical { file_path } => {
+                    ui.split_focused_window(
+                        crate::ui::layout::SplitDirection::Horizontal,
+                        file_path.clone(),
+                        buffer_manager,
+                    );
+                    editor.should_redraw = true;
+                }
+                actions::Action::CloseWindow => {
+                    if let Some(id) = ui.focused_window_id {
+                        ui.close_window(id);
+                        editor.should_redraw = true;
+                    }
+                }
+                actions::Action::OnlyWindow => {
+                    ui.only_windows();
+                    editor.should_redraw = true;
+                }
                 actions::Action::Command(command_string) => {
                     self.command.set(command_string);
                     if let Some(result) = self.command.ex(ui, editor, buffer_manager) {

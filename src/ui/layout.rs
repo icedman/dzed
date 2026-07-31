@@ -134,4 +134,80 @@ impl LayoutNode {
             }
         }
     }
+
+    pub fn split_leaf(&mut self, target_id: usize, new_id: usize, direction: SplitDirection) -> bool {
+        match self {
+            LayoutNode::Leaf { window_id } => {
+                if *window_id == target_id {
+                    *self = LayoutNode::Split {
+                        direction,
+                        constraints: vec![
+                            SizeConstraint::Percentage(0.5),
+                            SizeConstraint::Percentage(0.5),
+                        ],
+                        children: vec![
+                            LayoutNode::Leaf { window_id: target_id },
+                            LayoutNode::Leaf { window_id: new_id },
+                        ],
+                    };
+                    true
+                } else {
+                    false
+                }
+            }
+            LayoutNode::Split { children, .. } => {
+                for child in children {
+                    if child.split_leaf(target_id, new_id, direction) {
+                        return true;
+                    }
+                }
+                false
+            }
+        }
+    }
+
+    pub fn remove_leaf(&mut self, target_id: usize) -> (bool, Option<usize>) {
+        match self {
+            LayoutNode::Leaf { window_id } => {
+                if *window_id == target_id {
+                    (true, None)
+                } else {
+                    (false, None)
+                }
+            }
+            LayoutNode::Split { constraints, children, .. } => {
+                let mut remove_idx = None;
+                for (i, child) in children.iter_mut().enumerate() {
+                    let (removed, _) = child.remove_leaf(target_id);
+                    if removed {
+                        remove_idx = Some(i);
+                        break;
+                    }
+                }
+                if let Some(idx) = remove_idx {
+                    children.remove(idx);
+                    if constraints.len() > idx {
+                        constraints.remove(idx);
+                    }
+                    if children.len() == 1 {
+                        let remaining_child = children.remove(0);
+                        *self = remaining_child;
+                        let sibling_id = match self {
+                            LayoutNode::Leaf { window_id } => Some(*window_id),
+                            _ => None,
+                        };
+                        return (true, sibling_id);
+                    }
+                    return (true, None);
+                }
+                for child in children.iter_mut() {
+                    let (removed, sibling) = child.remove_leaf(target_id);
+                    if removed {
+                        return (true, sibling);
+                    }
+                }
+                (false, None)
+            }
+        }
+    }
 }

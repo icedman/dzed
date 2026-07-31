@@ -63,6 +63,10 @@ pub enum Action {
     FocusDownWindow,
     FocusUpWindow,
     FocusRightWindow,
+    SplitHorizontal { file_path: Option<String> },
+    SplitVertical { file_path: Option<String> },
+    CloseWindow,
+    OnlyWindow,
 
     // MOTIONS
     StandBy {
@@ -424,6 +428,10 @@ impl std::fmt::Display for Action {
             Action::FocusDownWindow => write!(f, "FocusDownWindow"),
             Action::FocusUpWindow => write!(f, "FocusUpWindow"),
             Action::FocusRightWindow => write!(f, "FocusRightWindow"),
+            Action::SplitHorizontal { file_path } => write!(f, "SplitHorizontal({:?})", file_path),
+            Action::SplitVertical { file_path } => write!(f, "SplitVertical({:?})", file_path),
+            Action::CloseWindow => write!(f, "CloseWindow"),
+            Action::OnlyWindow => write!(f, "OnlyWindow"),
             Action::MarkSet { ch } => write!(f, "MarkSet({})", ch),
             Action::MarkJump { ch, select } => write!(f, "MarkJump({}, select={})", ch, select),
             Action::MoveToWord { count, .. } => write!(f, "MoveToWord({})", count),
@@ -690,7 +698,11 @@ impl Action {
             Action::FocusLeftWindow
             | Action::FocusDownWindow
             | Action::FocusUpWindow
-            | Action::FocusRightWindow => self,
+            | Action::FocusRightWindow
+            | Action::SplitHorizontal { .. }
+            | Action::SplitVertical { .. }
+            | Action::CloseWindow
+            | Action::OnlyWindow => self,
             Action::Delete { .. } => Action::Delete { count },
             Action::Change { .. } => Action::Change { count },
             Action::Yank { .. } => Action::Yank { count },

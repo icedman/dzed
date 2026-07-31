@@ -181,6 +181,20 @@ impl Command {
                     }
                     None
                 }
+                ex::Ex::Split => {
+                    let file_path = resolved.arguments.as_ref().and_then(|args| args.first()).cloned();
+                    Some(ControllerResult::Action(actions::Action::SplitHorizontal { file_path }))
+                }
+                ex::Ex::Vsplit => {
+                    let file_path = resolved.arguments.as_ref().and_then(|args| args.first()).cloned();
+                    Some(ControllerResult::Action(actions::Action::SplitVertical { file_path }))
+                }
+                ex::Ex::Close => {
+                    Some(ControllerResult::Action(actions::Action::CloseWindow))
+                }
+                ex::Ex::Only => {
+                    Some(ControllerResult::Action(actions::Action::OnlyWindow))
+                }
                 _ => None,
             }
         } else {

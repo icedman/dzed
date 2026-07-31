@@ -37,6 +37,7 @@ use std::io::Write;
 
 pub struct Ui {
     pub layout: layout::LayoutNode,
+    pub editor_layout: layout::LayoutNode,
     pub screen_rows: u32,
     pub screen_cols: u32,
     pub last_parent_rect: Option<layout::Rect>,
@@ -107,8 +108,13 @@ impl Ui {
         commandline_win.draw_border = false;
         windows.insert(commandline_win_id, commandline_win);
 
+        let editor_layout = layout::LayoutNode::Leaf {
+            window_id: main_win_id,
+        };
+
         Self {
             layout,
+            editor_layout,
             screen_rows: 0,
             screen_cols: 0,
             last_parent_rect: None,
@@ -121,7 +127,29 @@ impl Ui {
     }
 
     fn layout(&mut self, screen_cols: u32, screen_rows: u32) -> bool {
-        if self.screen_cols == screen_cols && self.screen_rows == screen_rows {
+        self.layout = layout::LayoutNode::Split {
+            direction: layout::SplitDirection::Vertical,
+            constraints: vec![
+                layout::SizeConstraint::Fixed(1),        // Tabs (1 row)
+                layout::SizeConstraint::Percentage(1.0), // Editor
+                layout::SizeConstraint::Fixed(1),        // Statusbar (1 row)
+                layout::SizeConstraint::Fixed(1),        // CommandLine (1 row)
+            ],
+            children: vec![
+                layout::LayoutNode::Leaf {
+                    window_id: WindowId::Tabs as usize,
+                }, // Tabs
+                self.editor_layout.clone(), // Editor
+                layout::LayoutNode::Leaf {
+                    window_id: WindowId::StatusBar as usize,
+                }, // Statusbar
+                layout::LayoutNode::Leaf {
+                    window_id: WindowId::CommandLine as usize,
+                }, // CommandLine
+            ],
+        };
+
+        if self.screen_cols == screen_cols && self.screen_rows == screen_rows && self.last_parent_rect.is_some() {
             return false;
         }
         self.screen_rows = screen_rows;
@@ -133,10 +161,8 @@ impl Ui {
             width: screen_cols as u16,
             height: screen_rows as u16,
         };
-        if self.last_parent_rect != Some(parent_rect) {
-            self.cached_layouts = self.layout.compute_layout(parent_rect);
-            self.last_parent_rect = Some(parent_rect);
-        }
+        self.cached_layouts = self.layout.compute_layout(parent_rect);
+        self.last_parent_rect = Some(parent_rect);
 
         return true;
     }
@@ -226,6 +252,118 @@ impl Ui {
     pub fn restore_last_focused_window(&mut self) {
         if let Some(last_id) = self.last_focused_window_id {
             self.set_focused_window(last_id);
+        }
+    }
+
+    pub fn split_focused_window(
+        &mut self,
+        direction: layout::SplitDirection,
+        file_path: Option<String>,
+        buffer_manager: &mut crate::editor::buffers::BufferManager,
+    ) {
+        let focused_id = match self.focused_window_id {
+            Some(id) if id != WindowId::Tabs as usize
+                && id != WindowId::StatusBar as usize
+                && id != WindowId::CommandLine as usize => id,
+            _ => return,
+        };
+
+        let new_win_id = self.next_window_id;
+        self.next_window_id += 1;
+
+        let mut new_win = window::Window::new(new_win_id, String::new());
+        new_win.set_view(Box::new(views::textview::TextView::new()));
+        new_win.set_controller(Box::new(controllers::textview::TextViewController::new()));
+        new_win.draw_border = true;
+
+        if let Some(focused_win) = self.windows.get(&focused_id) {
+            new_win.title = focused_win.title.clone();
+            if let Some(buf_id) = focused_win.buffer_id {
+                new_win.set_buffer(buf_id, buffer_manager);
+            }
+        }
+
+        if let Some(p) = file_path {
+            if let Ok(new_buf) = buffer_manager.add_buffer_for_path(&p) {
+                new_win.set_buffer(new_buf.id, buffer_manager);
+            }
+        }
+
+        self.windows.insert(new_win_id, new_win);
+
+        self.editor_layout.split_leaf(focused_id, new_win_id, direction);
+        self.last_parent_rect = None;
+
+        self.set_focused_window(new_win_id);
+    }
+
+    pub fn close_window(&mut self, window_id: usize) {
+        if window_id == WindowId::Tabs as usize
+            || window_id == WindowId::StatusBar as usize
+            || window_id == WindowId::CommandLine as usize
+        {
+            return;
+        }
+
+        let editor_window_count = self
+            .windows
+            .keys()
+            .filter(|&&id| {
+                id != WindowId::Tabs as usize
+                    && id != WindowId::StatusBar as usize
+                    && id != WindowId::CommandLine as usize
+            })
+            .count();
+
+        if editor_window_count <= 1 {
+            return;
+        }
+
+        let (_, sibling_id) = self.editor_layout.remove_leaf(window_id);
+        self.windows.remove(&window_id);
+        self.last_parent_rect = None;
+
+        if self.focused_window_id == Some(window_id) {
+            if let Some(sib) = sibling_id {
+                self.set_focused_window(sib);
+            } else {
+                let fallback = self.windows.keys().find(|&&id| {
+                    id != WindowId::Tabs as usize
+                        && id != WindowId::StatusBar as usize
+                        && id != WindowId::CommandLine as usize
+                });
+                if let Some(&f_id) = fallback {
+                    self.set_focused_window(f_id);
+                }
+            }
+        }
+    }
+
+    pub fn only_windows(&mut self) {
+        let focused_id = match self.focused_window_id {
+            Some(id) if id != WindowId::Tabs as usize
+                && id != WindowId::StatusBar as usize
+                && id != WindowId::CommandLine as usize => id,
+            _ => return,
+        };
+
+        self.editor_layout = layout::LayoutNode::Leaf { window_id: focused_id };
+        self.last_parent_rect = None;
+
+        let to_remove: Vec<usize> = self
+            .windows
+            .keys()
+            .cloned()
+            .filter(|&id| {
+                id != focused_id
+                    && id != WindowId::Tabs as usize
+                    && id != WindowId::StatusBar as usize
+                    && id != WindowId::CommandLine as usize
+            })
+            .collect();
+
+        for id in to_remove {
+            self.windows.remove(&id);
         }
     }
 

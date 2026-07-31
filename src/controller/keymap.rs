@@ -926,6 +926,30 @@ impl Keymap {
             .bind("<C-w><C-l>", Action::FocusRightWindow)
             .expect("Valid binding");
         normal_actions
+            .bind("<C-w><s>", Action::SplitHorizontal { file_path: None })
+            .expect("Valid binding");
+        normal_actions
+            .bind("<C-w><C-s>", Action::SplitHorizontal { file_path: None })
+            .expect("Valid binding");
+        normal_actions
+            .bind("<C-w><v>", Action::SplitVertical { file_path: None })
+            .expect("Valid binding");
+        normal_actions
+            .bind("<C-w><C-v>", Action::SplitVertical { file_path: None })
+            .expect("Valid binding");
+        normal_actions
+            .bind("<C-w><c>", Action::CloseWindow)
+            .expect("Valid binding");
+        normal_actions
+            .bind("<C-w><C-c>", Action::CloseWindow)
+            .expect("Valid binding");
+        normal_actions
+            .bind("<C-w><o>", Action::OnlyWindow)
+            .expect("Valid binding");
+        normal_actions
+            .bind("<C-w><C-o>", Action::OnlyWindow)
+            .expect("Valid binding");
+        normal_actions
             .bind("J", Action::JoinLines { count: 1 })
             .expect("Valid binding");
         normal_actions
