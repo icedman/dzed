@@ -738,7 +738,18 @@ impl Motions for Selection<Anchor> {
         rows: u32,
     ) -> Option<Selection<Anchor>> {
         let mut cursor = self.clone();
-        if let Some(matched) = cursor.move_to_next_match(search, buffer) {
+        let mut p = cursor.head().to_point(buffer);
+        p.column += 1;
+        let offset = buffer.clip_point(p, Bias::Left).to_offset(buffer);
+        let new_head = buffer.anchor_at(offset, Bias::Left);
+        let mut first_cursor = Selection {
+            id: cursor.id,
+            start: new_head,
+            end: new_head,
+            reversed: cursor.reversed,
+            goal: cursor.goal,
+        };
+        if let Some(matched) = first_cursor.move_to_next_match(search, buffer) {
             return Some(matched);
         }
 
@@ -1668,8 +1679,26 @@ impl SelectionCollection {
 
             if pattern {
                 if let Some(ref regex) = self.regex {
+                    let mut first = true;
                     for _ in point.row..rows {
-                        if let Some(matched) = cur.move_to_next_pattern_match(regex, buffer) {
+                        let mut search_cur = if first {
+                            first = false;
+                            let mut p = cur.head().to_point(buffer);
+                            p.column += 1;
+                            let offset = buffer.clip_point(p, Bias::Left).to_offset(buffer);
+                            let new_head = buffer.anchor_at(offset, Bias::Left);
+                            Selection {
+                                id: cur.id,
+                                start: new_head,
+                                end: new_head,
+                                reversed: cur.reversed,
+                                goal: cur.goal,
+                            }
+                        } else {
+                            cur.clone()
+                        };
+
+                        if let Some(matched) = search_cur.move_to_next_pattern_match(regex, buffer) {
                             self.update(buffer, &matched);
                             break;
                         } else {
@@ -1678,8 +1707,26 @@ impl SelectionCollection {
                     }
                 }
             } else {
+                let mut first = true;
                 for _ in point.row..rows {
-                    if let Some(matched) = cur.move_to_next_match(text, buffer) {
+                    let mut search_cur = if first {
+                        first = false;
+                        let mut p = cur.head().to_point(buffer);
+                        p.column += 1;
+                        let offset = buffer.clip_point(p, Bias::Left).to_offset(buffer);
+                        let new_head = buffer.anchor_at(offset, Bias::Left);
+                        Selection {
+                            id: cur.id,
+                            start: new_head,
+                            end: new_head,
+                            reversed: cur.reversed,
+                            goal: cur.goal,
+                        }
+                    } else {
+                        cur.clone()
+                    };
+
+                    if let Some(matched) = search_cur.move_to_next_match(text, buffer) {
                         self.update(buffer, &matched);
                         break;
                     } else {
@@ -1898,4 +1945,23 @@ mod tests {
         cursor = cursor.move_to_previous_word_end(false, &buffer);
         assert_eq!(cursor.head().to_point(&buffer), Point::new(0, 4));
     }
+
+    #[test]
+    fn test_pattern_match_start_of_line() {
+        let buffer = Buffer::new(
+            ReplicaId::LOCAL,
+            BufferId::new(1).unwrap(),
+            "abc\npattern_here\ndef",
+        );
+        let mut selections = SelectionCollection::new();
+        selections.selections.push(selection(&buffer, 0, 0, 0, false));
+        
+        // Search forward for "pattern" (starts at first character of the second line)
+        selections.move_to_next_match("pattern", true, &buffer);
+        
+        // The selection should have moved to the start of "pattern_here" (line 1, column 0)
+        let head_pt = selections.selections[0].head().to_point(&buffer);
+        assert_eq!(head_pt, Point::new(1, 0));
+    }
 }
+
