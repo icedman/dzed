@@ -360,6 +360,7 @@ pub enum Action {
     ChangeCase {
         count: u32,
     },
+    SelectSimilar,
 
     // MODE SELECT
     SetToNormal,
@@ -538,6 +539,7 @@ impl std::fmt::Display for Action {
             Action::Indent { count } => write!(f, "Indent({})", count),
             Action::Outdent { count } => write!(f, "Outdent({})", count),
             Action::ChangeCase { count } => write!(f, "ChangeCase({})", count),
+            Action::SelectSimilar => write!(f, "SelectSimilar"),
             Action::SetToNormal => write!(f, "SetNormal"),
             Action::SetToInsert => write!(f, "SetInsert"),
             Action::SetToAppend => write!(f, "SetAppend"),
@@ -882,6 +884,7 @@ impl Action {
             Action::Indent { .. } => Action::Indent { count },
             Action::Outdent { .. } => Action::Outdent { count },
             Action::ChangeCase { .. } => Action::ChangeCase { count },
+            Action::SelectSimilar => Action::SelectSimilar,
             Action::DeleteMotion { motion, .. } => Action::DeleteMotion { count, motion },
             Action::ChangeMotion { motion, .. } => Action::ChangeMotion { count, motion },
             Action::YankMotion { motion, .. } => Action::YankMotion { count, motion },

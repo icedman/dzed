@@ -850,6 +850,9 @@ impl Keymap {
 
         // Normal Mode
         normal_actions
+            .bind("<C-S-d>", Action::SelectSimilar)
+            .expect("Valid binding");
+        normal_actions
             .bind("dd", Action::DeleteLine { count: 1 })
             .expect("Valid binding");
         normal_actions

@@ -322,45 +322,57 @@ impl Document {
     }
 
     pub fn select_similar(&mut self, buffer: &Buffer) {
-        // if !self.has_selection() {
-        //    self.select_in(&SelectInKind::Word);
-        // } else {
-        let cursor = self.selection();
-        let selected_text = cursor.text(buffer);
-        if let Some(mut next_match) = cursor.clone().move_to_next_match_within(
-            selected_text.as_str(),
-            buffer,
-            buffer.row_count(),
-        ) {
-            for _ in 0..selected_text.len().saturating_sub(1) {
-                next_match = next_match.move_right_once(true, buffer);
-            }
-
-            let next_cursor = Selection {
-                id: cursor.id,
-                start: next_match.head(),
-                end: next_match.tail(),
-                reversed: false,
-                goal: SelectionGoal::None,
-            };
-            if self.selections.has_similar_cursor(&next_cursor, buffer) {
-                return;
-            }
-
-            let sel = self.add_selection(buffer);
-            self.selections.update(
-                buffer,
-                &Selection {
-                    id: sel.id,
-                    start: cursor.head(),
-                    end: cursor.tail(),
+        if !self.has_selection(buffer) {
+            let cursors = self.selections.selections.clone();
+            for cursor in cursors.iter() {
+                let start_sel = cursor.move_to_word(false, buffer);
+                let end_sel = cursor.move_to_word_end(false, buffer);
+                let next = Selection {
+                    id: cursor.id,
+                    start: start_sel.head(),
+                    end: end_sel.head(),
                     reversed: false,
                     goal: SelectionGoal::None,
-                },
-            );
-            self.selections.update(buffer, &next_cursor);
+                };
+                self.selections.update(buffer, &next);
+            }
+        } else {
+            let cursor = self.selection();
+            let selected_text = cursor.text(buffer);
+            if let Some(mut next_match) = cursor.clone().move_to_next_match_within(
+                selected_text.as_str(),
+                buffer,
+                buffer.row_count(),
+            ) {
+                for _ in 0..selected_text.len().saturating_sub(1) {
+                    next_match = next_match.move_right_once(true, buffer);
+                }
+
+                let next_cursor = Selection {
+                    id: cursor.id,
+                    start: next_match.head(),
+                    end: next_match.tail(),
+                    reversed: false,
+                    goal: SelectionGoal::None,
+                };
+                if self.selections.has_similar_cursor(&next_cursor, buffer) {
+                    return;
+                }
+
+                let sel = self.add_selection(buffer);
+                self.selections.update(
+                    buffer,
+                    &Selection {
+                        id: sel.id,
+                        start: cursor.head(),
+                        end: cursor.tail(),
+                        reversed: false,
+                        goal: SelectionGoal::None,
+                    },
+                );
+                self.selections.update(buffer, &next_cursor);
+            }
         }
-        // }
     }
 
     pub fn apply_action(
@@ -408,6 +420,10 @@ impl Document {
             Action::Clear => {
                 self.clear_selections(buffer);
                 self.enter_mode(buffer, Mode::Normal);
+                return;
+            }
+            Action::SelectSimilar => {
+                self.select_similar(buffer);
                 return;
             }
             Action::SetToNormal => {
@@ -1822,6 +1838,33 @@ mod tests {
             env.doc().selection().start.to_point(env.buffer()).column,
             0
         );
+    }
+
+    #[test]
+    fn test_select_similar() {
+        let mut env = TestEnv::new();
+
+        env.apply_action(&Action::InsertText("hello hello hello".into()));
+        env.apply_action(&Action::MoveLeft {
+            select: false,
+            count: 11,
+        });
+
+        env.apply_action(&Action::SelectSimilar);
+        assert_eq!(
+            env.doc().selection().start.to_point(env.buffer()).column,
+            6
+        );
+        assert_eq!(
+            env.doc().selection().end.to_point(env.buffer()).column,
+            10
+        );
+
+        env.apply_action(&Action::SelectSimilar);
+        assert_eq!(env.doc().selections().selections.len(), 2);
+
+        env.apply_action(&Action::SelectSimilar);
+        assert_eq!(env.doc().selections().selections.len(), 3);
     }
 
     #[test]
