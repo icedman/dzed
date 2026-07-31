@@ -27,7 +27,7 @@ impl ViewController for TextViewController {
     ) -> Result<ControllerResult, Box<dyn std::error::Error>> {
         let window = ui.windows.get_mut(&window_id).unwrap();
         let document = window.doc.as_mut().unwrap();
-        let buffer = buffer_manager.active_mut();
+        let buffer = buffer_manager.find_mut(document).unwrap();
 
         // Update layout before wrapping so the wrap width reflects the current gutter.
         let row_count = buffer.buffer.row_count();

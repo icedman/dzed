@@ -53,61 +53,75 @@ impl TextBuffer {
 
 pub struct BufferManager {
     pub buffers: Vec<TextBuffer>,
-    pub active_idx: usize,
 }
 
 impl BufferManager {
     pub fn new() -> Self {
         Self {
             buffers: Vec::new(),
-            active_idx: 0,
         }
     }
 
     pub fn add_buffer(&mut self, buffer: TextBuffer) {
         self.buffers.push(buffer);
-        self.active_idx = self.buffers.len() - 1;
-    }
-
-    pub fn active(&self) -> &TextBuffer {
-        &self.buffers[self.active_idx]
-    }
-
-    pub fn active_mut(&mut self) -> &mut TextBuffer {
-        &mut self.buffers[self.active_idx]
-    }
-
-    pub fn switch_next(&mut self) {
-        if !self.buffers.is_empty() {
-            self.active_idx = (self.active_idx + 1) % self.buffers.len();
-        }
-    }
-
-    pub fn switch_prev(&mut self) {
-        if !self.buffers.is_empty() {
-            if self.active_idx == 0 {
-                self.active_idx = self.buffers.len() - 1;
-            } else {
-                self.active_idx -= 1;
-            }
-        }
-    }
-
-    pub fn get_by_id(&self, id: usize) -> Option<&TextBuffer> {
-        self.buffers.iter().find(|b| b.id == id)
-    }
-
-    pub fn get_by_id_mut(&mut self, id: usize) -> Option<&mut TextBuffer> {
-        self.buffers.iter_mut().find(|b| b.id == id)
-    }
-
-    pub fn switch_by_id(&mut self, id: usize) {
-        if let Some(idx) = self.buffers.iter().position(|b| b.id == id) {
-            self.active_idx = idx;
-        }
     }
 
     pub fn find(&self, doc: &Document) -> Option<&TextBuffer> {
         self.buffers.iter().find(|b| b.id == doc.id)
+    }
+
+    pub fn find_mut(&mut self, doc: &Document) -> Option<&mut TextBuffer> {
+        self.buffers.iter_mut().find(|b| b.id == doc.id)
+    }
+
+    pub fn find_by_path(&self, path: &str) -> Option<&TextBuffer> {
+        self.buffers.iter().find(|b| b.file_path == path)
+    }
+
+    pub fn find_by_path_mut(&mut self, path: &str) -> Option<&mut TextBuffer> {
+        self.buffers.iter_mut().find(|b| b.file_path == path)
+    }
+
+    pub fn add_buffer_for_path(&mut self, path: &str) -> Result<&mut TextBuffer, Box<dyn std::error::Error>> {
+        if let Some(pos) = self.buffers.iter().position(|b| b.file_path == path) {
+            return Ok(&mut self.buffers[pos]);
+        }
+        let next_id = self.buffers.iter().map(|b| b.id).max().map(|id| id + 1).unwrap_or(0);
+        let new_buf = TextBuffer::new(next_id, path)?;
+        self.buffers.push(new_buf);
+        Ok(self.buffers.last_mut().unwrap())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::editor::document::Document;
+
+    #[test]
+    fn test_add_buffer_for_path() {
+        let mut bm = BufferManager::new();
+        let path = "test_file_path.txt";
+        
+        let id1 = {
+            let buf1 = bm.add_buffer_for_path(path).unwrap();
+            assert_eq!(buf1.file_path, path);
+            buf1.id
+        };
+
+        // Try adding the same path again - should return the same buffer (same ID)
+        let id2 = {
+            let buf2 = bm.add_buffer_for_path(path).unwrap();
+            buf2.id
+        };
+        assert_eq!(id2, id1);
+
+        // Try adding a different path - should return a new buffer (new ID)
+        let id3 = {
+            let buf3 = bm.add_buffer_for_path("other_file_path.txt").unwrap();
+            buf3.id
+        };
+        assert_ne!(id3, id1);
+        assert_eq!(bm.buffers.len(), 2);
     }
 }

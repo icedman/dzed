@@ -438,10 +438,14 @@ impl Motions for Selection<Anchor> {
     fn move_to_word_end(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor> {
         let mut point = self.head().to_point(buffer);
         let text = buffer.row_text(point.row);
-        if let Some(word) = text.as_str().find_word(point.column as usize) {
+        let previous_column = point.column;
+        if let Some(word) = text.as_str().find_next_word_end(point.column as usize) {
             point.column = (word.1 - 1) as u32;
         } else {
             point.column = buffer.line_len(point.row);
+        }
+        if point.column == previous_column {
+            return self.move_right_once(anchor, buffer);
         }
         let mut offset = point.to_offset(buffer);
         offset = buffer.clip_offset(offset, Bias::Left);
@@ -525,10 +529,14 @@ impl Motions for Selection<Anchor> {
     fn move_to_previous_word_end(&self, anchor: bool, buffer: &Buffer) -> Selection<Anchor> {
         let mut point = self.head().to_point(buffer);
         let text = buffer.row_text(point.row);
+        let previous_column = point.column;
         if let Some(word) = text.as_str().find_previous_word_end(point.column as usize) {
             point.column = (word.1 - 1) as u32;
         } else {
             point.column = 0;
+        }
+        if point.column == previous_column {
+            return self.move_left_once(anchor, buffer);
         }
         let offset = point.to_offset(buffer);
         let new_head = buffer.anchor_at(offset, Bias::Left);
@@ -1842,5 +1850,52 @@ mod tests {
         };
         let result = cursor.move_within_character(true, 1, '{', &buffer);
         assert_eq!(result.text(&buffer), "hello");
+    }
+
+    #[test]
+    fn test_word_end_motions() {
+        let buffer = Buffer::new(
+            ReplicaId::LOCAL,
+            BufferId::new(1).unwrap(),
+            "hello world\nfoo bar",
+        );
+        // Start at 'h' (index 0)
+        let mut cursor = selection(&buffer, 0, 0, 0, false);
+        
+        // Move to word end -> should be 'o' of hello (index 4)
+        cursor = cursor.move_to_word_end(false, &buffer);
+        assert_eq!(cursor.head().to_point(&buffer), Point::new(0, 4));
+
+        // Move to word end again -> should be 'd' of world (index 10)
+        cursor = cursor.move_to_word_end(false, &buffer);
+        assert_eq!(cursor.head().to_point(&buffer), Point::new(0, 10));
+
+        // Move to word end again -> should go to end of line (line 0, index 11)
+        cursor = cursor.move_to_word_end(false, &buffer);
+        assert_eq!(cursor.head().to_point(&buffer), Point::new(0, 11));
+
+        // Move to word end again -> should go to start of next line (line 1, index 0)
+        cursor = cursor.move_to_word_end(false, &buffer);
+        assert_eq!(cursor.head().to_point(&buffer), Point::new(1, 0));
+
+        // Move to word end again -> should go to 'o' of foo (line 1, index 2)
+        cursor = cursor.move_to_word_end(false, &buffer);
+        assert_eq!(cursor.head().to_point(&buffer), Point::new(1, 2));
+
+        // Move to previous word end -> should go to start of line (line 1, index 0)
+        cursor = cursor.move_to_previous_word_end(false, &buffer);
+        assert_eq!(cursor.head().to_point(&buffer), Point::new(1, 0));
+
+        // Move to previous word end again -> should cross line to end of line 0 (line 0, index 11)
+        cursor = cursor.move_to_previous_word_end(false, &buffer);
+        assert_eq!(cursor.head().to_point(&buffer), Point::new(0, 11));
+
+        // Move to previous word end again -> should go to 'd' of world (line 0, index 10)
+        cursor = cursor.move_to_previous_word_end(false, &buffer);
+        assert_eq!(cursor.head().to_point(&buffer), Point::new(0, 10));
+
+        // Move to previous word end again -> should go to 'o' of hello (line 0, index 4)
+        cursor = cursor.move_to_previous_word_end(false, &buffer);
+        assert_eq!(cursor.head().to_point(&buffer), Point::new(0, 4));
     }
 }

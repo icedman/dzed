@@ -37,7 +37,7 @@ impl TextView {
         };
 
         let document = document.expect("TextView requires document view state");
-        let buffer = buffer_manager.active();
+        let buffer = buffer_manager.find(document).unwrap();
 
         let display_snapshot = document.display_map.snapshot();
         let doc_buffer = &buffer.buffer;
@@ -303,6 +303,7 @@ impl View for TextView {
         editor: &Editor,
         buffer_manager: &mut crate::editor::buffers::BufferManager,
         document: Option<&crate::editor::document::Document>,
+        _ui: &crate::ui::Ui,
     ) -> Result<(), Box<dyn std::error::Error>> {
         self.draw_textview(&mut w, rect, editor, buffer_manager, document)
     }

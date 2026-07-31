@@ -165,18 +165,20 @@ impl Ui {
             .and_then(|id| self.windows.get_mut(&id))
             .and_then(|win| win.doc.take());
 
-        let computed = &self.cached_layouts;
-        for &(win_id, rect) in computed {
-            if let Some(win) = self.windows.get_mut(&win_id) {
+        let computed = self.cached_layouts.clone();
+        for &(win_id, rect) in &computed {
+            if let Some(mut win) = self.windows.remove(&win_id) {
                 if Some(win_id) == self.focused_window_id {
                     win.doc = active_doc.take();
                 }
 
-                win.draw(stdout, rect, editor, buffer_manager, active_doc.as_ref())?;
+                win.draw(stdout, rect, editor, buffer_manager, active_doc.as_ref(), self)?;
 
                 if Some(win_id) == self.focused_window_id {
                     active_doc = win.doc.take();
                 }
+
+                self.windows.insert(win_id, win);
             }
         }
 

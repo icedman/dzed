@@ -64,9 +64,7 @@ impl Editor {
         let active_win_id = ui.focused_window_id.unwrap();
         let window = ui.windows.get_mut(&active_win_id).unwrap();
         let doc = window.doc.as_mut().unwrap();
-        let buffer_id = window.buffer_id.unwrap();
-
-        let text_buffer = buffer_manager.get_by_id_mut(buffer_id).unwrap();
+        let text_buffer = buffer_manager.find_mut(doc).unwrap();
         doc.apply_action(
             &mut text_buffer.buffer,
             action,

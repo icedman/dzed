@@ -51,6 +51,7 @@ impl View for CommandLineView {
         editor: &Editor,
         buffer_manager: &mut crate::editor::buffers::BufferManager,
         _doc: Option<&crate::editor::document::Document>,
+        _ui: &crate::ui::Ui,
     ) -> Result<(), Box<dyn std::error::Error>> {
         self.draw_commandline(&mut w, rect, editor, buffer_manager, _doc)
     }

@@ -31,18 +31,16 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut editor = editor::Editor::new()?;
     let mut controller = controller::Controller::new();
 
-    let mut next_id = 0;
     for path in file_paths {
-        buffer_manager.add_buffer(editor::buffers::TextBuffer::new(next_id, &path)?);
-        next_id += 1;
+        buffer_manager.add_buffer_for_path(&path)?;
     }
 
     if buffer_manager.buffers.is_empty() {
-        buffer_manager.add_buffer(editor::buffers::TextBuffer::new(next_id, "")?);
+        buffer_manager.add_buffer_for_path("")?;
     }
     
     if let Some(win) = ui.windows.get_mut(&0) {
-        let active_buf = buffer_manager.active();
+        let active_buf = buffer_manager.buffers.first().unwrap();
         win.buffer_id = Some(active_buf.id);
         win.doc = Some(editor::document::Document::new_with_buffer(
             active_buf.id,

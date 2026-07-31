@@ -141,11 +141,45 @@ impl Command {
                     None
                 }
                 ex::Ex::Bnext => {
-                    buffer_manager.switch_next();
+                    if let Some(win) = ui.get_focused_window_mut() {
+                        if let Some(current_id) = win.buffer_id {
+                            if !buffer_manager.buffers.is_empty() {
+                                if let Some(pos) = buffer_manager.buffers.iter().position(|b| b.id == current_id) {
+                                    let next_idx = (pos + 1) % buffer_manager.buffers.len();
+                                    let next_buf = &buffer_manager.buffers[next_idx];
+                                    win.buffer_id = Some(next_buf.id);
+                                    win.doc = Some(crate::editor::document::Document::new_with_buffer(
+                                        next_buf.id,
+                                        &next_buf.buffer,
+                                        &next_buf.file_path,
+                                    ));
+                                }
+                            }
+                        }
+                    }
                     None
                 }
                 ex::Ex::Bprev => {
-                    buffer_manager.switch_prev();
+                    if let Some(win) = ui.get_focused_window_mut() {
+                        if let Some(current_id) = win.buffer_id {
+                            if !buffer_manager.buffers.is_empty() {
+                                if let Some(pos) = buffer_manager.buffers.iter().position(|b| b.id == current_id) {
+                                    let prev_idx = if pos == 0 {
+                                        buffer_manager.buffers.len() - 1
+                                    } else {
+                                        pos - 1
+                                    };
+                                    let prev_buf = &buffer_manager.buffers[prev_idx];
+                                    win.buffer_id = Some(prev_buf.id);
+                                    win.doc = Some(crate::editor::document::Document::new_with_buffer(
+                                        prev_buf.id,
+                                        &prev_buf.buffer,
+                                        &prev_buf.file_path,
+                                    ));
+                                }
+                            }
+                        }
+                    }
                     None
                 }
                 _ => None,
@@ -200,14 +234,13 @@ mod tests {
     fn test_ex_set() {
         let mut editor = Editor::new().unwrap();
         let mut buffer_manager = crate::editor::buffers::BufferManager::new();
-        let buf1 = TextBuffer::new(0, "temp_test_file1.txt").unwrap();
-        buffer_manager.add_buffer(buf1);
+        buffer_manager.add_buffer_for_path("temp_test_file1.txt").unwrap();
         let mut cmd = Command::new();
 
         cmd.set("set wrap");
         let mut ui = crate::ui::Ui::new();
         if let Some(win) = ui.windows.get_mut(&0) {
-            let active_buf = buffer_manager.active();
+            let active_buf = &buffer_manager.buffers[0];
             win.buffer_id = Some(active_buf.id);
             win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
         }
@@ -217,7 +250,7 @@ mod tests {
         cmd.set("set nowrap");
         let mut ui = crate::ui::Ui::new();
         if let Some(win) = ui.windows.get_mut(&0) {
-            let active_buf = buffer_manager.active();
+            let active_buf = &buffer_manager.buffers[0];
             win.buffer_id = Some(active_buf.id);
             win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
         }
@@ -227,7 +260,7 @@ mod tests {
         cmd.set("set nonu");
         let mut ui = crate::ui::Ui::new();
         if let Some(win) = ui.windows.get_mut(&0) {
-            let active_buf = buffer_manager.active();
+            let active_buf = &buffer_manager.buffers[0];
             win.buffer_id = Some(active_buf.id);
             win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
         }
@@ -237,7 +270,7 @@ mod tests {
         cmd.set("set nu");
         let mut ui = crate::ui::Ui::new();
         if let Some(win) = ui.windows.get_mut(&0) {
-            let active_buf = buffer_manager.active();
+            let active_buf = &buffer_manager.buffers[0];
             win.buffer_id = Some(active_buf.id);
             win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
         }
@@ -247,7 +280,7 @@ mod tests {
         cmd.set("set nofold");
         let mut ui = crate::ui::Ui::new();
         if let Some(win) = ui.windows.get_mut(&0) {
-            let active_buf = buffer_manager.active();
+            let active_buf = &buffer_manager.buffers[0];
             win.buffer_id = Some(active_buf.id);
             win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
         }
@@ -257,7 +290,7 @@ mod tests {
         cmd.set("set fold");
         let mut ui = crate::ui::Ui::new();
         if let Some(win) = ui.windows.get_mut(&0) {
-            let active_buf = buffer_manager.active();
+            let active_buf = &buffer_manager.buffers[0];
             win.buffer_id = Some(active_buf.id);
             win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
         }
@@ -267,7 +300,7 @@ mod tests {
         cmd.set("set nofoldmultiline");
         let mut ui = crate::ui::Ui::new();
         if let Some(win) = ui.windows.get_mut(&0) {
-            let active_buf = buffer_manager.active();
+            let active_buf = &buffer_manager.buffers[0];
             win.buffer_id = Some(active_buf.id);
             win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
         }
@@ -277,7 +310,7 @@ mod tests {
         cmd.set("set foldmultiline");
         let mut ui = crate::ui::Ui::new();
         if let Some(win) = ui.windows.get_mut(&0) {
-            let active_buf = buffer_manager.active();
+            let active_buf = &buffer_manager.buffers[0];
             win.buffer_id = Some(active_buf.id);
             win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
         }
@@ -287,7 +320,7 @@ mod tests {
         cmd.set("set notreesitter");
         let mut ui = crate::ui::Ui::new();
         if let Some(win) = ui.windows.get_mut(&0) {
-            let active_buf = buffer_manager.active();
+            let active_buf = &buffer_manager.buffers[0];
             win.buffer_id = Some(active_buf.id);
             win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
         }
@@ -297,7 +330,7 @@ mod tests {
         cmd.set("set treesitter");
         let mut ui = crate::ui::Ui::new();
         if let Some(win) = ui.windows.get_mut(&0) {
-            let active_buf = buffer_manager.active();
+            let active_buf = &buffer_manager.buffers[0];
             win.buffer_id = Some(active_buf.id);
             win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
         }
@@ -308,7 +341,7 @@ mod tests {
         cmd.set("colorschemes catppuccin");
         let mut ui = crate::ui::Ui::new();
         if let Some(win) = ui.windows.get_mut(&0) {
-            let active_buf = buffer_manager.active();
+            let active_buf = &buffer_manager.buffers[0];
             win.buffer_id = Some(active_buf.id);
             win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
         }
@@ -318,7 +351,7 @@ mod tests {
         cmd.set("colorscheme kanagawa");
         let mut ui = crate::ui::Ui::new();
         if let Some(win) = ui.windows.get_mut(&0) {
-            let active_buf = buffer_manager.active();
+            let active_buf = &buffer_manager.buffers[0];
             win.buffer_id = Some(active_buf.id);
             win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
         }
@@ -328,7 +361,7 @@ mod tests {
         cmd.set("colo catppuccin");
         let mut ui = crate::ui::Ui::new();
         if let Some(win) = ui.windows.get_mut(&0) {
-            let active_buf = buffer_manager.active();
+            let active_buf = &buffer_manager.buffers[0];
             win.buffer_id = Some(active_buf.id);
             win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
         }
@@ -338,7 +371,7 @@ mod tests {
         cmd.set("colorscheme unknown_colorscheme");
         let mut ui = crate::ui::Ui::new();
         if let Some(win) = ui.windows.get_mut(&0) {
-            let active_buf = buffer_manager.active();
+            let active_buf = &buffer_manager.buffers[0];
             win.buffer_id = Some(active_buf.id);
             win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
         }
@@ -349,7 +382,7 @@ mod tests {
         cmd.set("syntax off");
         let mut ui = crate::ui::Ui::new();
         if let Some(win) = ui.windows.get_mut(&0) {
-            let active_buf = buffer_manager.active();
+            let active_buf = &buffer_manager.buffers[0];
             win.buffer_id = Some(active_buf.id);
             win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
         }
@@ -359,7 +392,7 @@ mod tests {
         cmd.set("syn on");
         let mut ui = crate::ui::Ui::new();
         if let Some(win) = ui.windows.get_mut(&0) {
-            let active_buf = buffer_manager.active();
+            let active_buf = &buffer_manager.buffers[0];
             win.buffer_id = Some(active_buf.id);
             win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
         }
@@ -367,30 +400,21 @@ mod tests {
         assert!(editor.syntax);
 
         // Test bnext / bprev commands
-        let buf2 = TextBuffer::new(99, "temp_test_file2.txt").unwrap();
-        buffer_manager.add_buffer(buf2);
-        // Switch active index to first buffer (index 0)
-        buffer_manager.active_idx = 0;
-        assert_eq!(buffer_manager.active_idx, 0);
+        buffer_manager.add_buffer_for_path("temp_test_file2.txt").unwrap();
+
+        let mut ui = crate::ui::Ui::new();
+        if let Some(win) = ui.windows.get_mut(&0) {
+            let active_buf = &buffer_manager.buffers[0];
+            win.buffer_id = Some(active_buf.id);
+            win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
+        }
 
         cmd.set("bnext");
-        let mut ui = crate::ui::Ui::new();
-        if let Some(win) = ui.windows.get_mut(&0) {
-            let active_buf = buffer_manager.active();
-            win.buffer_id = Some(active_buf.id);
-            win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
-        }
         cmd.ex(&mut ui, &mut editor, &mut buffer_manager);
-        assert_eq!(buffer_manager.active_idx, 1);
+        assert_eq!(ui.windows.get(&0).unwrap().buffer_id, Some(1));
 
         cmd.set("bprev");
-        let mut ui = crate::ui::Ui::new();
-        if let Some(win) = ui.windows.get_mut(&0) {
-            let active_buf = buffer_manager.active();
-            win.buffer_id = Some(active_buf.id);
-            win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
-        }
         cmd.ex(&mut ui, &mut editor, &mut buffer_manager);
-        assert_eq!(buffer_manager.active_idx, 0);
+        assert_eq!(ui.windows.get(&0).unwrap().buffer_id, Some(0));
     }
 }

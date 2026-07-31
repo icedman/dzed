@@ -46,7 +46,11 @@ impl TabsView {
                     .into_owned()
             };
 
-            let is_active = idx == buffer_manager.active_idx;
+            let is_active = if let Some(doc) = _doc {
+                buf.id == doc.id
+            } else {
+                false
+            };
             let tab_text = if is_active {
                 format!(" [{}] ", name)
             } else {
@@ -68,6 +72,7 @@ impl View for TabsView {
         editor: &Editor,
         buffer_manager: &mut crate::editor::buffers::BufferManager,
         _doc: Option<&crate::editor::document::Document>,
+        _ui: &crate::ui::Ui,
     ) -> Result<(), Box<dyn std::error::Error>> {
         self.draw_tabs(&mut w, rect, editor, buffer_manager, _doc)
     }

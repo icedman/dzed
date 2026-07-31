@@ -1544,7 +1544,7 @@ mod tests {
             let mut buffer_manager = BufferManager::new();
             buffer_manager.add_buffer(TextBuffer::new(0, "").unwrap());
             let mut ui = crate::ui::Ui::new();
-            let active_buf = buffer_manager.active();
+            let active_buf = &buffer_manager.buffers[0];
             if let Some(win) = ui.windows.get_mut(&0) {
                 win.buffer_id = Some(active_buf.id);
                 win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
@@ -1565,7 +1565,7 @@ mod tests {
         }
 
         fn buffer(&self) -> &text::Buffer {
-            &self.buffer_manager.active().buffer
+            &self.buffer_manager.buffers[0].buffer
         }
     }
 
@@ -1573,7 +1573,7 @@ mod tests {
     fn consecutive_insert_text_actions_leave_cursor_after_inserted_text() {
         let mut env = TestEnv::new();
 
-        let buffer = &env.buffer_manager.active().buffer;
+        let buffer = &env.buffer_manager.buffers[0].buffer;
         let doc = env.ui.windows.get_mut(&0).unwrap().doc.as_mut().unwrap();
         doc.enter_mode(buffer, Mode::Insert);
         env.apply_action(&Action::InsertText("abc".into()));
@@ -1599,7 +1599,7 @@ mod tests {
     fn newline_and_tab_insertions_do_not_advance_twice() {
         let mut env = TestEnv::new();
 
-        let buffer = &env.buffer_manager.active().buffer;
+        let buffer = &env.buffer_manager.buffers[0].buffer;
         let doc = env.ui.windows.get_mut(&0).unwrap().doc.as_mut().unwrap();
         doc.enter_mode(buffer, Mode::Insert);
         env.apply_action(&Action::InsertText("abc".into()));
@@ -1620,7 +1620,7 @@ mod tests {
         );
 
         let mut env2 = TestEnv::new();
-        let buffer2 = &env2.buffer_manager.active().buffer;
+        let buffer2 = &env2.buffer_manager.buffers[0].buffer;
         let doc2 = env2.ui.windows.get_mut(&0).unwrap().doc.as_mut().unwrap();
         doc2.enter_mode(buffer2, Mode::Insert);
         env2.apply_action(&Action::InsertText("abc".into()));
@@ -1815,20 +1815,20 @@ line 3".into()));
     let x = 1;
     let y = 2;
 }";
-        *env.buffer_manager.active_mut() = TextBuffer::new_with_text(text);
+        env.buffer_manager.buffers[0] = TextBuffer::new_with_text(text);
         if let Some(win) = env.ui.windows.get_mut(&0) {
-            let active_buf = env.buffer_manager.active();
+            let active_buf = &env.buffer_manager.buffers[0];
             win.buffer_id = Some(active_buf.id);
             win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
         }
 
-        env.buffer_manager.active_mut().grammar = Some(Grammar::Rust);
+        env.buffer_manager.buffers[0].grammar = Some(Grammar::Rust);
 
         let mut parser = TreeSitterParser::new(Grammar::Rust).unwrap();
         let tree = parser
             .parse(env.buffer().snapshot(), None)
             .unwrap();
-        env.buffer_manager.active_mut().syntax_tree = Some(tree);
+        env.buffer_manager.buffers[0].syntax_tree = Some(tree);
 
         env.apply_action(&Action::MoveDown {
             select: false,
@@ -1857,20 +1857,20 @@ line 3".into()));
         let mut env = TestEnv::new();
 
         let text = "fn main() { let x = 1; }";
-        *env.buffer_manager.active_mut() = TextBuffer::new_with_text(text);
+        env.buffer_manager.buffers[0] = TextBuffer::new_with_text(text);
         if let Some(win) = env.ui.windows.get_mut(&0) {
-            let active_buf = env.buffer_manager.active();
+            let active_buf = &env.buffer_manager.buffers[0];
             win.buffer_id = Some(active_buf.id);
             win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
         }
 
-        env.buffer_manager.active_mut().grammar = Some(Grammar::Rust);
+        env.buffer_manager.buffers[0].grammar = Some(Grammar::Rust);
 
         let mut parser = TreeSitterParser::new(Grammar::Rust).unwrap();
         let tree = parser
             .parse(env.buffer().snapshot(), None)
             .unwrap();
-        env.buffer_manager.active_mut().syntax_tree = Some(tree);
+        env.buffer_manager.buffers[0].syntax_tree = Some(tree);
 
         // Move to the inside of the block (e.g. column 15)
         env.apply_action(&Action::MoveRight {
@@ -1901,9 +1901,9 @@ line 3".into()));
 line 2
 line 3
 line 4";
-        *env.buffer_manager.active_mut() = TextBuffer::new_with_text(text);
+        env.buffer_manager.buffers[0] = TextBuffer::new_with_text(text);
         if let Some(win) = env.ui.windows.get_mut(&0) {
-            let active_buf = env.buffer_manager.active();
+            let active_buf = &env.buffer_manager.buffers[0];
             win.buffer_id = Some(active_buf.id);
             win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
         }
@@ -1916,7 +1916,7 @@ line 4";
         assert_eq!(env.doc().folds.len(), 1);
 
         // Manually place cursor at Point::new(1, 0)
-        let anchor = env.buffer_manager.active().buffer.anchor_at(&Point::new(1, 0), Bias::Left);
+        let anchor = env.buffer_manager.buffers[0].buffer.anchor_at(&Point::new(1, 0), Bias::Left);
         let selection = Selection {
             id: 0,
             start: anchor.clone(),
@@ -1924,7 +1924,7 @@ line 4";
             reversed: false,
             goal: SelectionGoal::None,
         };
-        let buffer = &env.buffer_manager.active().buffer;
+        let buffer = &env.buffer_manager.buffers[0].buffer;
         let doc = env.ui.windows.get_mut(&0).unwrap().doc.as_mut().unwrap();
         doc.selections.update(buffer, &selection);
 
@@ -1938,9 +1938,9 @@ line 4";
         let mut env = TestEnv::new();
 
         let text = "fn main() {\n    let x = 1;\n}";
-        *env.buffer_manager.active_mut() = TextBuffer::new_with_text(text);
+        env.buffer_manager.buffers[0] = TextBuffer::new_with_text(text);
         if let Some(win) = env.ui.windows.get_mut(&0) {
-            let active_buf = env.buffer_manager.active();
+            let active_buf = &env.buffer_manager.buffers[0];
             win.buffer_id = Some(active_buf.id);
             win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
         }
@@ -1954,7 +1954,7 @@ line 4";
         assert_eq!(env.doc().folds.len(), 1);
 
         // Place cursor at '}' (row 2, col 0)
-        let anchor = env.buffer_manager.active().buffer.anchor_at(&Point::new(2, 0), Bias::Left);
+        let anchor = env.buffer_manager.buffers[0].buffer.anchor_at(&Point::new(2, 0), Bias::Left);
         let selection = Selection {
             id: 0,
             start: anchor.clone(),
@@ -1962,7 +1962,7 @@ line 4";
             reversed: false,
             goal: SelectionGoal::None,
         };
-        let buffer = &env.buffer_manager.active().buffer;
+        let buffer = &env.buffer_manager.buffers[0].buffer;
         let doc = env.ui.windows.get_mut(&0).unwrap().doc.as_mut().unwrap();
         doc.selections.update(buffer, &selection);
 

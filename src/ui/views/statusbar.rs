@@ -31,7 +31,11 @@ impl StatusBarView {
         use syntect::parsing::{ParseState, ScopeStack};
         use syntect::easy::ScopeRangeIterator;
 
-        let active_buf = buffer_manager.active();
+        let active_buf = if let Some(doc) = _doc {
+            buffer_manager.find(doc).unwrap()
+        } else {
+            buffer_manager.buffers.first().unwrap()
+        };
         let mut scope_str = String::new();
 
         if let Some(doc) = _doc {
@@ -137,7 +141,10 @@ impl View for StatusBarView {
         editor: &Editor,
         buffer_manager: &mut crate::editor::buffers::BufferManager,
         _doc: Option<&crate::editor::document::Document>,
+        ui: &crate::ui::Ui,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        self.draw_statusbar(&mut w, rect, editor, buffer_manager, _doc)
+        let active_win = ui.get_focused_window();
+        let doc = active_win.and_then(|win| win.doc.as_ref());
+        self.draw_statusbar(&mut w, rect, editor, buffer_manager, doc)
     }
 }
