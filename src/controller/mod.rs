@@ -149,13 +149,13 @@ impl Controller {
                             ui.focus_window(crate::ui::WindowId::CommandLine as usize);
                             editor.should_redraw = true;
                         }
-                        actions::Action::SearchForward { .. } => {
-                            ui.focus_window(crate::ui::WindowId::CommandLine as usize);
-                            editor.should_redraw = true;
-                        }
+                        actions::Action::SearchForward { .. } |
                         actions::Action::SearchBackward { .. } => {
-                            ui.focus_window(crate::ui::WindowId::CommandLine as usize);
-                            editor.should_redraw = true;
+                            if let Some(last_focused_window_id) = ui.last_focused_window_id {
+                                ui.focus_window(last_focused_window_id);
+                                editor.should_redraw = true;
+                                editor.mode = actions::Mode::Normal;
+                            }
                         }
                         _ => {}
                     };

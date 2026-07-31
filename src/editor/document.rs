@@ -567,15 +567,13 @@ impl Document {
                 .selections
                 .find_character(*select, *count, *ch, true, *till, buffer),
             Action::SearchBackward { count } => {
-                // TODO: handle count
                 for _ in 0..*count {
-                    self.selections.move_to_previous_match("", false, buffer);
+                    self.selections.move_to_previous_match(&editor.search_pattern, true, buffer);
                 }
             }
             Action::SearchForward { count } => {
-                // TODO: handle count
                 for _ in 0..*count {
-                    self.selections.move_to_next_match("", false, buffer);
+                    self.selections.move_to_next_match(&editor.search_pattern, true, buffer);
                 }
             }
             Action::MoveWithinCharacter { count, ch } => {

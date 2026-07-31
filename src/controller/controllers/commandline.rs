@@ -139,11 +139,12 @@ impl ViewController for CommandLineController {
                     self.history.push(command_text.clone());
                 }
                 self.history_idx = self.history.len();
-                if command_text.starts_with(':')
-                    || command_text.starts_with('/')
-                    || command_text.starts_with('?')
-                {
-                    command_text = command_text[1..].to_string();
+                command_text = command_text[1..].to_string();
+                if self.lead == '/' {
+                    return Ok(ControllerResult::Action(Action::SearchForward { count: 1}));
+                }
+                if self.lead == '?' {
+                    return Ok(ControllerResult::Action(Action::SearchBackward { count: 1}));
                 }
                 return Ok(ControllerResult::Command(command_text));
             }
@@ -166,7 +167,9 @@ impl ViewController for CommandLineController {
             if pattern.starts_with(self.lead) {
                 pattern = pattern[1..].to_string();
             }
-            editor.set_pattern(pattern);
+            if !pattern.is_empty() {
+                editor.set_pattern(pattern);
+            }
         }
 
         return res;

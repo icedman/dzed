@@ -722,10 +722,10 @@ impl Keymap {
             .bind("?", Action::SetToCommandSearchBackward)
             .expect("Valid binding");
         motion_actions
-            .bind("n", Action::SearchNext { count: 1 })
+            .bind("n", Action::SearchForward { count: 1 })
             .expect("Valid binding");
         motion_actions
-            .bind("N", Action::SearchPrevious { count: 1 })
+            .bind("N", Action::SearchBackward { count: 1 })
             .expect("Valid binding");
 
         motion_actions

@@ -210,7 +210,9 @@ impl Ui {
 
     pub fn set_focused_window(&mut self, window_id: usize) {
         if self.focused_window_id != Some(window_id) {
-            self.last_focused_window_id = self.focused_window_id;
+            if self.focused_window_id != Some(WindowId::CommandLine as usize) {
+                self.last_focused_window_id = self.focused_window_id;
+            }
             self.focused_window_id = Some(window_id);
         }
     }
