@@ -168,8 +168,14 @@ impl Controller {
                             .get_mut(&window_id)
                             .and_then(|w| w.controller.take());
                         if let Some(ref mut c) = controller {
+                            if let Some(ch) = self.input.last_register {
+                                if let Some(r_name) = crate::services::clipboard::RegisterName::from_char(ch) {
+                                    editor.services.clipboard.borrow_mut().grab(r_name);
+                                }
+                            }
                             last_result =
                                 c.handle_action(action, editor, buffer_manager, ui, window_id)?;
+                            editor.services.clipboard.borrow_mut().release();
                         }
                         if let Some(w) = ui.windows.get_mut(&window_id) {
                             w.controller = controller;
