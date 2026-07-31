@@ -81,7 +81,7 @@ impl Ui {
         let mut main_win = window::Window::new(main_win_id, "Editor".to_string());
         main_win.set_view(Box::new(views::textview::TextView::new()));
         main_win.set_controller(Box::new(controllers::textview::TextViewController::new()));
-        main_win.draw_border = true;
+        main_win.draw_border = false;
         windows.insert(main_win_id, main_win);
 
         // Create tabs window
@@ -374,6 +374,19 @@ impl Ui {
     pub fn get_focused_window_mut(&mut self) -> Option<&mut window::Window> {
         self.focused_window_id
             .and_then(|id| self.windows.get_mut(&id))
+    }
+
+    pub fn clear_highlights(&mut self) {
+        for win in self.windows.values_mut() {
+            if let Some(ref mut doc) = win.doc {
+                doc.hl.clear();
+                doc.should_sync = true;
+            }
+            for doc in win.docs.values_mut() {
+                doc.hl.clear();
+                doc.should_sync = true;
+            }
+        }
     }
 
     pub fn update(

@@ -177,11 +177,12 @@ impl LayoutNode {
             }
             LayoutNode::Split { constraints, children, .. } => {
                 let mut remove_idx = None;
-                for (i, child) in children.iter_mut().enumerate() {
-                    let (removed, _) = child.remove_leaf(target_id);
-                    if removed {
-                        remove_idx = Some(i);
-                        break;
+                for (i, child) in children.iter().enumerate() {
+                    if let LayoutNode::Leaf { window_id } = child {
+                        if *window_id == target_id {
+                            remove_idx = Some(i);
+                            break;
+                        }
                     }
                 }
                 if let Some(idx) = remove_idx {
@@ -208,6 +209,45 @@ impl LayoutNode {
                 }
                 (false, None)
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_split_and_remove_nested_leaves() {
+        // Start with window 1
+        let mut root = LayoutNode::Leaf { window_id: 1 };
+
+        // Split window 1 vertically to create 1 and 2
+        assert!(root.split_leaf(1, 2, SplitDirection::Horizontal));
+
+        // Split window 2 horizontally to create 2 and 3 (nested split)
+        assert!(root.split_leaf(2, 3, SplitDirection::Vertical));
+
+        // Layout tree should be:
+        // Split(Horizontal)
+        //   - Leaf { window_id: 1 }
+        //   - Split(Vertical)
+        //       - Leaf { window_id: 2 }
+        //       - Leaf { window_id: 3 }
+
+        // Remove leaf 3
+        let (removed, sibling) = root.remove_leaf(3);
+        assert!(removed);
+        // Sibling of 3 was 2, so it collapses to Leaf{2}
+        assert_eq!(sibling, Some(2));
+
+        // Ensure Leaf 1 is still present in the tree
+        if let LayoutNode::Split { children, .. } = &root {
+            assert_eq!(children.len(), 2);
+            assert!(matches!(children[0], LayoutNode::Leaf { window_id: 1 }));
+            assert!(matches!(children[1], LayoutNode::Leaf { window_id: 2 }));
+        } else {
+            panic!("Expected split root");
         }
     }
 }

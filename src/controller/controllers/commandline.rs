@@ -143,6 +143,7 @@ impl ViewController for CommandLineController {
                 }
                 self.history_idx = self.history.len();
                 command_text = command_text[1..].to_string();
+                self.set_text("", buffer_manager, ui, window_id);
                 if self.lead == '/' {
                     return Ok(ControllerResult::Action(Action::SearchForward { count: 1 }));
                 }

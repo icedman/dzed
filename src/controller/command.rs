@@ -96,6 +96,31 @@ impl Command {
                                 "notreesitter" => {
                                     editor.set_tree_sitter_enabled(ui, buffer_manager, false)
                                 }
+                                "mapsc" | "mapscopetoscheme" => {
+                                    editor.map_scope_to_scheme = true;
+                                    ui.clear_highlights();
+                                }
+
+                                "nomapsc" | "nomapscopetoscheme" => {
+                                    editor.map_scope_to_scheme = false;
+                                    ui.clear_highlights();
+                                }
+                                "textmate" | "tm" => {
+                                    editor.textmate_highlights = true;
+                                    ui.clear_highlights();
+                                }
+                                "notextmate" | "notm" => {
+                                    editor.textmate_highlights = false;
+                                    ui.clear_highlights();
+                                }
+                                "ts" | "tshl" => {
+                                    editor.treesitter_highlights = true;
+                                    ui.clear_highlights();
+                                }
+                                "nots" | "notshl" => {
+                                    editor.treesitter_highlights = false;
+                                    ui.clear_highlights();
+                                }
                                 _ => {}
                             }
                         }
@@ -144,16 +169,7 @@ impl Command {
                     let loaded = colorscheme::ColorScheme::get_by_name(name)
                         .unwrap_or_else(|| colorscheme::ColorScheme::load_default());
                     editor.colorscheme = loaded;
-                    for win in ui.windows.values_mut() {
-                        if let Some(doc) = &mut win.doc {
-                            doc.hl.clear();
-                            doc.should_sync = true;
-                        }
-                        for doc in win.docs.values_mut() {
-                            doc.hl.clear();
-                            doc.should_sync = true;
-                        }
-                    }
+                    ui.clear_highlights();
                     None
                 }
                 ex::Ex::Syntax => {
@@ -387,6 +403,62 @@ mod tests {
         }
         cmd.ex(&mut ui, &mut editor, &mut buffer_manager);
         assert!(editor.tree_sitter);
+
+        cmd.set("set notm");
+        let mut ui = crate::ui::Ui::new();
+        if let Some(win) = ui.windows.get_mut(&main_win) {
+            let active_buf = &buffer_manager.buffers[0];
+            win.buffer_id = Some(active_buf.id);
+            win.doc = Some(Document::new_with_buffer(
+                active_buf.id,
+                &active_buf.buffer,
+                &active_buf.file_path,
+            ));
+        }
+        cmd.ex(&mut ui, &mut editor, &mut buffer_manager);
+        assert!(!editor.textmate_highlights);
+
+        cmd.set("set tm");
+        let mut ui = crate::ui::Ui::new();
+        if let Some(win) = ui.windows.get_mut(&main_win) {
+            let active_buf = &buffer_manager.buffers[0];
+            win.buffer_id = Some(active_buf.id);
+            win.doc = Some(Document::new_with_buffer(
+                active_buf.id,
+                &active_buf.buffer,
+                &active_buf.file_path,
+            ));
+        }
+        cmd.ex(&mut ui, &mut editor, &mut buffer_manager);
+        assert!(editor.textmate_highlights);
+
+        cmd.set("set tshl");
+        let mut ui = crate::ui::Ui::new();
+        if let Some(win) = ui.windows.get_mut(&main_win) {
+            let active_buf = &buffer_manager.buffers[0];
+            win.buffer_id = Some(active_buf.id);
+            win.doc = Some(Document::new_with_buffer(
+                active_buf.id,
+                &active_buf.buffer,
+                &active_buf.file_path,
+            ));
+        }
+        cmd.ex(&mut ui, &mut editor, &mut buffer_manager);
+        assert!(editor.treesitter_highlights);
+
+        cmd.set("set notshl");
+        let mut ui = crate::ui::Ui::new();
+        if let Some(win) = ui.windows.get_mut(&main_win) {
+            let active_buf = &buffer_manager.buffers[0];
+            win.buffer_id = Some(active_buf.id);
+            win.doc = Some(Document::new_with_buffer(
+                active_buf.id,
+                &active_buf.buffer,
+                &active_buf.file_path,
+            ));
+        }
+        cmd.ex(&mut ui, &mut editor, &mut buffer_manager);
+        assert!(!editor.treesitter_highlights);
 
         // Test colorschemes command and aliases
         cmd.set("colorschemes catppuccin");

@@ -21,6 +21,10 @@ pub struct Editor {
     pub show_line_numbers: bool,
     pub fold: bool,
     pub fold_multiline_only: bool,
+    pub textmate_highlights: bool,
+    pub treesitter_highlights: bool,
+    pub map_scope_to_scheme: bool,
+
     // state
     pub should_redraw: bool,
     pub buffers_to_redraw: Vec<usize>,
@@ -29,9 +33,6 @@ pub struct Editor {
 
     pub services: Services,
 
-    pub textmate_highlights: bool,
-    pub treesitter_highlights: bool,
-    pub map_scope_to_scheme: bool,
     pub last_action: Action,
     pub pending_keys: String,
     pub search_pattern: String,
