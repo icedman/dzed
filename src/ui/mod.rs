@@ -100,7 +100,8 @@ impl Ui {
         // Create command bar window
         let commandline_win_id = WindowId::CommandLine as usize;
         let mut commandline_win = window::Window::new(commandline_win_id, "Command".to_string());
-        commandline_win.set_view(Box::new(views::commandline::CommandLineView {}));
+        commandline_win.set_view(Box::new(views::commandline::CommandLineView::new()));
+        commandline_win.set_controller(Box::new(controllers::commandline::CommandLineController::new()));
         commandline_win.draw_border = true;
         windows.insert(commandline_win_id, commandline_win);
 

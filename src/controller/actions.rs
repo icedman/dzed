@@ -390,6 +390,7 @@ pub enum Action {
         start_line: u32,
         end_line: u32,
     },
+    Command(String),
 }
 
 impl std::fmt::Display for Action {
@@ -556,6 +557,7 @@ impl std::fmt::Display for Action {
             } => {
                 write!(f, "YankLines({}, {})", start_line, end_line)
             }
+            Action::Command(s) => write!(f, "Command({})", s),
         }
     }
 }
@@ -911,6 +913,7 @@ impl Action {
             Action::BeginMacro { register } => Action::BeginMacro { register },
             Action::EndMacro => Action::EndMacro,
             Action::ReplayMacro { register, .. } => Action::ReplayMacro { register, count },
+            Action::Command(s) => Action::Command(s),
         }
     }
 

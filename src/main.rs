@@ -49,6 +49,19 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         ));
     }
 
+    let cmd_buf = buffer_manager.add_buffer_for_path("#command")?;
+    let cmd_id = cmd_buf.id;
+    let cmd_file_path = cmd_buf.file_path.clone();
+    if let Some(win) = ui.windows.get_mut(&(ui::WindowId::CommandLine as usize)) {
+        let cmd_buffer = buffer_manager.find_by_path(&cmd_file_path).unwrap();
+        win.buffer_id = Some(cmd_id);
+        win.doc = Some(editor::document::Document::new_with_buffer(
+            cmd_id,
+            &cmd_buffer.buffer,
+            &cmd_buffer.file_path,
+        ));
+    }
+
     crossterm::terminal::enable_raw_mode().unwrap();
     execute!(
         stdout,
@@ -84,7 +97,12 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        controller.dispatch_actions(&mut editor, &mut buffer_manager, &mut ui)?;
+        match controller.dispatch_actions(&mut editor, &mut buffer_manager, &mut ui)?{
+                controller::ControllerResult::Exit => {
+                    break;
+                }
+                _ => {}
+            }
 
         services::poll(&mut editor, &mut buffer_manager, &mut ui)?;
     }

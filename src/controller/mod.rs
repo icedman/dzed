@@ -9,16 +9,19 @@ pub mod macros;
 
 use crate::controller::controllers::ViewController;
 use crate::controller::controllers::textview::TextViewController;
-use crate::ui::views::View;
 use crate::services::background;
+use crate::ui::views::View;
 use crate::{controller::input::VimInput, editor, ui::Ui, ui::window};
 
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers, MouseEventKind};
 use std::collections::VecDeque;
 
+#[derive(Debug, Clone)]
 pub enum ControllerResult {
     None,
     Exit,
+    Action(actions::Action),
+    Command(String),
 }
 
 pub struct Controller {
@@ -58,12 +61,12 @@ impl Controller {
                         self.pending_actions.push_back(any.clone());
                     }
                 }
-                match (key_event.code, key_event.modifiers) {
-                    (KeyCode::Char('q'), KeyModifiers::CONTROL) => {
-                        return Ok(ControllerResult::Exit);
-                    }
-                    _ => {}
-                }
+                // match (key_event.code, key_event.modifiers) {
+                //     (KeyCode::Char('q'), KeyModifiers::CONTROL) => {
+                //         return Ok(ControllerResult::Exit);
+                //     }
+                //     _ => {}
+                // }
             }
             _ => {}
         }
@@ -97,34 +100,48 @@ impl Controller {
                     }
                 }
                 actions::Action::FocusLeftWindow => {
-                    if let Some(nid) = ui.find_neighbor(crate::ui::layout::NavigationDirection::Left) {
+                    if let Some(nid) =
+                        ui.find_neighbor(crate::ui::layout::NavigationDirection::Left)
+                    {
                         ui.set_focused_window(nid);
                         editor.should_redraw = true;
                     }
                 }
                 actions::Action::FocusDownWindow => {
-                    if let Some(nid) = ui.find_neighbor(crate::ui::layout::NavigationDirection::Down) {
+                    if let Some(nid) =
+                        ui.find_neighbor(crate::ui::layout::NavigationDirection::Down)
+                    {
                         ui.set_focused_window(nid);
                         editor.should_redraw = true;
                     }
                 }
                 actions::Action::FocusUpWindow => {
-                    if let Some(nid) = ui.find_neighbor(crate::ui::layout::NavigationDirection::Up) {
+                    if let Some(nid) = ui.find_neighbor(crate::ui::layout::NavigationDirection::Up)
+                    {
                         ui.set_focused_window(nid);
                         editor.should_redraw = true;
                     }
                 }
                 actions::Action::FocusRightWindow => {
-                    if let Some(nid) = ui.find_neighbor(crate::ui::layout::NavigationDirection::Right) {
+                    if let Some(nid) =
+                        ui.find_neighbor(crate::ui::layout::NavigationDirection::Right)
+                    {
                         ui.set_focused_window(nid);
                         editor.should_redraw = true;
                     }
                 }
+                actions::Action::Command(command_string) => {
+                    self.command.set(command_string);
+                    if let Some(result) = self.command.ex(ui, editor, buffer_manager) {
+                        editor.should_redraw = true;
+                        last_result = result;
+                    }
+                }
                 _ => {
                     self.macro_recorder.update(&action);
-                    
+
                     editor.last_action = action.clone();
-                    
+
                     if action == actions::Action::SetToCommand {
                         ui.focus_window(crate::ui::WindowId::CommandLine as usize);
                         editor.should_redraw = true;
@@ -133,9 +150,13 @@ impl Controller {
                     let old_mode = editor.mode;
                     let focused_id = ui.focused_window_id;
                     if let Some(window_id) = focused_id {
-                        let mut controller = ui.windows.get_mut(&window_id).and_then(|w| w.controller.take());
+                        let mut controller = ui
+                            .windows
+                            .get_mut(&window_id)
+                            .and_then(|w| w.controller.take());
                         if let Some(ref mut c) = controller {
-                            last_result = c.handle_action(action, editor, buffer_manager, ui, window_id)?;
+                            last_result =
+                                c.handle_action(action, editor, buffer_manager, ui, window_id)?;
                         }
                         if let Some(w) = ui.windows.get_mut(&window_id) {
                             w.controller = controller;
@@ -147,6 +168,19 @@ impl Controller {
                         editor.should_redraw = true;
                     }
                 }
+            }
+
+            match last_result {
+                ControllerResult::Command(ref cmd_text) => {
+                    self.pending_actions.push_back(actions::Action::SetToNormal);
+                    self.pending_actions
+                        .push_back(actions::Action::Command(cmd_text.clone()));
+                }
+                ControllerResult::Action(ref act) => {
+                    self.pending_actions.push_back(actions::Action::SetToNormal);
+                    self.pending_actions.push_back(act.clone());
+                }
+                _ => {}
             }
         }
 
