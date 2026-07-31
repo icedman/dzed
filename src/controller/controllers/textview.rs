@@ -243,6 +243,7 @@ impl ViewController for TextViewController {
                             .merge_caches(style_cache.clone(), std::collections::HashMap::new());
                         document.hl.last_snapshot_version =
                             Some(buf.buffer.snapshot().version.clone());
+                        editor.buffers_to_redraw.push(document.id);
                         editor.should_redraw = true;
                     }
                 }
@@ -257,6 +258,7 @@ impl ViewController for TextViewController {
                     document
                         .display_map
                         .apply_wrap_snapshot(wrap_snapshot.clone());
+                    editor.buffers_to_redraw.push(document.id);
                     editor.should_redraw = true;
                 }
             }
@@ -281,6 +283,7 @@ impl ViewController for TextViewController {
                                 &editor.colorscheme,
                                 editor.treesitter_highlights,
                             );
+                            editor.buffers_to_redraw.push(document.id);
                             editor.should_redraw = true;
                         }
                     }

@@ -381,6 +381,23 @@ impl Ui {
         editor: &mut Editor,
         buffer_manager: &mut crate::editor::buffers::BufferManager,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        if !editor.buffers_to_redraw.is_empty() {
+            for window in self.windows.values_mut() {
+                if let Some(ref mut doc) = window.doc {
+                    if editor.buffers_to_redraw.contains(&doc.id) {
+                        doc.should_sync = true;
+                    }
+                }
+                for (buf_id, doc) in &mut window.docs {
+                    if editor.buffers_to_redraw.contains(buf_id) {
+                        doc.should_sync = true;
+                    }
+                }
+            }
+            editor.buffers_to_redraw.clear();
+            editor.should_redraw = true;
+        }
+
         // Handle terminal resize.
         let (screen_cols, screen_rows) = {
             let (cols, rows) = crossterm::terminal::size().unwrap();

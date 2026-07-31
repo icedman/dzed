@@ -23,6 +23,7 @@ pub struct Editor {
     pub fold_multiline_only: bool,
     // state
     pub should_redraw: bool,
+    pub buffers_to_redraw: Vec<usize>,
 
     pub colorscheme: ColorScheme,
 
@@ -74,6 +75,7 @@ impl Editor {
             self,
             text_buffer.syntax_tree.as_ref(),
         );
+        self.buffers_to_redraw.push(text_buffer.id);
         self.mode = doc.mode();
     }
 
@@ -91,6 +93,7 @@ impl Editor {
             fold: true,
             fold_multiline_only: false,
             should_redraw: true,
+            buffers_to_redraw: Vec::new(),
             services,
             textmate_highlights: true,
             treesitter_highlights: false,
