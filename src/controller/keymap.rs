@@ -301,6 +301,7 @@ pub struct Keymap {
     pub insert_actions: HashMap<KeyComboSequence, Action>,
     pub visual_actions: HashMap<KeyComboSequence, Action>,
     pub text_object_actions: HashMap<KeyComboSequence, Action>,
+    pub macro_actions: HashMap<KeyComboSequence, Action>,
 }
 
 impl Keymap {
@@ -312,6 +313,12 @@ impl Keymap {
         let mut insert_actions = HashMap::new();
         let mut visual_actions = HashMap::new();
         let mut text_object_actions = HashMap::new();
+        let mut macro_actions = HashMap::new();
+
+        // Macro recording actions
+        macro_actions
+            .bind("q", Action::EndMacro)
+            .expect("Valid binding");
 
         // Operators
         op_actions
@@ -872,6 +879,32 @@ impl Keymap {
         normal_actions
             .bind("P", Action::PutBefore { count: 1 })
             .expect("Valid binding");
+
+        normal_actions
+            .bind("<C-w><h>", Action::FocusLeftWindow)
+            .expect("Valid binding");
+        normal_actions
+            .bind("<C-w><j>", Action::FocusDownWindow)
+            .expect("Valid binding");
+        normal_actions
+            .bind("<C-w><k>", Action::FocusUpWindow)
+            .expect("Valid binding");
+        normal_actions
+            .bind("<C-w><l>", Action::FocusRightWindow)
+            .expect("Valid binding");
+
+        normal_actions
+            .bind("<C-w><C-h>", Action::FocusLeftWindow)
+            .expect("Valid binding");
+        normal_actions
+            .bind("<C-w><C-j>", Action::FocusDownWindow)
+            .expect("Valid binding");
+        normal_actions
+            .bind("<C-w><C-k>", Action::FocusUpWindow)
+            .expect("Valid binding");
+        normal_actions
+            .bind("<C-w><C-l>", Action::FocusRightWindow)
+            .expect("Valid binding");
         normal_actions
             .bind("J", Action::JoinLines { count: 1 })
             .expect("Valid binding");
@@ -1071,6 +1104,7 @@ impl Keymap {
             insert_actions,
             visual_actions,
             text_object_actions,
+            macro_actions,
         }
     }
 }
@@ -1085,6 +1119,7 @@ pub struct InputStateMachine {
     pub op_count: u32,
     pub register: Option<char>,
     pub waiting_for_register: bool,
+    pub is_macro_recording: bool,
 }
 
 impl InputStateMachine {
@@ -1098,6 +1133,7 @@ impl InputStateMachine {
             op_count: 1,
             register: None,
             waiting_for_register: false,
+            is_macro_recording: false,
         }
     }
 
@@ -1289,6 +1325,13 @@ impl InputStateMachine {
         slice2: &[KeyCombo],
         keymap: &Keymap,
     ) -> MatchResult {
+        // Check macro recording actions
+        if self.is_macro_recording {
+            if let Some(res) = match_two_slices_in_map(slice1, slice2, &keymap.macro_actions) {
+                return res;
+            }
+        }
+
         // Visual Mode overrides
         if self.mode.is_visual() {
             if let Some(res) = match_two_slices_in_map(slice1, slice2, &keymap.visual_actions) {

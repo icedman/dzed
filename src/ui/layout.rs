@@ -5,6 +5,14 @@ pub enum SplitDirection {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NavigationDirection {
+    Left,
+    Right,
+    Up,
+    Down,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Rect {
     pub x: u16,
     pub y: u16,

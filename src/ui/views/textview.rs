@@ -30,7 +30,8 @@ impl TextView {
         editor: &Editor,
         buffer_manager: &mut crate::editor::buffers::BufferManager,
         document: Option<&crate::editor::document::Document>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<Option<(u16, u16, Option<crate::ui::CursorShape>)>, Box<dyn std::error::Error>> {
+        let mut cursor_pos = None;
         let (screen_cols, _) = {
             let (cols, rows) = crossterm::terminal::size().unwrap();
             (cols as i32, rows as i32)
@@ -219,8 +220,7 @@ impl TextView {
 
                     if at_cursor {
                         bg = selection_bg;
-                        // bg = caret_bg;
-                        // fg = caret_fg;
+                        cursor_pos = Some((curr_x, screen_row));
                     }
 
                     if x_scroll > 0 {
@@ -291,7 +291,11 @@ impl TextView {
             }
         }
 
-        Ok(())
+        let cursor_shape = match editor.mode {
+            Mode::Insert => Some(crate::ui::CursorShape::Line),
+            _ => Some(crate::ui::CursorShape::Block),
+        };
+        Ok(cursor_pos.map(|(x, y)| (x, y, cursor_shape)))
     }
 }
 
@@ -304,7 +308,7 @@ impl View for TextView {
         buffer_manager: &mut crate::editor::buffers::BufferManager,
         document: Option<&crate::editor::document::Document>,
         _ui: &crate::ui::Ui,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<Option<(u16, u16, Option<crate::ui::CursorShape>)>, Box<dyn std::error::Error>> {
         self.draw_textview(&mut w, rect, editor, buffer_manager, document)
     }
 }

@@ -59,6 +59,10 @@ pub enum Action {
     Unfold {
         count: u32,
     },
+    FocusLeftWindow,
+    FocusDownWindow,
+    FocusUpWindow,
+    FocusRightWindow,
 
     // MOTIONS
     StandBy {
@@ -404,6 +408,10 @@ impl std::fmt::Display for Action {
             Action::Yank { count } => write!(f, "Yank({})", count),
             Action::Fold { count } => write!(f, "Fold({})", count),
             Action::Unfold { count } => write!(f, "Unfold({})", count),
+            Action::FocusLeftWindow => write!(f, "FocusLeftWindow"),
+            Action::FocusDownWindow => write!(f, "FocusDownWindow"),
+            Action::FocusUpWindow => write!(f, "FocusUpWindow"),
+            Action::FocusRightWindow => write!(f, "FocusRightWindow"),
             Action::MoveToWord { count, .. } => write!(f, "MoveToWord({})", count),
             Action::MoveToPreviousWord { count, .. } => write!(f, "MoveToPreviousWord({})", count),
             Action::MoveToWordEnd { count, .. } => write!(f, "MoveToWordEnd({})", count),
@@ -662,6 +670,10 @@ impl Action {
 
     pub fn with_count(self, count: u32) -> Self {
         match self {
+            Action::FocusLeftWindow
+            | Action::FocusDownWindow
+            | Action::FocusUpWindow
+            | Action::FocusRightWindow => self,
             Action::Delete { .. } => Action::Delete { count },
             Action::Change { .. } => Action::Change { count },
             Action::Yank { .. } => Action::Yank { count },

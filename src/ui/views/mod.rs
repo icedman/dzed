@@ -16,7 +16,7 @@ pub trait View {
         buffer_manager: &mut crate::editor::buffers::BufferManager,
         doc: Option<&crate::editor::document::Document>,
         ui: &crate::ui::Ui,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        Ok(())
+    ) -> Result<Option<(u16, u16, Option<crate::ui::CursorShape>)>, Box<dyn std::error::Error>> {
+        Ok(None)
     }
 }

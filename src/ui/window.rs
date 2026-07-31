@@ -29,6 +29,9 @@ pub struct Window {
     pub controller: Option<Box<dyn ViewController>>,
     pub buffer_id: Option<usize>,
     pub doc: Option<crate::editor::document::Document>,
+    pub cursor_x: Option<u16>,
+    pub cursor_y: Option<u16>,
+    pub cursor_shape: Option<crate::ui::CursorShape>,
 }
 
 impl Window {
@@ -42,6 +45,9 @@ impl Window {
             controller: None,
             buffer_id: None,
             doc: None,
+            cursor_x: None,
+            cursor_y: None,
+            cursor_shape: None,
         }
     }
 
@@ -67,7 +73,12 @@ impl Window {
         }
 
         if self.draw_border {
-            let border_fg = Color::Cyan;
+            let is_focused = ui.focused_window_id == Some(self.id);
+            let border_fg = if is_focused {
+                Color::Magenta
+            } else {
+                Color::DarkGrey
+            };
 
             // Draw border
             execute!(w, SetForegroundColor(border_fg))?;
@@ -142,7 +153,19 @@ impl Window {
                 rect
             };
             let doc_to_pass = self.doc.as_ref().or(active_doc);
-            _ = view.draw(w, inner_rect, editor, buffer_manager, doc_to_pass, ui);
+            if let Ok(Some((cx, cy, shape))) = view.draw(w, inner_rect, editor, buffer_manager, doc_to_pass, ui) {
+                self.cursor_x = Some(cx);
+                self.cursor_y = Some(cy);
+                self.cursor_shape = shape;
+            } else {
+                self.cursor_x = None;
+                self.cursor_y = None;
+                self.cursor_shape = None;
+            }
+        } else {
+            self.cursor_x = None;
+            self.cursor_y = None;
+            self.cursor_shape = None;
         }
 
         Ok(())

@@ -10,6 +10,7 @@ pub struct VimInput {
     pub keymap: Keymap,
     pub resolved_action: Action,
     pub last_register: Option<char>,
+    pub is_macro_recording: bool,
 }
 
 impl VimInput {
@@ -19,6 +20,7 @@ impl VimInput {
             keymap: Keymap::new(),
             resolved_action: Action::NoOp,
             last_register: None,
+            is_macro_recording: false,
         }
     }
 
@@ -51,6 +53,7 @@ impl VimInput {
             return Action::NoOp;
         }
 
+        self.state_machine.is_macro_recording = self.is_macro_recording;
         let combo = KeyCombo::from(key_event);
         let reg_before = self.state_machine.register;
 
@@ -138,6 +141,34 @@ mod tests {
                 select: false
             }
         );
+    }
+
+    #[test]
+    fn test_window_navigation_keys() {
+        let mut vim = VimInput::new();
+        
+        let act1 = send_key(&mut vim, KeyCode::Char('w'), KeyModifiers::CONTROL);
+        assert_eq!(act1, Action::NoOp);
+        let act2 = send_char(&mut vim, 'h');
+        assert_eq!(act2, Action::FocusLeftWindow);
+
+        vim.clear();
+        let act3 = send_key(&mut vim, KeyCode::Char('w'), KeyModifiers::CONTROL);
+        assert_eq!(act3, Action::NoOp);
+        let act4 = send_char(&mut vim, 'l');
+        assert_eq!(act4, Action::FocusRightWindow);
+
+        vim.clear();
+        let act5 = send_key(&mut vim, KeyCode::Char('w'), KeyModifiers::CONTROL);
+        assert_eq!(act5, Action::NoOp);
+        let act6 = send_char(&mut vim, 'j');
+        assert_eq!(act6, Action::FocusDownWindow);
+
+        vim.clear();
+        let act7 = send_key(&mut vim, KeyCode::Char('w'), KeyModifiers::CONTROL);
+        assert_eq!(act7, Action::NoOp);
+        let act8 = send_char(&mut vim, 'k');
+        assert_eq!(act8, Action::FocusUpWindow);
     }
 
     #[test]

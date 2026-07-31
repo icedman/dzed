@@ -112,14 +112,16 @@ impl StatusBarView {
         }
 
         let last_action_str = editor.last_action.to_string();
-        let total_content_len = last_action_str.len() + scope_str.len() + if scope_str.is_empty() { 0 } else { 1 };
-        let remaining = rect.width.saturating_sub(total_content_len as u16);
-        let spacing = " ".repeat(remaining as usize);
-        let status = if scope_str.is_empty() {
-            format!("{}{}", last_action_str, spacing)
+        let pending_str = &editor.pending_keys;
+        let left_part = if scope_str.is_empty() {
+            last_action_str
         } else {
-            format!("{} {}{}", last_action_str, scope_str, spacing)
+            format!("{} {}", last_action_str, scope_str)
         };
+        let total_len = left_part.len() + pending_str.len();
+        let remaining = rect.width.saturating_sub(total_len as u16);
+        let spacing = " ".repeat(remaining as usize);
+        let status = format!("{}{}{}", left_part, spacing, pending_str);
 
         execute!(
             w,
@@ -142,9 +144,10 @@ impl View for StatusBarView {
         buffer_manager: &mut crate::editor::buffers::BufferManager,
         _doc: Option<&crate::editor::document::Document>,
         ui: &crate::ui::Ui,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<Option<(u16, u16, Option<crate::ui::CursorShape>)>, Box<dyn std::error::Error>> {
         let active_win = ui.get_focused_window();
         let doc = active_win.and_then(|win| win.doc.as_ref());
-        self.draw_statusbar(&mut w, rect, editor, buffer_manager, doc)
+        self.draw_statusbar(&mut w, rect, editor, buffer_manager, doc)?;
+        Ok(None)
     }
 }

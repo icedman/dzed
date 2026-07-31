@@ -32,6 +32,7 @@ pub struct Editor {
     pub treesitter_highlights: bool,
     pub map_scope_to_scheme: bool,
     pub last_action: Action,
+    pub pending_keys: String,
 }
 
 impl Editor {
@@ -93,6 +94,7 @@ impl Editor {
             treesitter_highlights: false,
             map_scope_to_scheme: true,
             last_action: Action::NoOp,
+            pending_keys: String::new(),
         })
     }
 }
