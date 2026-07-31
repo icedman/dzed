@@ -43,6 +43,7 @@ pub struct Ui {
     pub cached_layouts: Vec<(usize, layout::Rect)>,
     pub windows: HashMap<usize, window::Window>,
     pub focused_window_id: Option<usize>,
+    pub last_focused_window_id: Option<usize>,
     next_window_id: usize,
 }
 
@@ -111,6 +112,7 @@ impl Ui {
             cached_layouts: Vec::new(),
             windows,
             focused_window_id: Some(main_win_id),
+            last_focused_window_id: None,
             next_window_id: 5,
         }
     }
@@ -206,7 +208,20 @@ impl Ui {
     }
 
     pub fn set_focused_window(&mut self, window_id: usize) {
-        self.focused_window_id = Some(window_id);
+        if self.focused_window_id != Some(window_id) {
+            self.last_focused_window_id = self.focused_window_id;
+            self.focused_window_id = Some(window_id);
+        }
+    }
+
+    pub fn focus_window(&mut self, window_id: usize) {
+        self.set_focused_window(window_id);
+    }
+
+    pub fn restore_last_focused_window(&mut self) {
+        if let Some(last_id) = self.last_focused_window_id {
+            self.set_focused_window(last_id);
+        }
     }
 
     pub fn get_focused_window(&self) -> Option<&window::Window> {

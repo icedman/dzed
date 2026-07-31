@@ -98,25 +98,25 @@ impl Controller {
                 }
                 actions::Action::FocusLeftWindow => {
                     if let Some(nid) = ui.find_neighbor(crate::ui::layout::NavigationDirection::Left) {
-                        ui.focused_window_id = Some(nid);
+                        ui.set_focused_window(nid);
                         editor.should_redraw = true;
                     }
                 }
                 actions::Action::FocusDownWindow => {
                     if let Some(nid) = ui.find_neighbor(crate::ui::layout::NavigationDirection::Down) {
-                        ui.focused_window_id = Some(nid);
+                        ui.set_focused_window(nid);
                         editor.should_redraw = true;
                     }
                 }
                 actions::Action::FocusUpWindow => {
                     if let Some(nid) = ui.find_neighbor(crate::ui::layout::NavigationDirection::Up) {
-                        ui.focused_window_id = Some(nid);
+                        ui.set_focused_window(nid);
                         editor.should_redraw = true;
                     }
                 }
                 actions::Action::FocusRightWindow => {
                     if let Some(nid) = ui.find_neighbor(crate::ui::layout::NavigationDirection::Right) {
-                        ui.focused_window_id = Some(nid);
+                        ui.set_focused_window(nid);
                         editor.should_redraw = true;
                     }
                 }
@@ -124,6 +124,13 @@ impl Controller {
                     self.macro_recorder.update(&action);
                     
                     editor.last_action = action.clone();
+                    
+                    if action == actions::Action::SetToCommand {
+                        ui.focus_window(crate::ui::WindowId::CommandLine as usize);
+                        editor.should_redraw = true;
+                    }
+
+                    let old_mode = editor.mode;
                     let focused_id = ui.focused_window_id;
                     if let Some(window_id) = focused_id {
                         let mut controller = ui.windows.get_mut(&window_id).and_then(|w| w.controller.take());
@@ -133,6 +140,11 @@ impl Controller {
                         if let Some(w) = ui.windows.get_mut(&window_id) {
                             w.controller = controller;
                         }
+                    }
+
+                    if old_mode == actions::Mode::Command && editor.mode != actions::Mode::Command {
+                        ui.restore_last_focused_window();
+                        editor.should_redraw = true;
                     }
                 }
             }
