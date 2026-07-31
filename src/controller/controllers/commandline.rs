@@ -60,10 +60,6 @@ impl CommandLineController {
             if let Some(ref mut document) = window.doc {
                 if let Some(buffer) = buffer_manager.find_mut(document) {
                     command_text = buffer.buffer.snapshot().text();
-                    buffer.clear();
-                }
-                if let Some(buffer) = buffer_manager.find(document) {
-                    document.clear(&buffer.buffer);
                 }
             }
         }
@@ -100,7 +96,8 @@ impl ViewController for CommandLineController {
         match action {
             Action::DeleteCharBefore { .. } => {
                 let command_text = self.get_text(buffer_manager, ui, window_id);
-                if command_text.len() == 1 {
+                if command_text.len() <= 1 {
+                    self.set_text("", buffer_manager, ui, window_id);
                     return Ok(ControllerResult::Action(Action::SetToNormal));
                 }
             }
