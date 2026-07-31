@@ -102,6 +102,37 @@ impl Command {
                     }
                     None
                 }
+                ex::Ex::Write => {
+                    if let Some(win) = ui.get_focused_window_mut() {
+                        if let Some(doc) = &win.doc {
+                            if let Some(buf) = buffer_manager.find_mut(doc) {
+                                let path = resolved.arguments.as_ref()
+                                    .and_then(|args| args.first())
+                                    .map(|s| s.clone());
+                                if let Some(p) = path {
+                                    let content = buf.buffer.snapshot().text();
+                                    let _ = std::fs::write(&p, content);
+                                } else {
+                                    let _ = buf.save();
+                                }
+                            }
+                        }
+                    }
+                    None
+                }
+                ex::Ex::Edit => {
+                    if let Some(win) = ui.get_focused_window_mut() {
+                        let path = resolved.arguments.as_ref()
+                            .and_then(|args| args.first())
+                            .map(|s| s.clone());
+                        if let Some(p) = path {
+                            if let Ok(new_buf) = buffer_manager.add_buffer_for_path(&p) {
+                                win.set_buffer(new_buf.id, buffer_manager);
+                            }
+                        }
+                    }
+                    None
+                }
                 ex::Ex::Quit => Some(ControllerResult::Exit),
                 ex::Ex::Colorschemes => {
                     let name = resolved
@@ -113,6 +144,16 @@ impl Command {
                     let loaded = colorscheme::ColorScheme::get_by_name(name)
                         .unwrap_or_else(|| colorscheme::ColorScheme::load_default());
                     editor.colorscheme = loaded;
+                    for win in ui.windows.values_mut() {
+                        if let Some(doc) = &mut win.doc {
+                            doc.hl.clear();
+                            doc.should_sync = true;
+                        }
+                        for doc in win.docs.values_mut() {
+                            doc.hl.clear();
+                            doc.should_sync = true;
+                        }
+                    }
                     None
                 }
                 ex::Ex::Syntax => {
@@ -619,6 +660,123 @@ mod tests {
             let doc = ui.windows.get(&cmd_win).unwrap().doc.as_ref().unwrap();
             let buf = buffer_manager.find(doc).unwrap();
             assert_eq!(buf.buffer.snapshot().text(), "");
+        }
+    }
+
+    #[test]
+    fn test_ex_write() {
+        let mut editor = Editor::new().unwrap();
+        let mut buffer_manager = crate::editor::buffers::BufferManager::new();
+        let temp_dir = std::env::temp_dir();
+        let file_path = temp_dir.join("dzd_test_write.txt");
+        let path_str = file_path.to_str().unwrap();
+
+        // Clean up any old test files
+        let _ = std::fs::remove_file(&file_path);
+
+        let buf = buffer_manager
+            .add_buffer_for_path(path_str)
+            .unwrap();
+        buf.buffer.edit([(0..0, "hello world")]);
+
+        let mut cmd = Command::new();
+        let main_win = crate::ui::WindowId::MainWindow as usize;
+        let mut ui = crate::ui::Ui::new();
+
+        if let Some(win) = ui.windows.get_mut(&main_win) {
+            win.buffer_id = Some(buf.id);
+            win.doc = Some(Document::new_with_buffer(
+                buf.id,
+                &buf.buffer,
+                &buf.file_path,
+            ));
+        }
+
+        cmd.set("write");
+        cmd.ex(&mut ui, &mut editor, &mut buffer_manager);
+        
+        let content = std::fs::read_to_string(path_str).unwrap();
+        assert_eq!(content, "hello world");
+        let _ = std::fs::remove_file(&file_path);
+
+        let custom_file_path = temp_dir.join("dzd_test_write_custom.txt");
+        let custom_path_str = custom_file_path.to_str().unwrap();
+        let _ = std::fs::remove_file(&custom_file_path);
+        
+        cmd.set(&format!("write {}", custom_path_str));
+        cmd.ex(&mut ui, &mut editor, &mut buffer_manager);
+
+        let custom_content = std::fs::read_to_string(custom_path_str).unwrap();
+        assert_eq!(custom_content, "hello world");
+        let _ = std::fs::remove_file(&custom_file_path);
+    }
+
+    #[test]
+    fn test_ex_edit() {
+        let mut editor = Editor::new().unwrap();
+        let mut buffer_manager = crate::editor::buffers::BufferManager::new();
+        let temp_dir = std::env::temp_dir();
+        let file_path = temp_dir.join("dzd_test_edit.txt");
+        let path_str = file_path.to_str().unwrap();
+
+        std::fs::write(&file_path, "hello edit command").unwrap();
+
+        let mut cmd = Command::new();
+        let main_win = crate::ui::WindowId::MainWindow as usize;
+        let mut ui = crate::ui::Ui::new();
+
+        let empty_buf = buffer_manager.add_buffer_for_path("").unwrap();
+        if let Some(win) = ui.windows.get_mut(&main_win) {
+            win.buffer_id = Some(empty_buf.id);
+            win.doc = Some(Document::new_with_buffer(
+                empty_buf.id,
+                &empty_buf.buffer,
+                &empty_buf.file_path,
+            ));
+        }
+
+        cmd.set(&format!("edit {}", path_str));
+        cmd.ex(&mut ui, &mut editor, &mut buffer_manager);
+
+        if let Some(win) = ui.windows.get(&main_win) {
+            let active_doc = win.doc.as_ref().unwrap();
+            let active_buf = buffer_manager.find(active_doc).unwrap();
+            assert_eq!(active_buf.file_path, path_str);
+            assert_eq!(active_buf.buffer.snapshot().text(), "hello edit command");
+        }
+
+        let _ = std::fs::remove_file(&file_path);
+    }
+
+    #[test]
+    fn test_colorscheme_clears_highlight_cache() {
+        let mut editor = Editor::new().unwrap();
+        let mut buffer_manager = crate::editor::buffers::BufferManager::new();
+        let mut cmd = Command::new();
+        let main_win = crate::ui::WindowId::MainWindow as usize;
+        let mut ui = crate::ui::Ui::new();
+
+        let buf = buffer_manager.add_buffer_for_path("").unwrap();
+        if let Some(win) = ui.windows.get_mut(&main_win) {
+            win.buffer_id = Some(buf.id);
+            let mut doc = Document::new_with_buffer(
+                buf.id,
+                &buf.buffer,
+                &buf.file_path,
+            );
+            doc.hl.textmate_style_cache.insert(0, crate::editor::display::highlight::StyleCache {
+                styles: Vec::new(),
+            });
+            win.doc = Some(doc);
+        }
+
+        cmd.set("colorschemes tokyonight");
+        cmd.ex(&mut ui, &mut editor, &mut buffer_manager);
+
+        if let Some(win) = ui.windows.get(&main_win) {
+            let doc = win.doc.as_ref().unwrap();
+            assert!(doc.hl.textmate_style_cache.is_empty());
+            assert!(doc.should_sync);
         }
     }
 }
