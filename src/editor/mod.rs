@@ -33,6 +33,8 @@ pub struct Editor {
     pub map_scope_to_scheme: bool,
     pub last_action: Action,
     pub pending_keys: String,
+    pub search_pattern: String,
+    pub search_regex: Option<onig::Regex>,
 }
 
 impl Editor {
@@ -95,6 +97,20 @@ impl Editor {
             map_scope_to_scheme: true,
             last_action: Action::NoOp,
             pending_keys: String::new(),
+            search_pattern: String::new(),
+            search_regex: None,
         })
+     }
+
+    pub fn set_pattern(&mut self, pattern: String) {
+        if self.search_pattern == pattern && self.search_regex.is_some() {
+            return;
+        }
+        self.search_regex = if pattern.is_empty() {
+            None
+        } else {
+            onig::Regex::new(&pattern).ok()
+        };
+        self.search_pattern = pattern;
     }
 }

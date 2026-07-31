@@ -33,10 +33,6 @@ impl TextView {
     ) -> Result<Option<(u16, u16, Option<crate::ui::CursorShape>)>, Box<dyn std::error::Error>>
     {
         let mut cursor_pos = None;
-        let (screen_cols, _) = {
-            let (cols, rows) = crossterm::terminal::size().unwrap();
-            (cols as i32, rows as i32)
-        };
 
         let document = document.expect("TextView requires document view state");
         let buffer = buffer_manager.find(document).unwrap();
@@ -66,14 +62,6 @@ impl TextView {
             .get("selection")
             .map(|s| s.color)
             .unwrap_or(editor_bg);
-        let caret_bg = editor
-            .colorscheme
-            .ui
-            .get("caret")
-            .map(|s| s.color)
-            .unwrap_or(selection_bg);
-        let caret_fg = editor_fg;
-
         let gutter_fg = editor
             .colorscheme
             .ui
