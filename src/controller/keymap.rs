@@ -716,10 +716,10 @@ impl Keymap {
             .expect("Valid binding");
 
         motion_actions
-            .bind("/", Action::SearchForward { count: 1 })
+            .bind("/", Action::SetToCommandSearchForward)
             .expect("Valid binding");
         motion_actions
-            .bind("?", Action::SearchBackward { count: 1 })
+            .bind("?", Action::SetToCommandSearchBackward)
             .expect("Valid binding");
         motion_actions
             .bind("n", Action::SearchNext { count: 1 })
@@ -1219,7 +1219,9 @@ impl InputStateMachine {
                     Action::SetToVisual => self.mode = Mode::Visual,
                     Action::SetToVisualLine => self.mode = Mode::VisualLine,
                     Action::SetToVisualBlock => self.mode = Mode::VisualBlock,
-                    Action::SetToCommand => self.mode = Mode::Command,
+                    Action::SetToCommand
+                    | Action::SetToCommandSearchForward
+                    | Action::SetToCommandSearchBackward => self.mode = Mode::Command,
                     Action::Clear => self.mode = Mode::Normal,
                     _ => {}
                 }
@@ -1286,7 +1288,9 @@ impl InputStateMachine {
                             Action::SetToVisual => self.mode = Mode::Visual,
                             Action::SetToVisualLine => self.mode = Mode::VisualLine,
                             Action::SetToVisualBlock => self.mode = Mode::VisualBlock,
-                            Action::SetToCommand => self.mode = Mode::Command,
+                            Action::SetToCommand
+                            | Action::SetToCommandSearchForward
+                            | Action::SetToCommandSearchBackward => self.mode = Mode::Command,
                             Action::Clear => self.mode = Mode::Normal,
                             _ => {}
                         }

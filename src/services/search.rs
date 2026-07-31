@@ -61,11 +61,29 @@ impl TextSearch for str {
 
     fn find_pattern(&self, regex: &Regex) -> Vec<(usize, usize, &str)> {
         let mut out = Vec::new();
-        for caps in regex.captures_iter(self) {
-            if let Some((start, end)) = caps.pos(0) {
-                let len = end - start;
-                let slice = &self[start..end];
-                out.push((start, len, slice));
+        let mut offset = 0;
+        while offset <= self.len() {
+            if let Some(caps) = regex.captures(&self[offset..]) {
+                if let Some((start, end)) = caps.pos(0) {
+                    let abs_start = offset + start;
+                    let abs_end = offset + end;
+                    let len = abs_end - abs_start;
+                    let slice = &self[abs_start..abs_end];
+                    out.push((abs_start, len, slice));
+                    if abs_end == offset {
+                        if let Some(ch) = self[offset..].chars().next() {
+                            offset += ch.len_utf8();
+                        } else {
+                            break;
+                        }
+                    } else {
+                        offset = abs_end;
+                    }
+                } else {
+                    break;
+                }
+            } else {
+                break;
             }
         }
         out

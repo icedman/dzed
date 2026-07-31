@@ -132,32 +132,25 @@ impl TextView {
 
                 let text = display_snapshot.line_text(row) + " ";
 
-                /*
-                let mut matches = Vec::<(usize, usize, &str)>::new();
-                if editor.command.pattern {
-                    if editor.command.search_text != editor.command.regex_string {
-                        editor.command.regex_string = editor.command.search_text.clone();
-                        editor.command.regex = compile(editor.command.regex_string.as_str());
-                    }
-                    if let Some(ref regex) = editor.command.regex {
-                        matches = text.as_str().find_pattern(&regex);
-                    }
-                } else if !editor.command.search_text.is_empty() {
-                    matches = text.as_str().find_string(&editor.command.search_text);
-                }
-
-                // Convert byte-indexed matches into character-indexed ranges for rendering
-                let match_ranges: Vec<(usize, usize)> = matches
-                    .iter()
-                    .map(|(byte_start, byte_len, _)| {
-                        let byte_end = *byte_start + *byte_len;
-                        let start_char = text[..*byte_start].chars().count();
-                        let end_char = text[..byte_end].chars().count();
-                        (start_char, end_char)
-                    })
-                    .collect();
+                let mut match_ranges = Vec::<(usize, usize)>::new();
                 let mut match_idx = 0usize;
-                */
+                if document.show_pattern_match {
+                    let mut matches = Vec::<(usize, usize, &str)>::new();
+                    if let Some(ref regex) = editor.search_regex {
+                        matches = text.as_str().find_pattern(regex);
+                    }
+
+                    // Convert byte-indexed matches into character-indexed ranges for rendering
+                    match_ranges = matches
+                        .iter()
+                        .map(|(byte_start, byte_len, _)| {
+                            let byte_end = *byte_start + *byte_len;
+                            let start_char = text[..*byte_start].chars().count();
+                            let end_char = text[..byte_end].chars().count();
+                            (start_char, end_char)
+                        })
+                        .collect();
+                }
 
                 let mut x_scroll = display_snapshot.scroll_x;
                 let mut cols_remaining = (inner_rect.width as usize).saturating_sub(gutter_width);
@@ -167,7 +160,7 @@ impl TextView {
                 let is_handle = relative_row >= start_y && relative_row < start_y + handle_h;
 
                 let mut byte_column = 0;
-                for (_column, ch) in text.chars().enumerate() {
+                for (column, ch) in text.chars().enumerate() {
                     let orig_point = display_snapshot
                         .display_point_to_point(DisplayPoint::new(row, byte_column as u32));
                     byte_column += ch.len_utf8();
@@ -175,17 +168,15 @@ impl TextView {
                     // Determine if current column is within a search match range
                     let mut in_match = false;
 
-                    /*
                     while match_idx < match_ranges.len() && column >= match_ranges[match_idx].1 {
                         match_idx += 1;
                     }
                     if match_idx < match_ranges.len() {
                         let (s, e) = match_ranges[match_idx];
-                        if column >= s && column <= e {
+                        if column >= s && column < e {
                             in_match = true;
                         }
                     }
-                    */
 
                     let mut fg = editor_fg;
                     let mut bg = editor_bg;

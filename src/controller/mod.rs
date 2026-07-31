@@ -143,7 +143,9 @@ impl Controller {
                     editor.last_action = action.clone();
 
                     match action {
-                        actions::Action::SetToCommand => {
+                        actions::Action::SetToCommand
+                        | actions::Action::SetToCommandSearchForward
+                        | actions::Action::SetToCommandSearchBackward => {
                             ui.focus_window(crate::ui::WindowId::CommandLine as usize);
                             editor.should_redraw = true;
                         }

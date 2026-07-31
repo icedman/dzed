@@ -102,11 +102,11 @@ impl ViewController for CommandLineController {
                 self.lead = ':';
                 self.set_text(&self.lead.to_string(), buffer_manager, ui, window_id);
             }
-            Action::SearchForward { .. } => {
+            Action::SetToCommandSearchForward => {
                 self.lead = '/';
                 self.set_text(&self.lead.to_string(), buffer_manager, ui, window_id);
             }
-            Action::SearchBackward { .. } => {
+            Action::SetToCommandSearchBackward => {
                 self.lead = '?';
                 self.set_text(&self.lead.to_string(), buffer_manager, ui, window_id);
             }

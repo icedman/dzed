@@ -502,7 +502,9 @@ impl Document {
                 self.enter_mode(buffer, Mode::VisualBlock);
                 return;
             }
-            Action::SetToCommand => {
+            Action::SetToCommand
+            | Action::SetToCommandSearchForward
+            | Action::SetToCommandSearchBackward => {
                 self.enter_mode(buffer, Mode::Command);
                 return;
             }
