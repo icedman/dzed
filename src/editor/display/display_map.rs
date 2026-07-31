@@ -30,7 +30,7 @@ pub struct DisplayMap {
     pub scroll_y: u32,
     pub visible_cols: u32,
     pub visible_rows: u32,
-    pub margin_left: u32,
+    pub gutter_width: u32,
     pub margin_right: u32,
     pub margin_top: u32,
     pub margin_bottom: u32,
@@ -44,7 +44,7 @@ pub struct DisplaySnapshot {
     pub scroll_y: u32,
     pub visible_cols: u32,
     pub visible_rows: u32,
-    pub margin_left: u32,
+    pub gutter_width: u32,
     pub margin_right: u32,
     pub margin_top: u32,
     pub margin_bottom: u32,
@@ -64,7 +64,7 @@ impl DisplayMap {
             scroll_y: 0,
             visible_cols: 240,
             visible_rows: 80,
-            margin_left: 0,
+            gutter_width: 0,
             margin_right: 0,
             margin_top: 0,
             margin_bottom: 0,
@@ -93,9 +93,9 @@ impl DisplayMap {
             wrap_snapshot: self.wrap_map.snapshot(),
             scroll_x: self.scroll_x,
             scroll_y: self.scroll_y,
-            visible_cols: self.visible_rows,
+            visible_cols: self.visible_cols,
             visible_rows: self.visible_rows,
-            margin_left: self.margin_left,
+            gutter_width: self.gutter_width,
             margin_right: self.margin_right,
             margin_top: self.margin_top,
             margin_bottom: self.margin_bottom,
@@ -133,7 +133,7 @@ impl DisplayMap {
             .saturating_sub(self.margin_top as i32)
             .saturating_sub(self.margin_bottom as i32);
         let visible_cols = screen_cols
-            .saturating_sub(self.margin_left as i32)
+            .saturating_sub(self.gutter_width as i32)
             .saturating_sub(self.margin_right as i32);
 
         self.visible_rows = visible_rows as u32;
@@ -167,7 +167,7 @@ impl DisplayMap {
 
 impl DisplaySnapshot {
     pub fn x(&self) -> u32 {
-        return self.margin_left;
+        return self.gutter_width;
     }
 
     pub fn y(&self) -> u32 {

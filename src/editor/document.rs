@@ -4,12 +4,12 @@ use crate::editor::display::{self};
 use crate::editor::selections::{Motions, SelectionCollection};
 use crate::services::clipboard::ClipboardKind;
 
+use crate::editor::display::display_map::DisplayMap;
+use crate::editor::display::highlight::Highlights;
 use clock::ReplicaId;
 use rope::Point;
 use std::{cmp::Ordering, io, sync::Arc, sync::atomic::AtomicU64};
 use sum_tree::Bias;
-use crate::editor::display::display_map::DisplayMap;
-use crate::editor::display::highlight::Highlights;
 use text::{Anchor, Buffer, BufferId, BufferSnapshot, Selection, SelectionGoal, ToOffset, ToPoint};
 
 pub trait BufferText {
@@ -45,6 +45,9 @@ pub struct Document {
     pub current_hl_task_id: u64,
     pub current_wrap_task_id: u64,
     pub current_parse_task_id: u64,
+    pub show_scrollbar: bool,
+    pub show_gutter: bool,
+    pub gutter_width: usize,
     pub should_sync: bool,
 }
 
@@ -56,6 +59,7 @@ impl Document {
         self.folds.clear();
         self.display_map = DisplayMap::new(buffer.snapshot().clone(), None);
         self.hl.clear();
+        self.gutter_width = 0;
         self.should_sync = true;
     }
 
@@ -78,6 +82,9 @@ impl Document {
             current_hl_task_id: 0,
             current_wrap_task_id: 0,
             current_parse_task_id: 0,
+            show_scrollbar: true,
+            show_gutter: true,
+            gutter_width: 0,
             should_sync: true,
         }
     }
@@ -102,7 +109,13 @@ impl Document {
         }
     }
 
-    pub fn fold(&mut self, buffer: &Buffer, _count: u32, editor: &Editor, syntax_tree: Option<&crate::services::treesitter::SyntaxTree>) {
+    pub fn fold(
+        &mut self,
+        buffer: &Buffer,
+        _count: u32,
+        editor: &Editor,
+        syntax_tree: Option<&crate::services::treesitter::SyntaxTree>,
+    ) {
         if let Some(syntax_tree) = syntax_tree {
             let mut seen_ranges = std::collections::HashSet::new();
             let mut updated_selections = Vec::new();
@@ -140,7 +153,8 @@ impl Document {
                     let end_point = end_offset.to_point(buffer);
 
                     if !editor.fold_multiline_only
-                        || (block.end_position.row > block.start_position.row && start_point.row < end_point.row)
+                        || (block.end_position.row > block.start_position.row
+                            && start_point.row < end_point.row)
                     {
                         let range = block.byte_range.clone();
                         if seen_ranges.insert(range) {
@@ -152,7 +166,8 @@ impl Document {
                                 self.folds.push(fold);
                             }
                             let target_offset = block.byte_range.start;
-                            let target_anchor = buffer.anchor_at(&target_offset.to_point(buffer), Bias::Left);
+                            let target_anchor =
+                                buffer.anchor_at(&target_offset.to_point(buffer), Bias::Left);
                             let new_sel = Selection {
                                 id: selection.id,
                                 start: target_anchor.clone(),
@@ -174,7 +189,13 @@ impl Document {
         }
     }
 
-    pub fn unfold(&mut self, buffer: &Buffer, _count: u32, editor: &Editor, syntax_tree: Option<&crate::services::treesitter::SyntaxTree>) {
+    pub fn unfold(
+        &mut self,
+        buffer: &Buffer,
+        _count: u32,
+        editor: &Editor,
+        syntax_tree: Option<&crate::services::treesitter::SyntaxTree>,
+    ) {
         let mut to_remove = Vec::new();
         for selection in self.selections.selections.iter() {
             let head_point = selection.head().to_point(buffer);
@@ -317,10 +338,7 @@ impl Document {
                 reversed: false,
                 goal: SelectionGoal::None,
             };
-            if self
-                .selections
-                .has_similar_cursor(&next_cursor, buffer)
-            {
+            if self.selections.has_similar_cursor(&next_cursor, buffer) {
                 return;
             }
 
@@ -340,7 +358,13 @@ impl Document {
         // }
     }
 
-    pub fn apply_action(&mut self, buffer: &mut Buffer, action: &Action, editor: &Editor, syntax_tree: Option<&crate::services::treesitter::SyntaxTree>) {
+    pub fn apply_action(
+        &mut self,
+        buffer: &mut Buffer,
+        action: &Action,
+        editor: &Editor,
+        syntax_tree: Option<&crate::services::treesitter::SyntaxTree>,
+    ) {
         let mut action_owned = action.clone();
         if self.mode.is_visual() {
             action_owned = action_owned.with_select(true);
@@ -409,13 +433,7 @@ impl Document {
             Action::SetToOpenLineBelow { count } => {
                 let count = *count;
                 self.selections.move_to_end_of_line(false, buffer);
-                let current_row = self
-                    .selections
-                    .first()
-                    .unwrap()
-                    .head()
-                    .to_point(buffer)
-                    .row;
+                let current_row = self.selections.first().unwrap().head().to_point(buffer).row;
                 for _ in 0..count {
                     self.insert_text(buffer, &self.new_line(buffer).to_string());
                 }
@@ -423,8 +441,7 @@ impl Document {
                     row: current_row + 1,
                     column: 0,
                 };
-                let target_anchor = buffer
-                    .anchor_at(target_point.to_offset(buffer), Bias::Left);
+                let target_anchor = buffer.anchor_at(target_point.to_offset(buffer), Bias::Left);
                 self.selections.clear(buffer);
                 let first = self.selections.first().unwrap().clone();
                 let next = Selection {
@@ -442,13 +459,7 @@ impl Document {
             Action::SetToOpenLineAbove { count } => {
                 let count = *count;
                 self.selections.move_to_start_of_line(false, buffer);
-                let current_row = self
-                    .selections
-                    .first()
-                    .unwrap()
-                    .head()
-                    .to_point(buffer)
-                    .row;
+                let current_row = self.selections.first().unwrap().head().to_point(buffer).row;
                 for _ in 0..count {
                     self.insert_text(buffer, &self.new_line(buffer).to_string());
                 }
@@ -456,8 +467,7 @@ impl Document {
                     row: current_row,
                     column: 0,
                 };
-                let target_anchor = buffer
-                    .anchor_at(target_point.to_offset(buffer), Bias::Left);
+                let target_anchor = buffer.anchor_at(target_point.to_offset(buffer), Bias::Left);
                 self.selections.clear(buffer);
                 let first = self.selections.first().unwrap().clone();
                 let next = Selection {
@@ -506,32 +516,27 @@ impl Document {
             Action::MoveDown { count, select } => {
                 self.selections.move_down(*select, *count, buffer);
             }
-            Action::MoveToPreviousWord { select, count } => {
-                self.selections
-                    .move_to_previous_word(*select, *count, buffer)
-            }
+            Action::MoveToPreviousWord { select, count } => self
+                .selections
+                .move_to_previous_word(*select, *count, buffer),
             Action::MoveToWord { select, count } => {
-                self.selections
-                    .move_to_next_word(*select, *count, buffer)
+                self.selections.move_to_next_word(*select, *count, buffer)
             }
             Action::MoveToPreviousWordEnd { select, count } => self
                 .selections
                 .move_to_previous_word_end(*select, *count, buffer),
             Action::MoveToWordEnd { select, count } => {
-                self.selections
-                    .move_to_word_end(*select, *count, buffer)
+                self.selections.move_to_word_end(*select, *count, buffer)
             }
             Action::MoveToBigWord { select, count } => {
-                self.selections
-                    .move_to_big_word(*select, *count, buffer)
+                self.selections.move_to_big_word(*select, *count, buffer)
             }
             Action::MoveToPreviousBigWord { select, count } => self
                 .selections
                 .move_to_previous_big_word(*select, *count, buffer),
-            Action::MoveToBigWordEnd { select, count } => {
-                self.selections
-                    .move_to_big_word_end(*select, *count, buffer)
-            }
+            Action::MoveToBigWordEnd { select, count } => self
+                .selections
+                .move_to_big_word_end(*select, *count, buffer),
             Action::MoveToPreviousBigWordEnd { select, count } => self
                 .selections
                 .move_to_previous_big_word_end(*select, *count, buffer),
@@ -560,8 +565,7 @@ impl Document {
             Action::SearchBackward { count } => {
                 // TODO: handle count
                 for _ in 0..*count {
-                    self.selections
-                        .move_to_previous_match("", false, buffer);
+                    self.selections.move_to_previous_match("", false, buffer);
                 }
             }
             Action::SearchForward { count } => {
@@ -629,9 +633,7 @@ impl Document {
                         self.selections.update(buffer, &next);
                         updated = true;
                     } else if editor.tree_sitter {
-                        if let Some(syntax_tree) =
-                            syntax_tree
-                        {
+                        if let Some(syntax_tree) = syntax_tree {
                             let byte = buffer.offset_for_anchor(&cursor.head());
                             if let Some((start_node, end_node)) =
                                 syntax_tree.delimiter_boundaries_at_byte(byte)
@@ -653,8 +655,7 @@ impl Document {
                                 if matches_ch {
                                     let start_offset = start_node.byte_range.end;
                                     let end_offset = end_node.byte_range.start.saturating_sub(1);
-                                    let start_anchor =
-                                        buffer.anchor_at(start_offset, Bias::Left);
+                                    let start_anchor = buffer.anchor_at(start_offset, Bias::Left);
                                     let end_anchor = buffer.anchor_at(end_offset, Bias::Right);
                                     let next = Selection {
                                         id: cursor.id,
@@ -684,8 +685,8 @@ impl Document {
                         let start_sel = cursor.move_to_word(false, buffer);
                         let next_word_head = cursor.move_to_next_word(false, buffer).head();
                         let next_word_offset = buffer.offset_for_anchor(&next_word_head);
-                        let end_offset = buffer
-                            .clip_offset(next_word_offset.saturating_sub(1), Bias::Left);
+                        let end_offset =
+                            buffer.clip_offset(next_word_offset.saturating_sub(1), Bias::Left);
                         let next = Selection {
                             id: cursor.id,
                             start: start_sel.head(),
@@ -732,9 +733,7 @@ impl Document {
                         self.selections.update(buffer, &next);
                         updated = true;
                     } else if editor.tree_sitter {
-                        if let Some(syntax_tree) =
-                            syntax_tree
-                        {
+                        if let Some(syntax_tree) = syntax_tree {
                             let byte = buffer.offset_for_anchor(&cursor.head());
                             if let Some((start_node, end_node)) =
                                 syntax_tree.delimiter_boundaries_at_byte(byte)
@@ -756,8 +755,7 @@ impl Document {
                                 if matches_ch {
                                     let start_offset = start_node.byte_range.start;
                                     let end_offset = end_node.byte_range.end.saturating_sub(1);
-                                    let start_anchor =
-                                        buffer.anchor_at(start_offset, Bias::Left);
+                                    let start_anchor = buffer.anchor_at(start_offset, Bias::Left);
                                     let end_anchor = buffer.anchor_at(end_offset, Bias::Right);
                                     let next = Selection {
                                         id: cursor.id,
@@ -910,12 +908,12 @@ impl Document {
                 }
             }
 
-            Action::MoveToStartOfDocument { select, count } => self
-                .selections
-                .move_to_start_of_document(*select, buffer),
-            Action::MoveToEndOfDocument { select, count } => self
-                .selections
-                .move_to_end_of_document(*select, buffer),
+            Action::MoveToStartOfDocument { select, count } => {
+                self.selections.move_to_start_of_document(*select, buffer)
+            }
+            Action::MoveToEndOfDocument { select, count } => {
+                self.selections.move_to_end_of_document(*select, buffer)
+            }
             Action::MoveToStartOfLine { select, count } => {
                 self.selections.move_to_start_of_line(*select, buffer)
             }
@@ -931,29 +929,52 @@ impl Document {
             Action::MoveToEndOfPreviousLine { select, count } => self
                 .selections
                 .move_to_end_of_previous_line(*select, buffer),
-            Action::MoveToStartOfNextLine { select, count } => self
-                .selections
-                .move_to_start_of_next_line(*select, buffer),
-            Action::MoveToEndOfNextLine { select, count } => self
-                .selections
-                .move_to_end_of_next_line(*select, buffer),
+            Action::MoveToStartOfNextLine { select, count } => {
+                self.selections.move_to_start_of_next_line(*select, buffer)
+            }
+            Action::MoveToEndOfNextLine { select, count } => {
+                self.selections.move_to_end_of_next_line(*select, buffer)
+            }
             Action::MovePageUp { count, select } => {
-                let page_size = self.display_map.snapshot().visible_rows.saturating_sub(4).max(1);
-                self.selections
-                    .move_up(*select, page_size * *count, buffer);
+                let page_size = self
+                    .display_map
+                    .snapshot()
+                    .visible_rows
+                    .saturating_sub(4)
+                    .max(1);
+                self.selections.move_up(*select, page_size * *count, buffer);
             }
             Action::MovePageDown { count, select } => {
-                let page_size = self.display_map.snapshot().visible_rows.saturating_sub(4).max(1);
+                let page_size = self
+                    .display_map
+                    .snapshot()
+                    .visible_rows
+                    .saturating_sub(4)
+                    .max(1);
                 self.selections
                     .move_down(*select, page_size * *count, buffer);
             }
             Action::ScrollHalfPageUp { count } => {
-                let half_page_size = (self.display_map.snapshot().visible_rows.saturating_sub(4).max(2) / 2).max(1);
+                let half_page_size = (self
+                    .display_map
+                    .snapshot()
+                    .visible_rows
+                    .saturating_sub(4)
+                    .max(2)
+                    / 2)
+                .max(1);
                 self.selections
                     .move_up(false, half_page_size * *count, buffer);
             }
             Action::ScrollHalfPageDown { count } => {
-                let half_page_size = (self.display_map.snapshot().visible_rows.saturating_sub(4).max(2) / 2).max(1);
+                let half_page_size = (self
+                    .display_map
+                    .snapshot()
+                    .visible_rows
+                    .saturating_sub(4)
+                    .max(2)
+                    / 2)
+                .max(1);
                 self.selections
                     .move_down(false, half_page_size * *count, buffer);
             }
@@ -994,8 +1015,7 @@ impl Document {
                     self.selections.text(buffer)
                 } else {
                     let head_offset = buffer.offset_for_anchor(&self.selection().head());
-                    let end_offset = buffer
-                        .clip_offset(head_offset + *count as usize, Bias::Right);
+                    let end_offset = buffer.clip_offset(head_offset + *count as usize, Bias::Right);
                     buffer
                         .as_rope()
                         .chunks_in_range(head_offset..end_offset)
@@ -1118,13 +1138,7 @@ impl Document {
                 let lines_to_join = if count <= 1 { 2 } else { count };
                 let newlines_to_remove = lines_to_join - 1;
 
-                let current_row = self
-                    .selections
-                    .first()
-                    .unwrap()
-                    .head()
-                    .to_point(buffer)
-                    .row;
+                let current_row = self.selections.first().unwrap().head().to_point(buffer).row;
                 let total_rows = buffer.row_count();
                 let actual_removes = std::cmp::min(
                     newlines_to_remove as usize,
@@ -1172,8 +1186,8 @@ impl Document {
                         row: current_row,
                         column: col,
                     };
-                    let target_anchor = buffer
-                        .anchor_at(target_point.to_offset(buffer), Bias::Left);
+                    let target_anchor =
+                        buffer.anchor_at(target_point.to_offset(buffer), Bias::Left);
                     self.selections.clear(buffer);
                     let first = self.selections.first().unwrap().clone();
                     let next = Selection {
@@ -1308,7 +1322,14 @@ impl Document {
         self.snap_selections_to_folds(buffer, action);
     }
 
-    fn yank_motion(&mut self, buffer: &mut Buffer, count: u32, motion: &Action, editor: &Editor, syntax_tree: Option<&crate::services::treesitter::SyntaxTree>) {
+    fn yank_motion(
+        &mut self,
+        buffer: &mut Buffer,
+        count: u32,
+        motion: &Action,
+        editor: &Editor,
+        syntax_tree: Option<&crate::services::treesitter::SyntaxTree>,
+    ) {
         let selections = self.selections.selections.clone();
         let point = self.selections.point;
         let anchor = self.selections.anchor.clone();
@@ -1367,8 +1388,7 @@ impl Document {
                 let cursor_row = self.selection().head().to_point(buffer).row;
                 let has_next_line = cursor_row + 1 < buffer.row_count();
                 if has_next_line {
-                    self.selections
-                        .move_to_start_of_next_line(false, buffer);
+                    self.selections.move_to_start_of_next_line(false, buffer);
                 } else {
                     self.selections.move_to_end_of_line(false, buffer);
                     self.insert_text(buffer, &self.new_line(buffer).to_string());
@@ -1406,8 +1426,7 @@ impl Document {
         let cursors = self.selections.selections.clone();
         for cursor in cursors.iter() {
             let (start, mut end) = {
-                let (cs, ce) = if cursor.head().cmp(&cursor.tail(), buffer) == Ordering::Less
-                {
+                let (cs, ce) = if cursor.head().cmp(&cursor.tail(), buffer) == Ordering::Less {
                     (
                         cursor.head().bias_left(buffer),
                         cursor.tail().bias_right(buffer),
@@ -1445,8 +1464,7 @@ impl Document {
         let cursors = self.selections.selections.clone();
         for cursor in cursors.iter() {
             let (start, mut end) = {
-                let (cs, ce) = if cursor.head().cmp(&cursor.tail(), buffer) == Ordering::Less
-                {
+                let (cs, ce) = if cursor.head().cmp(&cursor.tail(), buffer) == Ordering::Less {
                     (
                         cursor.head().bias_left(buffer),
                         cursor.tail().bias_right(buffer),
@@ -1484,16 +1502,14 @@ impl Document {
                 let mut point = cursor.head().to_point(buffer);
                 let (start, end) = {
                     point.column = 0;
-                    let start = buffer
-                        .offset_for_anchor(&buffer.anchor_at(&point, Bias::Left));
+                    let start = buffer.offset_for_anchor(&buffer.anchor_at(&point, Bias::Left));
                     if point.row < buffer.row_count() {
                         point.row += 1;
                     } else {
                         point.column = buffer.line_len(point.row);
                     }
                     let end = buffer.clip_offset(
-                        buffer
-                            .offset_for_anchor(&buffer.anchor_at(&point, Bias::Right)),
+                        buffer.offset_for_anchor(&buffer.anchor_at(&point, Bias::Right)),
                         Bias::Right,
                     );
                     (start, end)
@@ -1526,6 +1542,10 @@ impl Document {
         &self.selections
     }
 
+    pub fn selections_mut(&mut self) -> &mut SelectionCollection {
+        &mut self.selections
+    }
+
     pub fn clear_selections(&mut self, buffer: &Buffer) {
         self.selections.clear(buffer);
     }
@@ -1538,9 +1558,9 @@ impl Document {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::editor::buffers::{BufferManager, TextBuffer};
     use crate::services::treesitter::TreeSitterParser;
     use crate::services::treesitter::grammars::Grammar;
-    use crate::editor::buffers::{BufferManager, TextBuffer};
 
     const MAIN_WIN: usize = crate::ui::WindowId::MainWindow as usize;
 
@@ -1559,21 +1579,42 @@ mod tests {
             let active_buf = &buffer_manager.buffers[0];
             if let Some(win) = ui.windows.get_mut(&MAIN_WIN) {
                 win.buffer_id = Some(active_buf.id);
-                win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
+                win.doc = Some(Document::new_with_buffer(
+                    active_buf.id,
+                    &active_buf.buffer,
+                    &active_buf.file_path,
+                ));
             }
-            Self { editor, buffer_manager, ui }
+            Self {
+                editor,
+                buffer_manager,
+                ui,
+            }
         }
 
         fn apply_action(&mut self, action: &Action) {
-            self.editor.apply_active_action(&mut self.ui, &mut self.buffer_manager, action);
+            self.editor
+                .apply_active_action(&mut self.ui, &mut self.buffer_manager, action);
         }
 
         fn doc(&self) -> &Document {
-            self.ui.windows.get(&MAIN_WIN).unwrap().doc.as_ref().unwrap()
+            self.ui
+                .windows
+                .get(&MAIN_WIN)
+                .unwrap()
+                .doc
+                .as_ref()
+                .unwrap()
         }
 
         fn doc_mut(&mut self) -> &mut Document {
-            self.ui.windows.get_mut(&MAIN_WIN).unwrap().doc.as_mut().unwrap()
+            self.ui
+                .windows
+                .get_mut(&MAIN_WIN)
+                .unwrap()
+                .doc
+                .as_mut()
+                .unwrap()
         }
 
         fn buffer(&self) -> &text::Buffer {
@@ -1586,7 +1627,14 @@ mod tests {
         let mut env = TestEnv::new();
 
         let buffer = &env.buffer_manager.buffers[0].buffer;
-        let doc = env.ui.windows.get_mut(&MAIN_WIN).unwrap().doc.as_mut().unwrap();
+        let doc = env
+            .ui
+            .windows
+            .get_mut(&MAIN_WIN)
+            .unwrap()
+            .doc
+            .as_mut()
+            .unwrap();
         doc.enter_mode(buffer, Mode::Insert);
         env.apply_action(&Action::InsertText("abc".into()));
         env.apply_action(&Action::MoveLeft {
@@ -1598,11 +1646,7 @@ mod tests {
 
         assert_eq!(&env.buffer().row_text(0), "axybc");
         assert_eq!(
-            env.doc()
-                .selection()
-                .head()
-                .to_point(env.buffer())
-                .column,
+            env.doc().selection().head().to_point(env.buffer()).column,
             3
         );
     }
@@ -1612,7 +1656,14 @@ mod tests {
         let mut env = TestEnv::new();
 
         let buffer = &env.buffer_manager.buffers[0].buffer;
-        let doc = env.ui.windows.get_mut(&MAIN_WIN).unwrap().doc.as_mut().unwrap();
+        let doc = env
+            .ui
+            .windows
+            .get_mut(&MAIN_WIN)
+            .unwrap()
+            .doc
+            .as_mut()
+            .unwrap();
         doc.enter_mode(buffer, Mode::Insert);
         env.apply_action(&Action::InsertText("abc".into()));
         env.apply_action(&Action::MoveLeft {
@@ -1624,16 +1675,20 @@ mod tests {
         assert_eq!(&env.buffer().row_text(0), "a");
         assert_eq!(&env.buffer().row_text(1), "bc");
         assert_eq!(
-            env.doc()
-                .selection()
-                .head()
-                .to_point(env.buffer()),
+            env.doc().selection().head().to_point(env.buffer()),
             Point::new(1, 0)
         );
 
         let mut env2 = TestEnv::new();
         let buffer2 = &env2.buffer_manager.buffers[0].buffer;
-        let doc2 = env2.ui.windows.get_mut(&MAIN_WIN).unwrap().doc.as_mut().unwrap();
+        let doc2 = env2
+            .ui
+            .windows
+            .get_mut(&MAIN_WIN)
+            .unwrap()
+            .doc
+            .as_mut()
+            .unwrap();
         doc2.enter_mode(buffer2, Mode::Insert);
         env2.apply_action(&Action::InsertText("abc".into()));
         env2.apply_action(&Action::MoveLeft {
@@ -1644,11 +1699,7 @@ mod tests {
 
         assert_eq!(&env2.buffer().row_text(0), "a    bc");
         assert_eq!(
-            env2.doc()
-                .selection()
-                .head()
-                .to_point(env2.buffer())
-                .column,
+            env2.doc().selection().head().to_point(env2.buffer()).column,
             5
         );
     }
@@ -1673,20 +1724,13 @@ mod tests {
 
         assert_eq!(env.editor.services.clipboard.borrow().text(), "bc");
         assert_eq!(
-            env.doc()
-                .selection()
-                .head()
-                .to_point(env.buffer())
-                .column,
+            env.doc().selection().head().to_point(env.buffer()).column,
             1
         );
 
         env.apply_action(&Action::Put { count: 1 });
 
-        assert_eq!(
-            &env.buffer().row_text(0),
-            "abbccde"
-        );
+        assert_eq!(&env.buffer().row_text(0), "abbccde");
     }
 
     #[test]
@@ -1700,8 +1744,11 @@ mod tests {
         });
 
         env.apply_action(&Action::YankLine { count: 1 });
-        assert_eq!(env.editor.services.clipboard.borrow().text(), "abc
-");
+        assert_eq!(
+            env.editor.services.clipboard.borrow().text(),
+            "abc
+"
+        );
         assert_eq!(
             env.editor.services.clipboard.borrow().kind(),
             ClipboardKind::Line
@@ -1716,9 +1763,12 @@ mod tests {
     fn test_join_lines() {
         let mut env = TestEnv::new();
 
-        env.apply_action(&Action::InsertText("line 1
+        env.apply_action(&Action::InsertText(
+            "line 1
   line 2
-line 3".into()));
+line 3"
+                .into(),
+        ));
         // Move back to line 1
         env.apply_action(&Action::MoveUp {
             select: false,
@@ -1831,15 +1881,17 @@ line 3".into()));
         if let Some(win) = env.ui.windows.get_mut(&MAIN_WIN) {
             let active_buf = &env.buffer_manager.buffers[0];
             win.buffer_id = Some(active_buf.id);
-            win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
+            win.doc = Some(Document::new_with_buffer(
+                active_buf.id,
+                &active_buf.buffer,
+                &active_buf.file_path,
+            ));
         }
 
         env.buffer_manager.buffers[0].grammar = Some(Grammar::Rust);
 
         let mut parser = TreeSitterParser::new(Grammar::Rust).unwrap();
-        let tree = parser
-            .parse(env.buffer().snapshot(), None)
-            .unwrap();
+        let tree = parser.parse(env.buffer().snapshot(), None).unwrap();
         env.buffer_manager.buffers[0].syntax_tree = Some(tree);
 
         env.apply_action(&Action::MoveDown {
@@ -1873,15 +1925,17 @@ line 3".into()));
         if let Some(win) = env.ui.windows.get_mut(&MAIN_WIN) {
             let active_buf = &env.buffer_manager.buffers[0];
             win.buffer_id = Some(active_buf.id);
-            win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
+            win.doc = Some(Document::new_with_buffer(
+                active_buf.id,
+                &active_buf.buffer,
+                &active_buf.file_path,
+            ));
         }
 
         env.buffer_manager.buffers[0].grammar = Some(Grammar::Rust);
 
         let mut parser = TreeSitterParser::new(Grammar::Rust).unwrap();
-        let tree = parser
-            .parse(env.buffer().snapshot(), None)
-            .unwrap();
+        let tree = parser.parse(env.buffer().snapshot(), None).unwrap();
         env.buffer_manager.buffers[0].syntax_tree = Some(tree);
 
         // Move to the inside of the block (e.g. column 15)
@@ -1917,7 +1971,11 @@ line 4";
         if let Some(win) = env.ui.windows.get_mut(&MAIN_WIN) {
             let active_buf = &env.buffer_manager.buffers[0];
             win.buffer_id = Some(active_buf.id);
-            win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
+            win.doc = Some(Document::new_with_buffer(
+                active_buf.id,
+                &active_buf.buffer,
+                &active_buf.file_path,
+            ));
         }
 
         let fold = display::fold_map::Fold {
@@ -1928,7 +1986,9 @@ line 4";
         assert_eq!(env.doc().folds.len(), 1);
 
         // Manually place cursor at Point::new(1, 0)
-        let anchor = env.buffer_manager.buffers[0].buffer.anchor_at(&Point::new(1, 0), Bias::Left);
+        let anchor = env.buffer_manager.buffers[0]
+            .buffer
+            .anchor_at(&Point::new(1, 0), Bias::Left);
         let selection = Selection {
             id: 0,
             start: anchor.clone(),
@@ -1937,7 +1997,14 @@ line 4";
             goal: SelectionGoal::None,
         };
         let buffer = &env.buffer_manager.buffers[0].buffer;
-        let doc = env.ui.windows.get_mut(&MAIN_WIN).unwrap().doc.as_mut().unwrap();
+        let doc = env
+            .ui
+            .windows
+            .get_mut(&MAIN_WIN)
+            .unwrap()
+            .doc
+            .as_mut()
+            .unwrap();
         doc.selections.update(buffer, &selection);
 
         env.apply_action(&Action::Delete { count: 1 });
@@ -1954,7 +2021,11 @@ line 4";
         if let Some(win) = env.ui.windows.get_mut(&MAIN_WIN) {
             let active_buf = &env.buffer_manager.buffers[0];
             win.buffer_id = Some(active_buf.id);
-            win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
+            win.doc = Some(Document::new_with_buffer(
+                active_buf.id,
+                &active_buf.buffer,
+                &active_buf.file_path,
+            ));
         }
 
         // Fold starts after '{' (offset 11) and ends before '}' (offset 26)
@@ -1966,7 +2037,9 @@ line 4";
         assert_eq!(env.doc().folds.len(), 1);
 
         // Place cursor at '}' (row 2, col 0)
-        let anchor = env.buffer_manager.buffers[0].buffer.anchor_at(&Point::new(2, 0), Bias::Left);
+        let anchor = env.buffer_manager.buffers[0]
+            .buffer
+            .anchor_at(&Point::new(2, 0), Bias::Left);
         let selection = Selection {
             id: 0,
             start: anchor.clone(),
@@ -1975,7 +2048,14 @@ line 4";
             goal: SelectionGoal::None,
         };
         let buffer = &env.buffer_manager.buffers[0].buffer;
-        let doc = env.ui.windows.get_mut(&MAIN_WIN).unwrap().doc.as_mut().unwrap();
+        let doc = env
+            .ui
+            .windows
+            .get_mut(&MAIN_WIN)
+            .unwrap()
+            .doc
+            .as_mut()
+            .unwrap();
         doc.selections.update(buffer, &selection);
 
         // Delete '}' forward should delete the fold
@@ -1988,11 +2068,15 @@ line 4";
         let mut env = TestEnv::new();
         let text = "some text\nwith folds and cursors";
         env.buffer_manager.buffers[0] = TextBuffer::new_with_text(text);
-        
+
         let active_buf = &env.buffer_manager.buffers[0];
         if let Some(win) = env.ui.windows.get_mut(&MAIN_WIN) {
             win.buffer_id = Some(active_buf.id);
-            win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
+            win.doc = Some(Document::new_with_buffer(
+                active_buf.id,
+                &active_buf.buffer,
+                &active_buf.file_path,
+            ));
         }
 
         // Add a fold
@@ -2006,7 +2090,14 @@ line 4";
         // Clear the buffer and document
         let buf = &mut env.buffer_manager.buffers[0];
         buf.clear();
-        let doc = env.ui.windows.get_mut(&MAIN_WIN).unwrap().doc.as_mut().unwrap();
+        let doc = env
+            .ui
+            .windows
+            .get_mut(&MAIN_WIN)
+            .unwrap()
+            .doc
+            .as_mut()
+            .unwrap();
         doc.clear(&buf.buffer);
 
         // Verify everything was reset

@@ -2,8 +2,8 @@ use crate::controller::actions::Mode;
 use crate::editor::display::display_map::DisplayPoint;
 use crate::editor::{Editor, document::BufferText};
 use crate::services::search::TextSearch;
-use crate::ui::layout::Rect;
 use crate::ui::colorscheme::ToCrossTerm;
+use crate::ui::layout::Rect;
 use crate::ui::views::View;
 
 use std::io::Write;
@@ -30,7 +30,8 @@ impl TextView {
         editor: &Editor,
         buffer_manager: &mut crate::editor::buffers::BufferManager,
         document: Option<&crate::editor::document::Document>,
-    ) -> Result<Option<(u16, u16, Option<crate::ui::CursorShape>)>, Box<dyn std::error::Error>> {
+    ) -> Result<Option<(u16, u16, Option<crate::ui::CursorShape>)>, Box<dyn std::error::Error>>
+    {
         let mut cursor_pos = None;
         let (screen_cols, _) = {
             let (cols, rows) = crossterm::terminal::size().unwrap();
@@ -45,20 +46,32 @@ impl TextView {
         let row_count = display_snapshot.row_count();
         let end_line = (display_snapshot.scroll_y + inner_rect.height as u32).min(row_count);
 
-        let gutter_width = if editor.show_line_numbers {
-            2 + if row_count == 0 {
-                0
-            } else {
-                row_count.ilog10() as usize
-            }
-        } else {
-            0
-        };
+        let gutter_width = document.gutter_width;
 
-        let editor_fg = editor.colorscheme.ui.get("foreground").map(|s| s.color).unwrap_or(crossterm::style::Color::White);
-        let editor_bg = editor.colorscheme.ui.get("background").map(|s| s.color).unwrap_or(crossterm::style::Color::Black);
-        let selection_bg = editor.colorscheme.ui.get("selection").map(|s| s.color).unwrap_or(editor_bg);
-        let caret_bg = editor.colorscheme.ui.get("caret").map(|s| s.color).unwrap_or(selection_bg);
+        let editor_fg = editor
+            .colorscheme
+            .ui
+            .get("foreground")
+            .map(|s| s.color)
+            .unwrap_or(crossterm::style::Color::White);
+        let editor_bg = editor
+            .colorscheme
+            .ui
+            .get("background")
+            .map(|s| s.color)
+            .unwrap_or(crossterm::style::Color::Black);
+        let selection_bg = editor
+            .colorscheme
+            .ui
+            .get("selection")
+            .map(|s| s.color)
+            .unwrap_or(editor_bg);
+        let caret_bg = editor
+            .colorscheme
+            .ui
+            .get("caret")
+            .map(|s| s.color)
+            .unwrap_or(selection_bg);
         let caret_fg = editor_fg;
 
         let gutter_fg = editor
@@ -116,7 +129,7 @@ impl TextView {
                 execute!(w, MoveTo(inner_rect.x, screen_row)).unwrap();
 
                 // line number
-                if editor.show_line_numbers {
+                if editor.show_line_numbers && document.show_gutter {
                     let line_number = display_snapshot.buffer_row_for_display_row(row);
                     execute!(w, crossterm::style::SetForegroundColor(gutter_fg)).unwrap();
 
@@ -191,11 +204,9 @@ impl TextView {
 
                     if editor.syntax {
                         if let Some(style_cache) = document.hl.render_row(orig_point.row) {
-                            if let Some(span) =
-                                style_cache.styles.iter().find(|span| {
-                                    orig_point.column >= span.start && orig_point.column < span.end
-                                })
-                            {
+                            if let Some(span) = style_cache.styles.iter().find(|span| {
+                                orig_point.column >= span.start && orig_point.column < span.end
+                            }) {
                                 fg = span.style.color;
                             }
                         }
@@ -226,7 +237,8 @@ impl TextView {
                     if x_scroll > 0 {
                         x_scroll = x_scroll.saturating_sub(1);
                     } else {
-                        let is_scrollbar = curr_x == inner_rect.x + inner_rect.width - 1;
+                        let is_scrollbar = document.show_scrollbar
+                            && curr_x == inner_rect.x + inner_rect.width - 1;
                         let bg_color = if is_scrollbar {
                             if is_handle { handle_bg } else { track_bg }
                         } else {
@@ -273,7 +285,8 @@ impl TextView {
                 }
 
                 for _ in 0..cols_remaining {
-                    let is_scrollbar = curr_x == inner_rect.x + inner_rect.width - 1;
+                    let is_scrollbar =
+                        document.show_scrollbar && curr_x == inner_rect.x + inner_rect.width - 1;
                     let bg_color = if is_scrollbar {
                         if is_handle { handle_bg } else { track_bg }
                     } else {
@@ -308,7 +321,8 @@ impl View for TextView {
         buffer_manager: &mut crate::editor::buffers::BufferManager,
         document: Option<&crate::editor::document::Document>,
         _ui: &crate::ui::Ui,
-    ) -> Result<Option<(u16, u16, Option<crate::ui::CursorShape>)>, Box<dyn std::error::Error>> {
+    ) -> Result<Option<(u16, u16, Option<crate::ui::CursorShape>)>, Box<dyn std::error::Error>>
+    {
         self.draw_textview(&mut w, rect, editor, buffer_manager, document)
     }
 }

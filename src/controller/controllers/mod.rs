@@ -12,7 +12,7 @@ pub mod textview;
 
 pub trait ViewController {
     fn update(
-        &self,
+        &mut self,
         editor: &mut Editor,
         buffer_manager: &mut crate::editor::buffers::BufferManager,
         ui: &mut crate::ui::Ui,
@@ -23,7 +23,7 @@ pub trait ViewController {
     }
 
     fn handle_action(
-        &self,
+        &mut self,
         action: actions::Action,
         editor: &mut Editor,
         buffer_manager: &mut crate::editor::buffers::BufferManager,

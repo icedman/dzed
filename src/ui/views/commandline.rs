@@ -1,6 +1,11 @@
+use crate::editor::Editor;
 use crate::ui::layout::Rect;
 use crate::ui::views::View;
-use crate::editor::Editor;
+use crossterm::{
+    cursor::MoveTo,
+    execute,
+    style::{Color, Print, ResetColor, SetBackgroundColor, SetForegroundColor},
+};
 use std::io::Write;
 
 pub struct CommandLineView {
@@ -24,8 +29,8 @@ impl View for CommandLineView {
         buffer_manager: &mut crate::editor::buffers::BufferManager,
         doc: Option<&crate::editor::document::Document>,
         ui: &crate::ui::Ui,
-    ) -> Result<Option<(u16, u16, Option<crate::ui::CursorShape>)>, Box<dyn std::error::Error>> {
+    ) -> Result<Option<(u16, u16, Option<crate::ui::CursorShape>)>, Box<dyn std::error::Error>>
+    {
         self.textview.draw(w, rect, editor, buffer_manager, doc, ui)
     }
 }
-

@@ -5,18 +5,9 @@ use crate::controller::exmap;
 use crate::editor::Editor;
 use crate::editor::buffers::TextBuffer;
 use crate::ui::colorscheme;
-use onig::Regex;
 
 pub struct Command {
     pub cmd: String,
-    pub command_history: Vec<String>,
-    pub search_history: Vec<String>,
-    pub history_idx: usize,
-    pub search: bool,
-    pub pattern: bool,
-    pub search_text: String,
-    pub regex_string: String,
-    pub regex: Option<Regex>,
     pub exmap: exmap::ExMap,
 }
 
@@ -24,20 +15,8 @@ impl Command {
     pub fn new() -> Self {
         Self {
             cmd: String::new(),
-            command_history: Vec::new(),
-            search_history: Vec::new(),
-            history_idx: 0,
-            search: false,
-            pattern: false,
-            search_text: String::new(),
-            regex_string: String::new(),
-            regex: None,
             exmap: exmap::ExMap::new(),
         }
-    }
-
-    pub fn push(&mut self, text: &str) {
-        self.cmd.push_str(text);
     }
 
     pub fn set(&mut self, text: &str) {
@@ -90,7 +69,7 @@ impl Command {
         if let Some(resolved) = self.exmap.try_resolve(&cmd_text) {
             let action = self.try_resolve_action(&resolved, editor, buffer_manager);
             if action != actions::Action::NoOp {
-                editor.apply_active_action(ui, buffer_manager, &action);
+                return Some(ControllerResult::Action(action.clone()));
             }
             match resolved.op {
                 ex::Ex::Set => {
@@ -571,5 +550,114 @@ mod tests {
             .unwrap();
 
         assert!(editor.show_line_numbers);
+    }
+
+    #[test]
+    fn test_command_history_cycling() {
+        let mut editor = Editor::new().unwrap();
+        let mut buffer_manager = crate::editor::buffers::BufferManager::new();
+        let active_buf = buffer_manager.add_buffer_for_path("").unwrap();
+        let _active_buf_id = active_buf.id;
+        
+        let mut ui = crate::ui::Ui::new();
+        
+        let main_win = crate::ui::WindowId::MainWindow as usize;
+        if let Some(win) = ui.windows.get_mut(&main_win) {
+            let buf = &buffer_manager.buffers[0];
+            win.buffer_id = Some(buf.id);
+            win.doc = Some(Document::new_with_buffer(
+                buf.id,
+                &buf.buffer,
+                &buf.file_path,
+            ));
+        }
+        
+        let cmd_buf = buffer_manager.add_buffer_for_path("#command").unwrap();
+        let cmd_id = cmd_buf.id;
+        let cmd_file_path = cmd_buf.file_path.clone();
+        let cmd_win = crate::ui::WindowId::CommandLine as usize;
+        
+        let cmd_controller = crate::controller::controllers::commandline::CommandLineController::new();
+        
+        if let Some(win) = ui.windows.get_mut(&cmd_win) {
+            let cmd_buffer = buffer_manager.find_by_path(&cmd_file_path).unwrap();
+            win.buffer_id = Some(cmd_id);
+            win.doc = Some(Document::new_with_buffer(
+                cmd_id,
+                &cmd_buffer.buffer,
+                &cmd_buffer.file_path,
+            ));
+            win.controller = Some(Box::new(cmd_controller));
+        }
+
+        let mut controller = crate::controller::Controller::new();
+        
+        {
+            let doc = ui.windows.get_mut(&cmd_win).unwrap().doc.as_mut().unwrap();
+            let buf = buffer_manager.find_mut(doc).unwrap();
+            buf.buffer.edit([(0..0, "set nu")]);
+            doc.clear(&buf.buffer);
+        }
+
+        ui.focus_window(cmd_win);
+        editor.mode = crate::controller::actions::Mode::Command;
+
+        controller.pending_actions.push_back(Action::InsertNewLine { count: 1 });
+        controller.dispatch_actions(&mut editor, &mut buffer_manager, &mut ui).unwrap();
+        
+        assert!(editor.show_line_numbers);
+
+        {
+            let doc = ui.windows.get_mut(&cmd_win).unwrap().doc.as_mut().unwrap();
+            let buf = buffer_manager.find_mut(doc).unwrap();
+            buf.buffer.edit([(0..0, "set nonu")]);
+            doc.clear(&buf.buffer);
+        }
+
+        ui.focus_window(cmd_win);
+        editor.mode = crate::controller::actions::Mode::Command;
+
+        controller.pending_actions.push_back(Action::InsertNewLine { count: 1 });
+        controller.dispatch_actions(&mut editor, &mut buffer_manager, &mut ui).unwrap();
+        assert!(!editor.show_line_numbers);
+
+        ui.focus_window(cmd_win);
+        editor.mode = crate::controller::actions::Mode::Command;
+
+        controller.pending_actions.push_back(Action::MoveUp { select: false, count: 1 });
+        controller.dispatch_actions(&mut editor, &mut buffer_manager, &mut ui).unwrap();
+
+        {
+            let doc = ui.windows.get(&cmd_win).unwrap().doc.as_ref().unwrap();
+            let buf = buffer_manager.find(doc).unwrap();
+            assert_eq!(buf.buffer.snapshot().text(), "set nonu");
+        }
+
+        controller.pending_actions.push_back(Action::MoveUp { select: false, count: 1 });
+        controller.dispatch_actions(&mut editor, &mut buffer_manager, &mut ui).unwrap();
+
+        {
+            let doc = ui.windows.get(&cmd_win).unwrap().doc.as_ref().unwrap();
+            let buf = buffer_manager.find(doc).unwrap();
+            assert_eq!(buf.buffer.snapshot().text(), "set nu");
+        }
+
+        controller.pending_actions.push_back(Action::MoveDown { select: false, count: 1 });
+        controller.dispatch_actions(&mut editor, &mut buffer_manager, &mut ui).unwrap();
+
+        {
+            let doc = ui.windows.get(&cmd_win).unwrap().doc.as_ref().unwrap();
+            let buf = buffer_manager.find(doc).unwrap();
+            assert_eq!(buf.buffer.snapshot().text(), "set nonu");
+        }
+
+        controller.pending_actions.push_back(Action::MoveDown { select: false, count: 1 });
+        controller.dispatch_actions(&mut editor, &mut buffer_manager, &mut ui).unwrap();
+
+        {
+            let doc = ui.windows.get(&cmd_win).unwrap().doc.as_ref().unwrap();
+            let buf = buffer_manager.find(doc).unwrap();
+            assert_eq!(buf.buffer.snapshot().text(), "");
+        }
     }
 }

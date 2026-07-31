@@ -142,10 +142,21 @@ impl Controller {
 
                     editor.last_action = action.clone();
 
-                    if action == actions::Action::SetToCommand {
-                        ui.focus_window(crate::ui::WindowId::CommandLine as usize);
-                        editor.should_redraw = true;
-                    }
+                    match action {
+                        actions::Action::SetToCommand => {
+                            ui.focus_window(crate::ui::WindowId::CommandLine as usize);
+                            editor.should_redraw = true;
+                        }
+                        actions::Action::SearchForward { .. } => {
+                            ui.focus_window(crate::ui::WindowId::CommandLine as usize);
+                            editor.should_redraw = true;
+                        }
+                        actions::Action::SearchBackward { .. } => {
+                            ui.focus_window(crate::ui::WindowId::CommandLine as usize);
+                            editor.should_redraw = true;
+                        }
+                        _ => {}
+                    };
 
                     let old_mode = editor.mode;
                     let focused_id = ui.focused_window_id;

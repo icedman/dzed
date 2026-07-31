@@ -14,7 +14,7 @@ impl TabsController {
 
 impl ViewController for TabsController {
     fn handle_action(
-        &self,
+        &mut self,
         action: Action,
         editor: &mut Editor,
         buffer_manager: &mut crate::editor::buffers::BufferManager,
