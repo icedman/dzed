@@ -236,6 +236,15 @@ fn get_catppuccin_theme() -> &'static syntect::highlighting::Theme {
 }
 
 impl Highlights {
+    pub fn clear(&mut self) {
+        self.state_cache.clear();
+        self.textmate_style_cache.clear();
+        self.treesitter_style_cache.clear();
+        self.style_cache.clear();
+        self.highlight_start = 0;
+        self.last_snapshot_version = None;
+    }
+
     pub fn new(file_path: &str) -> Self {
         let extension = Path::new(file_path)
             .extension()

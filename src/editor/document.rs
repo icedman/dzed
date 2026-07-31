@@ -49,6 +49,16 @@ pub struct Document {
 }
 
 impl Document {
+    pub fn clear(&mut self, buffer: &Buffer) {
+        self.selections = SelectionCollection::new();
+        self.selections.add(buffer, 0);
+        self.mode = Mode::Normal;
+        self.folds.clear();
+        self.display_map = DisplayMap::new(buffer.snapshot().clone(), None);
+        self.hl.clear();
+        self.should_sync = true;
+    }
+
     pub fn new_with_buffer(id: usize, buffer: &Buffer, file_path: &str) -> Self {
         let mut selections = SelectionCollection::new();
         selections.add(buffer, 0);
@@ -1542,7 +1552,7 @@ mod tests {
         fn new() -> Self {
             let mut editor = Editor::new().unwrap();
             let mut buffer_manager = BufferManager::new();
-            buffer_manager.add_buffer(TextBuffer::new(0, "").unwrap());
+            buffer_manager.add_buffer_for_path("").unwrap();
             let mut ui = crate::ui::Ui::new();
             let active_buf = &buffer_manager.buffers[0];
             if let Some(win) = ui.windows.get_mut(&0) {
@@ -1969,5 +1979,38 @@ line 4";
         // Delete '}' forward should delete the fold
         env.apply_action(&Action::Delete { count: 1 });
         assert_eq!(env.doc().folds.len(), 0);
+    }
+
+    #[test]
+    fn test_document_clear() {
+        let mut env = TestEnv::new();
+        let text = "some text\nwith folds and cursors";
+        env.buffer_manager.buffers[0] = TextBuffer::new_with_text(text);
+        
+        let active_buf = &env.buffer_manager.buffers[0];
+        if let Some(win) = env.ui.windows.get_mut(&0) {
+            win.buffer_id = Some(active_buf.id);
+            win.doc = Some(Document::new_with_buffer(active_buf.id, &active_buf.buffer, &active_buf.file_path));
+        }
+
+        // Add a fold
+        let fold = display::fold_map::Fold {
+            start: Point::new(0, 5),
+            end: Point::new(1, 0),
+        };
+        env.doc_mut().folds.push(fold);
+        assert_eq!(env.doc().folds.len(), 1);
+
+        // Clear the buffer and document
+        let buf = &mut env.buffer_manager.buffers[0];
+        buf.clear();
+        let doc = env.ui.windows.get_mut(&0).unwrap().doc.as_mut().unwrap();
+        doc.clear(&buf.buffer);
+
+        // Verify everything was reset
+        assert_eq!(buf.buffer.snapshot().text(), "");
+        assert_eq!(doc.folds.len(), 0);
+        assert_eq!(doc.mode, Mode::Normal);
+        assert_eq!(doc.selections.text(&buf.buffer), "");
     }
 }
