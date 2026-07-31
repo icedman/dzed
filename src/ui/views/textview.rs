@@ -284,7 +284,7 @@ impl TextView {
         }
 
         let cursor_shape = match editor.mode {
-            Mode::Insert => Some(crate::ui::CursorShape::Line),
+            Mode::Insert | Mode::Command => Some(crate::ui::CursorShape::Line),
             _ => Some(crate::ui::CursorShape::Block),
         };
         Ok(cursor_pos.map(|(x, y)| (x, y, cursor_shape)))

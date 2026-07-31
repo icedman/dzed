@@ -101,7 +101,9 @@ impl Ui {
         let commandline_win_id = WindowId::CommandLine as usize;
         let mut commandline_win = window::Window::new(commandline_win_id, "Command".to_string());
         commandline_win.set_view(Box::new(views::commandline::CommandLineView::new()));
-        commandline_win.set_controller(Box::new(controllers::commandline::CommandLineController::new()));
+        commandline_win.set_controller(Box::new(
+            controllers::commandline::CommandLineController::new(),
+        ));
         commandline_win.draw_border = true;
         windows.insert(commandline_win_id, commandline_win);
 
@@ -263,7 +265,17 @@ impl Ui {
             if let Some(window) = self.windows.get_mut(&window_id) {
                 let mut controller = window.controller.take();
                 if let Some(ref mut c) = controller {
-                    c.update(editor, buffer_manager, self, window_id, rect)?;
+                    let adjusted_rect = if window.draw_border {
+                        layout::Rect {
+                            x: rect.x.saturating_add(1),
+                            y: rect.y.saturating_add(1),
+                            width: rect.width.saturating_sub(2),
+                            height: rect.height.saturating_sub(2),
+                        }
+                    } else {
+                        rect
+                    };
+                    c.update(editor, buffer_manager, self, window_id, adjusted_rect)?;
                 }
                 if let Some(window) = self.windows.get_mut(&window_id) {
                     window.controller = controller;
