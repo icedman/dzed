@@ -250,6 +250,14 @@ pub enum Action {
         select: bool,
     },
 
+    MarkSet {
+        ch: char,
+    },
+    MarkJump {
+        ch: char,
+        select: bool,
+    },
+
     MoveWithinCharacter {
         count: u32,
         ch: char,
@@ -415,6 +423,8 @@ impl std::fmt::Display for Action {
             Action::FocusDownWindow => write!(f, "FocusDownWindow"),
             Action::FocusUpWindow => write!(f, "FocusUpWindow"),
             Action::FocusRightWindow => write!(f, "FocusRightWindow"),
+            Action::MarkSet { ch } => write!(f, "MarkSet({})", ch),
+            Action::MarkJump { ch, select } => write!(f, "MarkJump({}, select={})", ch, select),
             Action::MoveToWord { count, .. } => write!(f, "MoveToWord({})", count),
             Action::MoveToPreviousWord { count, .. } => write!(f, "MoveToPreviousWord({})", count),
             Action::MoveToWordEnd { count, .. } => write!(f, "MoveToWordEnd({})", count),
@@ -668,6 +678,7 @@ impl Action {
             Action::MoveToPreviousArgument { count, .. } => {
                 Action::MoveToPreviousArgument { count, select }
             }
+            Action::MarkJump { ch, .. } => Action::MarkJump { ch, select },
             _ => self,
         }
     }
@@ -916,6 +927,8 @@ impl Action {
             Action::EndMacro => Action::EndMacro,
             Action::ReplayMacro { register, .. } => Action::ReplayMacro { register, count },
             Action::Command(s) => Action::Command(s),
+            Action::MarkSet { ch } => Action::MarkSet { ch },
+            Action::MarkJump { ch, select } => Action::MarkJump { ch, select },
         }
     }
 
@@ -935,6 +948,8 @@ impl Action {
             },
             Action::MoveWithinCharacter { .. } => Action::MoveWithinCharacter { count, ch },
             Action::MoveAroundCharacter { .. } => Action::MoveAroundCharacter { count, ch },
+            Action::MarkSet { .. } => Action::MarkSet { ch },
+            Action::MarkJump { select, .. } => Action::MarkJump { ch, select },
             Action::InsertText(_) => Action::InsertText(ch.to_string()),
             Action::BeginMacro { .. } => Action::BeginMacro {
                 register: ch.to_string(),

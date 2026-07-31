@@ -686,6 +686,15 @@ impl Keymap {
                 },
             )
             .expect("Valid binding");
+        motion_actions
+            .bind(
+                "`{c}",
+                Action::MarkJump {
+                    ch: '?',
+                    select: false,
+                },
+            )
+            .expect("Valid binding");
         text_object_actions
             .bind("i{c}", Action::MoveWithinCharacter { count: 1, ch: '?' })
             .expect("Valid binding");
@@ -854,6 +863,14 @@ impl Keymap {
                 "q{c}",
                 Action::BeginMacro {
                     register: String::new(),
+                },
+            )
+            .expect("Valid binding");
+        normal_actions
+            .bind(
+                "m{c}",
+                Action::MarkSet {
+                    ch: '?',
                 },
             )
             .expect("Valid binding");

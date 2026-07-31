@@ -8,7 +8,7 @@ use crate::editor::display::display_map::DisplayMap;
 use crate::editor::display::highlight::Highlights;
 use clock::ReplicaId;
 use rope::Point;
-use std::{cmp::Ordering, io, sync::Arc, sync::atomic::AtomicU64};
+use std::{cmp::Ordering, collections::HashMap, io, sync::Arc, sync::atomic::AtomicU64};
 use sum_tree::Bias;
 use text::{Anchor, Buffer, BufferId, BufferSnapshot, Selection, SelectionGoal, ToOffset, ToPoint};
 
@@ -50,6 +50,7 @@ pub struct Document {
     pub show_gutter: bool,
     pub gutter_width: usize,
     pub should_sync: bool,
+    pub marks: HashMap<char, Anchor>,
 }
 
 impl Document {
@@ -62,6 +63,7 @@ impl Document {
         self.hl.clear();
         self.gutter_width = 0;
         self.should_sync = true;
+        self.marks.clear();
     }
 
     pub fn new_with_buffer(id: usize, buffer: &Buffer, file_path: &str) -> Self {
@@ -88,6 +90,7 @@ impl Document {
             show_gutter: true,
             gutter_width: 0,
             should_sync: true,
+            marks: HashMap::new(),
         }
     }
 
@@ -910,6 +913,31 @@ impl Document {
                 }
             }
 
+            Action::MarkSet { ch } => {
+                let head = self.selection().head();
+                self.marks.insert(*ch, head);
+            }
+            Action::MarkJump { ch, select } => {
+                if let Some(anchor) = self.marks.get(ch).cloned() {
+                    let cursors = self.selections.selections.clone();
+                    for cursor in cursors.iter() {
+                        let start = if *select {
+                            cursor.start.clone()
+                        } else {
+                            anchor.clone()
+                        };
+                        let next = Selection {
+                            id: cursor.id,
+                            start,
+                            end: anchor.clone(),
+                            reversed: *select && (buffer.offset_for_anchor(&anchor) < buffer.offset_for_anchor(&cursor.start)),
+                            goal: SelectionGoal::None,
+                        };
+                        self.selections.update(buffer, &next);
+                    }
+                }
+            }
+
             Action::MoveToStartOfDocument { select, count } => {
                 self.selections.move_to_start_of_document(*select, buffer)
             }
@@ -1231,7 +1259,8 @@ impl Document {
                     | Action::MoveToPreviousParagraph { select, .. }
                     | Action::MoveToNextParagraph { select, .. }
                     | Action::MoveToPreviousCharacter { select, .. }
-                    | Action::MoveToNextCharacter { select, .. } => *select = true,
+                    | Action::MoveToNextCharacter { select, .. }
+                    | Action::MarkJump { select, .. } => *select = true,
                     _ => {}
                 }
 
@@ -1333,12 +1362,35 @@ impl Document {
         editor: &Editor,
         syntax_tree: Option<&crate::services::treesitter::SyntaxTree>,
     ) {
+        let mut motion = motion.clone();
+        match &mut motion {
+            Action::MoveUp { select, .. }
+            | Action::MoveDown { select, .. }
+            | Action::MoveLeft { select, .. }
+            | Action::MoveRight { select, .. }
+            | Action::MoveToPreviousWord { select, .. }
+            | Action::MoveToWord { select, .. }
+            | Action::MoveToPreviousWordEnd { select, .. }
+            | Action::MoveToWordEnd { select, .. }
+            | Action::MoveToStartOfDocument { select, .. }
+            | Action::MoveToEndOfDocument { select, .. }
+            | Action::MoveToStartOfLine { select, .. }
+            | Action::MoveToStartOfLineNonSpace { select, .. }
+            | Action::MoveToEndOfLine { select, .. }
+            | Action::MoveToPreviousParagraph { select, .. }
+            | Action::MoveToNextParagraph { select, .. }
+            | Action::MoveToPreviousCharacter { select, .. }
+            | Action::MoveToNextCharacter { select, .. }
+            | Action::MarkJump { select, .. } => *select = true,
+            _ => {}
+        }
+
         let selections = self.selections.selections.clone();
         let point = self.selections.point;
         let anchor = self.selections.anchor.clone();
 
         for _ in 0..count {
-            self.apply_action(buffer, motion, editor, syntax_tree);
+            self.apply_action(buffer, &motion, editor, syntax_tree);
         }
         let text = self.selections.text(buffer);
         editor.services.clipboard.borrow_mut().set_text(text);
@@ -1734,6 +1786,42 @@ mod tests {
         env.apply_action(&Action::Put { count: 1 });
 
         assert_eq!(&env.buffer().row_text(0), "abbccde");
+    }
+
+    #[test]
+    fn test_marks_set_and_jump() {
+        let mut env = TestEnv::new();
+
+        env.apply_action(&Action::InsertText("abcde".into()));
+        env.apply_action(&Action::MoveLeft {
+            select: false,
+            count: 3,
+        });
+
+        env.apply_action(&Action::MarkSet { ch: 'a' });
+
+        env.apply_action(&Action::MoveToStartOfDocument { select: false, count: 1 });
+        assert_eq!(
+            env.doc().selection().head().to_point(env.buffer()).column,
+            0
+        );
+
+        env.apply_action(&Action::MarkJump { ch: 'a', select: false });
+        assert_eq!(
+            env.doc().selection().head().to_point(env.buffer()).column,
+            2
+        );
+
+        env.apply_action(&Action::MoveToStartOfDocument { select: false, count: 1 });
+        env.apply_action(&Action::MarkJump { ch: 'a', select: true });
+        assert_eq!(
+            env.doc().selection().head().to_point(env.buffer()).column,
+            2
+        );
+        assert_eq!(
+            env.doc().selection().start.to_point(env.buffer()).column,
+            0
+        );
     }
 
     #[test]

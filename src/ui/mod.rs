@@ -52,10 +52,10 @@ impl Ui {
         let layout = layout::LayoutNode::Split {
             direction: layout::SplitDirection::Vertical,
             constraints: vec![
-                layout::SizeConstraint::Fixed(3),        // Tabs (1 row)
+                layout::SizeConstraint::Fixed(1),        // Tabs (1 row)
                 layout::SizeConstraint::Percentage(1.0), // Editor
-                layout::SizeConstraint::Fixed(3),        // Statusbar (1 row)
-                layout::SizeConstraint::Fixed(3),        // CommandLine (1 row)
+                layout::SizeConstraint::Fixed(1),        // Statusbar (1 row)
+                layout::SizeConstraint::Fixed(1),        // CommandLine (1 row)
             ],
             children: vec![
                 layout::LayoutNode::Leaf {
@@ -87,14 +87,14 @@ impl Ui {
         let tabs_win_id = WindowId::Tabs as usize;
         let mut tabs_win = window::Window::new(tabs_win_id, "Tabs".to_string());
         tabs_win.set_view(Box::new(views::tabs::TabsView {}));
-        tabs_win.draw_border = true;
+        tabs_win.draw_border = false;
         windows.insert(tabs_win_id, tabs_win);
 
         // Create status bar window
         let statusbar_win_id = WindowId::StatusBar as usize;
         let mut statusbar_win = window::Window::new(statusbar_win_id, "Status Bar".to_string());
         statusbar_win.set_view(Box::new(views::statusbar::StatusBarView {}));
-        statusbar_win.draw_border = true;
+        statusbar_win.draw_border = false;
         windows.insert(statusbar_win_id, statusbar_win);
 
         // Create command bar window
@@ -104,7 +104,7 @@ impl Ui {
         commandline_win.set_controller(Box::new(
             controllers::commandline::CommandLineController::new(),
         ));
-        commandline_win.draw_border = true;
+        commandline_win.draw_border = false;
         windows.insert(commandline_win_id, commandline_win);
 
         Self {
