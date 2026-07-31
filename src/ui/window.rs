@@ -29,6 +29,7 @@ pub struct Window {
     pub controller: Option<Box<dyn ViewController>>,
     pub buffer_id: Option<usize>,
     pub doc: Option<crate::editor::document::Document>,
+    pub docs: std::collections::HashMap<usize, crate::editor::document::Document>,
     pub cursor_x: Option<u16>,
     pub cursor_y: Option<u16>,
     pub cursor_shape: Option<crate::ui::CursorShape>,
@@ -45,6 +46,7 @@ impl Window {
             controller: None,
             buffer_id: None,
             doc: None,
+            docs: std::collections::HashMap::new(),
             cursor_x: None,
             cursor_y: None,
             cursor_shape: None,
@@ -57,6 +59,60 @@ impl Window {
 
     pub fn set_controller(&mut self, controller: Box<dyn ViewController>) {
         self.controller = Some(controller);
+    }
+
+    pub fn set_buffer(&mut self, buffer_id: usize, buffer_manager: &crate::editor::buffers::BufferManager) {
+        if let Some(current_id) = self.buffer_id {
+            if let Some(doc) = self.doc.take() {
+                self.docs.insert(current_id, doc);
+            }
+        }
+        self.buffer_id = Some(buffer_id);
+        if let Some(doc) = self.docs.remove(&buffer_id) {
+            self.doc = Some(doc);
+        } else if let Some(buf) = buffer_manager.buffers.iter().find(|b| b.id == buffer_id) {
+            self.doc = Some(crate::editor::document::Document::new_with_buffer(
+                buf.id,
+                &buf.buffer,
+                &buf.file_path,
+            ));
+        }
+    }
+
+    pub fn bnext(&mut self, buffer_manager: &crate::editor::buffers::BufferManager) {
+        if let Some(current_id) = self.buffer_id {
+            let files: Vec<&crate::editor::buffers::TextBuffer> = buffer_manager.file_buffers().collect();
+            if !files.is_empty() {
+                if let Some(pos) = files.iter().position(|b| b.id == current_id) {
+                    let next_idx = (pos + 1) % files.len();
+                    let next_buf = files[next_idx];
+                    self.set_buffer(next_buf.id, buffer_manager);
+                } else {
+                    let next_buf = files[0];
+                    self.set_buffer(next_buf.id, buffer_manager);
+                }
+            }
+        }
+    }
+
+    pub fn bprev(&mut self, buffer_manager: &crate::editor::buffers::BufferManager) {
+        if let Some(current_id) = self.buffer_id {
+            let files: Vec<&crate::editor::buffers::TextBuffer> = buffer_manager.file_buffers().collect();
+            if !files.is_empty() {
+                if let Some(pos) = files.iter().position(|b| b.id == current_id) {
+                    let prev_idx = if pos == 0 {
+                        files.len() - 1
+                    } else {
+                        pos - 1
+                    };
+                    let prev_buf = files[prev_idx];
+                    self.set_buffer(prev_buf.id, buffer_manager);
+                } else {
+                    let prev_buf = files[files.len() - 1];
+                    self.set_buffer(prev_buf.id, buffer_manager);
+                }
+            }
+        }
     }
 
     pub fn draw<W: Write>(

@@ -130,53 +130,13 @@ impl Command {
                 }
                 ex::Ex::Bnext => {
                     if let Some(win) = ui.get_focused_window_mut() {
-                        if let Some(current_id) = win.buffer_id {
-                            if !buffer_manager.buffers.is_empty() {
-                                if let Some(pos) = buffer_manager
-                                    .buffers
-                                    .iter()
-                                    .position(|b| b.id == current_id)
-                                {
-                                    let next_idx = (pos + 1) % buffer_manager.buffers.len();
-                                    let next_buf = &buffer_manager.buffers[next_idx];
-                                    win.buffer_id = Some(next_buf.id);
-                                    win.doc =
-                                        Some(crate::editor::document::Document::new_with_buffer(
-                                            next_buf.id,
-                                            &next_buf.buffer,
-                                            &next_buf.file_path,
-                                        ));
-                                }
-                            }
-                        }
+                        win.bnext(buffer_manager);
                     }
                     None
                 }
                 ex::Ex::Bprev => {
                     if let Some(win) = ui.get_focused_window_mut() {
-                        if let Some(current_id) = win.buffer_id {
-                            if !buffer_manager.buffers.is_empty() {
-                                if let Some(pos) = buffer_manager
-                                    .buffers
-                                    .iter()
-                                    .position(|b| b.id == current_id)
-                                {
-                                    let prev_idx = if pos == 0 {
-                                        buffer_manager.buffers.len() - 1
-                                    } else {
-                                        pos - 1
-                                    };
-                                    let prev_buf = &buffer_manager.buffers[prev_idx];
-                                    win.buffer_id = Some(prev_buf.id);
-                                    win.doc =
-                                        Some(crate::editor::document::Document::new_with_buffer(
-                                            prev_buf.id,
-                                            &prev_buf.buffer,
-                                            &prev_buf.file_path,
-                                        ));
-                                }
-                            }
-                        }
+                        win.bprev(buffer_manager);
                     }
                     None
                 }
@@ -595,7 +555,7 @@ mod tests {
         {
             let doc = ui.windows.get_mut(&cmd_win).unwrap().doc.as_mut().unwrap();
             let buf = buffer_manager.find_mut(doc).unwrap();
-            buf.buffer.edit([(0..0, "set nu")]);
+            buf.buffer.edit([(0..0, ":set nu")]);
             doc.clear(&buf.buffer);
         }
 
@@ -610,7 +570,8 @@ mod tests {
         {
             let doc = ui.windows.get_mut(&cmd_win).unwrap().doc.as_mut().unwrap();
             let buf = buffer_manager.find_mut(doc).unwrap();
-            buf.buffer.edit([(0..0, "set nonu")]);
+            let len = buf.buffer.len();
+            buf.buffer.edit([(0..len, ":set nonu")]);
             doc.clear(&buf.buffer);
         }
 
@@ -630,7 +591,7 @@ mod tests {
         {
             let doc = ui.windows.get(&cmd_win).unwrap().doc.as_ref().unwrap();
             let buf = buffer_manager.find(doc).unwrap();
-            assert_eq!(buf.buffer.snapshot().text(), "set nonu");
+            assert_eq!(buf.buffer.snapshot().text(), ":set nonu");
         }
 
         controller.pending_actions.push_back(Action::MoveUp { select: false, count: 1 });
@@ -639,7 +600,7 @@ mod tests {
         {
             let doc = ui.windows.get(&cmd_win).unwrap().doc.as_ref().unwrap();
             let buf = buffer_manager.find(doc).unwrap();
-            assert_eq!(buf.buffer.snapshot().text(), "set nu");
+            assert_eq!(buf.buffer.snapshot().text(), ":set nu");
         }
 
         controller.pending_actions.push_back(Action::MoveDown { select: false, count: 1 });
@@ -648,7 +609,7 @@ mod tests {
         {
             let doc = ui.windows.get(&cmd_win).unwrap().doc.as_ref().unwrap();
             let buf = buffer_manager.find(doc).unwrap();
-            assert_eq!(buf.buffer.snapshot().text(), "set nonu");
+            assert_eq!(buf.buffer.snapshot().text(), ":set nonu");
         }
 
         controller.pending_actions.push_back(Action::MoveDown { select: false, count: 1 });

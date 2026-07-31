@@ -35,7 +35,7 @@ impl TabsView {
             ResetColor,
         )?;
 
-        for (idx, buf) in buffer_manager.buffers.iter().enumerate() {
+        for (idx, buf) in buffer_manager.file_buffers().enumerate() {
             let name = if buf.file_path.is_empty() {
                 "[No Name]".to_string()
             } else {

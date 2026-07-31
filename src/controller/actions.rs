@@ -464,8 +464,6 @@ impl std::fmt::Display for Action {
             Action::MoveToColumn { count } => write!(f, "MoveToColumn({})", count),
             Action::SearchForward { count } => write!(f, "SearchForward {}", count),
             Action::SearchBackward { count } => write!(f, "SearchBackward {}", count),
-            // Action::SearchNext { count } => write!(f, "SearchNext({})", count),
-            // Action::SearchPrevious { count } => write!(f, "SearchPrev({})", count),
             Action::StandBy { count, .. } => write!(f, "StandBy({})", count),
             Action::MoveLeft { count, .. } => write!(f, "MoveLeft({})", count),
             Action::MoveRight { count, .. } => write!(f, "MoveRight({})", count),
@@ -831,8 +829,6 @@ impl Action {
             Action::MoveToColumn { .. } => Action::MoveToColumn { count },
             Action::SearchForward { .. } => Action::SearchForward { count },
             Action::SearchBackward { .. } => Action::SearchBackward { count },
-            // Action::SearchNext { .. } => Action::SearchNext { count },
-            // Action::SearchPrevious { .. } => Action::SearchPrevious { count },
             Action::StandBy { .. } => Action::StandBy {
                 count,
                 select: false,

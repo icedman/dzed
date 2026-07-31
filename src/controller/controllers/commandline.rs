@@ -98,6 +98,12 @@ impl ViewController for CommandLineController {
         window_id: usize,
     ) -> Result<ControllerResult, Box<dyn std::error::Error>> {
         match action {
+            Action::DeleteCharBefore { .. } => {
+                let command_text = self.get_text(buffer_manager, ui, window_id);
+                if command_text.len() == 1 {
+                    return Ok(ControllerResult::Action(Action::SetToNormal));
+                }
+            }
             Action::SetToCommand {} => {
                 self.lead = ':';
                 self.set_text(&self.lead.to_string(), buffer_manager, ui, window_id);
@@ -141,10 +147,12 @@ impl ViewController for CommandLineController {
                 self.history_idx = self.history.len();
                 command_text = command_text[1..].to_string();
                 if self.lead == '/' {
-                    return Ok(ControllerResult::Action(Action::SearchForward { count: 1}));
+                    return Ok(ControllerResult::Action(Action::SearchForward { count: 1 }));
                 }
                 if self.lead == '?' {
-                    return Ok(ControllerResult::Action(Action::SearchBackward { count: 1}));
+                    return Ok(ControllerResult::Action(Action::SearchBackward {
+                        count: 1,
+                    }));
                 }
                 return Ok(ControllerResult::Command(command_text));
             }
