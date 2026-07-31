@@ -1322,6 +1322,7 @@ impl Document {
 
         self.apply_action(buffer, &next_action, editor, syntax_tree);
         self.snap_selections_to_folds(buffer, action);
+        self.sync(buffer);
     }
 
     fn yank_motion(
