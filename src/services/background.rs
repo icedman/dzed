@@ -58,6 +58,8 @@ pub enum BackgroundTask {
         file_path: String,
         snapshot: BufferSnapshot,
         grammar: Option<Grammar>,
+        start_row: u32,
+        row_count: u32,
         task_id: TaskId,
         latest_task_id: Arc<AtomicU64>,
     },
@@ -90,8 +92,10 @@ pub enum BackgroundResult {
     IndexComplete {
         owner_id: usize,
         file_path: String,
-        buffer_keywords: std::collections::HashSet<String>,
+        buffer_keywords: HashMap<u32, std::collections::HashSet<String>>,
         treesitter_keywords: Vec<(String, HashMap<String, String>)>,
+        start_row: u32,
+        row_count: u32,
         task_id: TaskId,
     },
 }
@@ -231,6 +235,8 @@ impl BackgroundWorker {
                         file_path,
                         snapshot,
                         grammar,
+                        start_row,
+                        row_count,
                         task_id,
                         latest_task_id,
                     } => {
@@ -238,24 +244,24 @@ impl BackgroundWorker {
                             continue;
                         }
 
-                        // 1. Buffer keywords (split by non-alphanumeric chars)
-                        let rope = snapshot.as_rope();
-                        let text: String = rope.chunks_in_range(0..rope.len()).collect();
+                        // 1. Buffer keywords (extracted line-by-line using TextSearch, grouped by row)
+                        use crate::services::search::TextSearch;
+                        use text::ToOffset;
                         
-                        let mut buffer_keywords = std::collections::HashSet::new();
-                        let mut current_word = String::new();
-                        for ch in text.chars() {
-                            if ch.is_alphanumeric() || ch == '_' {
-                                current_word.push(ch);
-                            } else {
-                                if current_word.len() >= 2 {
-                                    buffer_keywords.insert(current_word.clone());
+                        let mut buffer_keywords = HashMap::new();
+                        for r in start_row..(start_row + row_count) {
+                            if r < snapshot.row_count() {
+                                let mut row_keys = std::collections::HashSet::new();
+                                let start = rope::Point::new(r, 0).to_offset(&snapshot);
+                                let end = rope::Point::new(r, snapshot.line_len(r)).to_offset(&snapshot);
+                                let line_str: String = snapshot.as_rope().chunks_in_range(start..end).collect();
+                                for (_, _, word) in line_str.find_words() {
+                                    if word.len() >= 1 {
+                                        row_keys.insert(word.to_string());
+                                    }
                                 }
-                                current_word.clear();
+                                buffer_keywords.insert(r, row_keys);
                             }
-                        }
-                        if current_word.len() >= 2 {
-                            buffer_keywords.insert(current_word);
                         }
 
                         // 2. Treesitter keywords (identifiers/definitions)
@@ -318,6 +324,8 @@ impl BackgroundWorker {
                             file_path,
                             buffer_keywords,
                             treesitter_keywords,
+                            start_row,
+                            row_count,
                             task_id,
                         });
                     }

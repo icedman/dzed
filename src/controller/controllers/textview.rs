@@ -121,6 +121,21 @@ impl ViewController for TextViewController {
                             latest_task_id: document.latest_parse_task_id.clone(),
                         });
                 }
+            }
+
+            let is_first_index = document.current_index_task_id == 0 && document.latest_index_task_id.load(std::sync::atomic::Ordering::SeqCst) == 0;
+            if text_changed || is_first_index {
+                let start_row = if is_first_index {
+                    0
+                } else {
+                    let (start, _) = document.selections().rows_in_selection(&buffer.buffer);
+                    start
+                };
+                let row_count = if is_first_index {
+                    snapshot.row_count()
+                } else {
+                    snapshot.row_count().saturating_sub(start_row)
+                };
 
                 let index_task_id = document
                     .latest_index_task_id
@@ -134,6 +149,8 @@ impl ViewController for TextViewController {
                         file_path: buffer.file_path.clone(),
                         snapshot: snapshot.clone(),
                         grammar: buffer.grammar,
+                        start_row,
+                        row_count,
                         task_id: TaskId(index_task_id),
                         latest_task_id: document.latest_index_task_id.clone(),
                     });
@@ -308,6 +325,8 @@ impl ViewController for TextViewController {
             background::BackgroundResult::IndexComplete { task_id, .. } => {
                 if *task_id >= background::TaskId(document.current_index_task_id) {
                     document.current_index_task_id = task_id.0;
+                    editor.buffers_to_redraw.push(document.id);
+                    editor.should_redraw = true;
                 }
             }
         }

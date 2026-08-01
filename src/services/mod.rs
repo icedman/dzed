@@ -37,11 +37,14 @@ pub fn poll(
                 file_path,
                 buffer_keywords,
                 treesitter_keywords,
+                start_row,
+                row_count,
                 ..
             } => {
                 let mut indexer = editor.services.indexer.borrow_mut();
-                indexer.update_buffer(file_path.clone(), buffer_keywords.clone());
+                indexer.update_buffer(file_path.clone(), *start_row, *row_count, buffer_keywords.clone());
                 indexer.update_treesitter(file_path.clone(), treesitter_keywords.clone());
+                editor.should_redraw = true;
                 *owner_id
             }
         };

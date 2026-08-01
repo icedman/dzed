@@ -111,12 +111,72 @@ impl StatusBarView {
             }
         }
 
+        let mut autocomplete_str = String::new();
+        if let Some(doc) = _doc {
+            let anchor = doc.selections().last().unwrap().head();
+            let point = anchor.to_point(&active_buf.buffer);
+            let start_off = Point::new(point.row, 0).to_offset(&active_buf.buffer);
+            let end_off = Point::new(point.row, active_buf.buffer.line_len(point.row)).to_offset(&active_buf.buffer);
+            let line_str: String = active_buf.buffer.snapshot().as_rope().chunks_in_range(start_off..end_off).collect();
+            
+            let col = point.column as usize;
+            let mut target_word = None;
+            let mut word_start = None;
+            let mut word_end = None;
+            for (start, ch) in line_str.char_indices() {
+                let is_word_char = ch.is_alphanumeric() || ch == '_';
+                if is_word_char {
+                    if word_start.is_none() {
+                        word_start = Some(start);
+                    }
+                    word_end = Some(start + ch.len_utf8());
+                } else {
+                    if let (Some(s), Some(e)) = (word_start, word_end) {
+                        if (col >= s && col <= e) || (col > 0 && col - 1 >= s && col - 1 < e) {
+                            target_word = Some(&line_str[s..e]);
+                            break;
+                        }
+                    }
+                    word_start = None;
+                    word_end = None;
+                }
+            }
+            if target_word.is_none() {
+                if let (Some(s), Some(e)) = (word_start, word_end) {
+                    if (col >= s && col <= e) || (col > 0 && col - 1 >= s && col - 1 < e) {
+                        target_word = Some(&line_str[s..e]);
+                    }
+                }
+            }
+            if let Some(word) = target_word {
+                if word.len() >= 1 {
+                    let indexer = editor.services.indexer.borrow();
+                    let hits = indexer.query(word, None);
+                    if !hits.is_empty() {
+                        let mut hit_keywords: Vec<String> = hits.iter().map(|e| e.keyword.clone()).collect();
+                        hit_keywords.sort();
+                        autocomplete_str = format!(" [Hits: {}]", hit_keywords.join(", "));
+                    }
+                }
+            }
+        }
+
+        let mut indexer_status = String::new();
+        if let Some(doc) = _doc {
+            let is_indexing = doc.current_index_task_id < doc.latest_index_task_id.load(std::sync::atomic::Ordering::SeqCst);
+            if is_indexing {
+                indexer_status = " [Indexing...]".to_string();
+            } else {
+                indexer_status = " [Indexer Ready]".to_string();
+            }
+        }
+
         let last_action_str = editor.last_action.to_string();
         let pending_str = &editor.pending_keys;
         let left_part = if scope_str.is_empty() {
-            last_action_str
+            format!("{}{}{}", last_action_str, indexer_status, autocomplete_str)
         } else {
-            format!("{} {}", last_action_str, scope_str)
+            format!("{} {}{}{}", last_action_str, scope_str, indexer_status, autocomplete_str)
         };
         let total_len = left_part.len() + pending_str.len();
         let remaining = rect.width.saturating_sub(total_len as u16);
@@ -145,9 +205,7 @@ impl View for StatusBarView {
         _doc: Option<&crate::editor::document::Document>,
         ui: &crate::ui::Ui,
     ) -> Result<Option<(u16, u16, Option<crate::ui::CursorShape>)>, Box<dyn std::error::Error>> {
-        let active_win = ui.get_focused_window();
-        let doc = active_win.and_then(|win| win.doc.as_ref());
-        self.draw_statusbar(&mut w, rect, editor, buffer_manager, doc)?;
+        self.draw_statusbar(&mut w, rect, editor, buffer_manager, _doc)?;
         Ok(None)
     }
 }
