@@ -39,27 +39,39 @@ pub enum LayoutNode {
 }
 
 impl LayoutNode {
+    pub fn has_visible_leaves(&self, is_visible: &dyn Fn(usize) -> bool) -> bool {
+        match self {
+            LayoutNode::Leaf { window_id } => is_visible(*window_id),
+            LayoutNode::Split { children, .. } => {
+                children.iter().any(|child| child.has_visible_leaves(is_visible))
+            }
+        }
+    }
+
     /// Recursively computes the rects for all leaf windows under this node given a parent rect.
-    pub fn compute_layout(&self, rect: Rect) -> Vec<(usize, Rect)> {
+    pub fn compute_layout(&self, rect: Rect, is_visible: &dyn Fn(usize) -> bool) -> Vec<(usize, Rect)> {
         let mut results = Vec::new();
-        self.compute_layout_recursive(rect, &mut results);
+        self.compute_layout_recursive(rect, is_visible, &mut results);
         results
     }
 
-    fn compute_layout_recursive(&self, rect: Rect, results: &mut Vec<(usize, Rect)>) {
+    fn compute_layout_recursive(
+        &self,
+        rect: Rect,
+        is_visible: &dyn Fn(usize) -> bool,
+        results: &mut Vec<(usize, Rect)>,
+    ) {
         match self {
             LayoutNode::Leaf { window_id } => {
-                results.push((*window_id, rect));
+                if is_visible(*window_id) {
+                    results.push((*window_id, rect));
+                }
             }
             LayoutNode::Split {
                 direction,
                 constraints,
                 children,
             } => {
-                if children.is_empty() {
-                    return;
-                }
-
                 // If constraints don't match children count, assume equal percentage weights
                 let actual_constraints = if constraints.len() == children.len() {
                     constraints.clone()
@@ -67,9 +79,23 @@ impl LayoutNode {
                     vec![SizeConstraint::Percentage(1.0); children.len()]
                 };
 
+                // Filter children and constraints to only those that have visible leaves
+                let mut visible_children = Vec::new();
+                let mut visible_constraints = Vec::new();
+                for (i, child) in children.iter().enumerate() {
+                    if child.has_visible_leaves(is_visible) {
+                        visible_children.push(child);
+                        visible_constraints.push(actual_constraints[i]);
+                    }
+                }
+
+                if visible_children.is_empty() {
+                    return;
+                }
+
                 let mut current_x = rect.x;
                 let mut current_y = rect.y;
-                let count = children.len();
+                let count = visible_children.len();
 
                 // Compute exact sizes
                 let total_size = match direction {
@@ -80,7 +106,7 @@ impl LayoutNode {
                 let mut fixed_sum = 0u16;
                 let mut percent_weight_sum = 0.0f32;
 
-                for c in &actual_constraints {
+                for c in &visible_constraints {
                     match c {
                         SizeConstraint::Fixed(val) => fixed_sum = fixed_sum.saturating_add(*val),
                         SizeConstraint::Percentage(weight) => percent_weight_sum += weight,
@@ -91,7 +117,7 @@ impl LayoutNode {
                 let mut allocated_size = 0u16;
 
                 for i in 0..count {
-                    let constraint = actual_constraints[i];
+                    let constraint = visible_constraints[i];
                     let size = if i == count - 1 {
                         total_size.saturating_sub(allocated_size)
                     } else {
@@ -124,7 +150,7 @@ impl LayoutNode {
                         },
                     };
 
-                    children[i].compute_layout_recursive(child_rect, results);
+                    visible_children[i].compute_layout_recursive(child_rect, is_visible, results);
 
                     match direction {
                         SplitDirection::Horizontal => current_x = current_x.saturating_add(size),

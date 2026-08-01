@@ -7,12 +7,7 @@ pub struct Popup {
 }
 
 impl Popup {
-    pub fn new(window_id: Option<usize>, x: u16, y: u16, width: u16, height: u16) -> Self {
-        // If window_id is not provided, we can use a placeholder like 0, or let the caller/Ui allocate it.
-        // But since we want to create it, we can just use the provided ID or default to 0.
-        // Actually, we can generate a temporary unique ID or let the caller manage it.
-        // Let's check: can we just keep a default or use the provided ID?
-        let id = window_id.unwrap_or(0);
+    pub fn new(id: usize, x: u16, y: u16, width: u16, height: u16) -> Self {
         let mut window = Window::new(id, String::new());
         window.draw_border = true;
         window.draw_title = false;
@@ -22,6 +17,18 @@ impl Popup {
             rect: Rect { x, y, width, height },
         }
     }
+
+    pub fn show(&mut self) {
+        self.window.show();
+    }
+
+    pub fn hide(&mut self) {
+        self.window.hide();
+    }
+
+    pub fn is_visible(&self) -> bool {
+        self.window.is_visible()
+    }
 }
 
 #[cfg(test)]
@@ -30,7 +37,7 @@ mod tests {
 
     #[test]
     fn test_popup_creation() {
-        let popup = Popup::new(Some(10), 5, 5, 20, 10);
+        let popup = Popup::new(10, 5, 5, 20, 10);
         assert_eq!(popup.window.id, 10);
         assert_eq!(popup.rect.x, 5);
         assert_eq!(popup.rect.y, 5);

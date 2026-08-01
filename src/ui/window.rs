@@ -35,6 +35,7 @@ pub struct Window {
     pub cursor_x: Option<u16>,
     pub cursor_y: Option<u16>,
     pub cursor_shape: Option<crate::ui::CursorShape>,
+    pub visible: bool,
 }
 
 impl Window {
@@ -52,7 +53,20 @@ impl Window {
             cursor_x: None,
             cursor_y: None,
             cursor_shape: None,
+            visible: true,
         }
+    }
+
+    pub fn show(&mut self) {
+        self.visible = true;
+    }
+
+    pub fn hide(&mut self) {
+        self.visible = false;
+    }
+
+    pub fn is_visible(&self) -> bool {
+        self.visible
     }
 
     pub fn set_view(&mut self, view: Box<dyn View>) {
@@ -125,18 +139,18 @@ impl Window {
         buffer_manager: &mut crate::editor::buffers::BufferManager,
         ui: &crate::ui::Ui,
     ) -> std::io::Result<()> {
-        if rect.width == 0 || rect.height == 0 {
+        if !self.visible || rect.width == 0 || rect.height == 0 {
             return Ok(());
         }
 
         if self.draw_border {
             let is_focused = ui.focused_window_id == Some(self.id);
-            Renderer::draw_border(w, rect, is_focused, ui)?;
+            ui.renderer.draw_border(w, rect, is_focused, ui)?;
         }
 
         if self.draw_title {
             let is_focused = ui.focused_window_id == Some(self.id);
-            Renderer::draw_title(w, rect, &self.title, is_focused, ui)?;
+            ui.renderer.draw_title(w, rect, &self.title, is_focused, ui)?;
         }
 
         // Draw inner view content

@@ -49,6 +49,7 @@ pub struct Ui {
     pub needs_clear: bool,
     pub colorscheme: colorscheme::ColorScheme,
     pub popup_stack: Vec<popup::Popup>,
+    pub renderer: renderer::Renderer,
     next_window_id: usize,
 }
 
@@ -100,6 +101,7 @@ impl Ui {
         let mut statusbar_win = window::Window::new(statusbar_win_id, "Status Bar".to_string());
         statusbar_win.set_view(Box::new(views::statusbar::StatusBarView {}));
         statusbar_win.draw_border = false;
+        // statusbar_win.hide();
         windows.insert(statusbar_win_id, statusbar_win);
 
         // Create command bar window
@@ -118,6 +120,12 @@ impl Ui {
 
         let colorscheme = colorscheme::ColorScheme::load_default();
 
+        let mut popup_stack = Vec::<popup::Popup>::new();
+        // let mut sample_popup = popup::Popup::new(99, 2, 2, 20, 8);
+        // sample_popup.window.set_view(Box::new(views::tabs::TabsView {}));
+        // sample_popup.hide();
+        // popup_stack.push(sample_popup);
+
         Self {
             layout,
             editor_layout,
@@ -130,7 +138,8 @@ impl Ui {
             last_focused_window_id: None,
             needs_clear: true,
             colorscheme,
-            popup_stack: Vec::new(),
+            popup_stack,
+            renderer: renderer::Renderer::new(),
             next_window_id: 5,
         }
     }
@@ -170,7 +179,8 @@ impl Ui {
             width: screen_cols as u16,
             height: screen_rows as u16,
         };
-        self.cached_layouts = self.layout.compute_layout(parent_rect);
+        let visible_check = |id| self.windows.get(&id).map(|w| w.visible).unwrap_or(true);
+        self.cached_layouts = self.layout.compute_layout(parent_rect, &visible_check);
         self.last_parent_rect = Some(parent_rect);
 
         return true;
@@ -187,6 +197,19 @@ impl Ui {
         let win = window::Window::new(actual_id, String::new());
         self.windows.insert(actual_id, win);
         self.windows.get_mut(&actual_id).unwrap()
+    }
+
+    pub fn create_popup(&mut self, id: usize, x: u16, y: u16, width: u16, height: u16) -> &mut popup::Popup {
+        let actual_id = if id == WindowId::Any as usize {
+            let nid = self.next_window_id;
+            self.next_window_id += 1;
+            nid
+        } else {
+            id
+        };
+        let popup = popup::Popup::new(actual_id, x, y, width, height);
+        self.popup_stack.push(popup);
+        self.popup_stack.last_mut().unwrap()
     }
 
     pub fn find_neighbor(&self, direction: layout::NavigationDirection) -> Option<usize> {
@@ -488,6 +511,12 @@ impl Ui {
         editor: &mut Editor,
         buffer_manager: &mut crate::editor::buffers::BufferManager,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        let mut buffered_stdout = std::io::BufWriter::with_capacity(128 * 1024, stdout);
+        let stdout = &mut buffered_stdout;
+
+        // Start synchronized update to prevent terminal from rendering intermediate states
+        _ = write!(stdout, "\x1b[?2026h");
+
         if self.needs_clear {
             _ = crossterm::execute!(stdout, crossterm::terminal::Clear(crossterm::terminal::ClearType::All));
             self.needs_clear = false;
@@ -513,16 +542,19 @@ impl Ui {
         let ui_ptr = self as *const Ui;
         for popup in &mut self.popup_stack {
             unsafe {
-                popup.window.draw(
-                    stdout,
-                    popup.rect,
-                    editor,
-                    buffer_manager,
-                    &*ui_ptr,
-                )?;
+                if popup.is_visible() {
+                    popup.window.draw(
+                        stdout,
+                        popup.rect,
+                        editor,
+                        buffer_manager,
+                        &*ui_ptr,
+                    )?;
+                }
             }
         }
 
+        // Put it back permanently
         if let Some(id) = self.focused_window_id {
             if let Some(win) = self.windows.get(&id) {
                 if let (Some(cx), Some(cy)) = (win.cursor_x, win.cursor_y) {
@@ -546,6 +578,11 @@ impl Ui {
                 }
             }
         }
+
+        // End synchronized update
+        _ = write!(stdout, "\x1b[?2026l");
+
+        buffered_stdout.flush()?;
 
         Ok(())
     }
@@ -578,6 +615,28 @@ mod tests {
         let win = ui.windows.get(&win_id).unwrap();
         assert_eq!(win.id, win_id);
         assert_eq!(win.title, "Test Window");
+    }
+
+    #[test]
+    fn test_create_popup() {
+        let mut ui = Ui::new();
+        let popup_id = 999;
+        {
+            let popup = ui.create_popup(popup_id, 10, 10, 30, 15);
+            assert_eq!(popup.window.id, popup_id);
+            assert_eq!(popup.rect.x, 10);
+            assert_eq!(popup.rect.y, 10);
+            assert_eq!(popup.rect.width, 30);
+            assert_eq!(popup.rect.height, 15);
+        }
+
+        assert_eq!(ui.popup_stack.len(), 2);
+        assert_eq!(ui.popup_stack[1].window.id, popup_id);
+
+        // Test auto id allocation
+        let popup_auto = ui.create_popup(0, 0, 0, 5, 5);
+        assert_ne!(popup_auto.window.id, 0);
+        assert_ne!(popup_auto.window.id, popup_id);
     }
 
     #[test]

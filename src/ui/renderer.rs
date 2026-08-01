@@ -9,7 +9,12 @@ use super::layout::Rect;
 pub struct Renderer;
 
 impl Renderer {
+    pub fn new() -> Self {
+        Self
+    }
+
     pub fn draw_border<W: Write>(
+        &self,
         w: &mut W,
         rect: Rect,
         is_focused: bool,
@@ -68,6 +73,7 @@ impl Renderer {
     }
 
     pub fn draw_title<W: Write>(
+        &self,
         w: &mut W,
         rect: Rect,
         title: &str,
