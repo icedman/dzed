@@ -429,19 +429,24 @@ impl Ui {
         // Handle terminal resize.
         let (screen_cols, screen_rows) = {
             let (cols, rows) = crossterm::terminal::size().unwrap();
-            (cols as i32, rows as i32)
+            (cols as u32, rows as u32)
         };
+
+        let old_cols = self.screen_cols;
+        let old_rows = self.screen_rows;
 
         // Recompute layout if needed.
         // Update window rects.
-        if self.layout(screen_cols as u32, screen_rows as u32) {
+        if self.layout(screen_cols, screen_rows) {
             for window in self.windows.values_mut() {
                 if let Some(ref mut doc) = window.doc {
                     doc.should_sync = true;
                 }
             }
             editor.should_redraw = true;
-            self.needs_clear = true;
+            if old_cols != screen_cols || old_rows != screen_rows {
+                self.needs_clear = true;
+            }
         }
 
         let computed = self.cached_layouts.clone();

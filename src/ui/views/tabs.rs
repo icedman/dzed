@@ -26,16 +26,9 @@ impl TabsView {
         buffer_manager: &mut crate::editor::buffers::BufferManager,
         _doc: Option<&crate::editor::document::Document>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        execute!(
-            w,
-            MoveTo(rect.x, rect.y),
-            SetForegroundColor(Color::Black),
-            SetBackgroundColor(Color::White),
-            Print("TABS"),
-            ResetColor,
-        )?;
+        let mut bar_content = "TABS".to_string();
 
-        for (idx, buf) in buffer_manager.file_buffers().enumerate() {
+        for (_idx, buf) in buffer_manager.file_buffers().enumerate() {
             let name = if buf.file_path.is_empty() {
                 "[No Name]".to_string()
             } else {
@@ -57,8 +50,20 @@ impl TabsView {
                 format!("  {}  ", name)
             };
 
-            execute!(w, Print(tab_text), ResetColor,)?;
+            bar_content.push_str(&tab_text);
         }
+
+        let remaining = rect.width.saturating_sub(bar_content.chars().count() as u16);
+        bar_content.push_str(&" ".repeat(remaining as usize));
+
+        execute!(
+            w,
+            MoveTo(rect.x, rect.y),
+            SetForegroundColor(Color::Black),
+            SetBackgroundColor(Color::White),
+            Print(bar_content),
+            ResetColor,
+        )?;
 
         Ok(())
     }

@@ -1,5 +1,6 @@
 pub mod background;
 pub mod clipboard;
+pub mod indexer;
 pub mod search;
 pub mod treesitter;
 
@@ -7,6 +8,7 @@ pub struct Services {
     pub background_worker: background::BackgroundWorker,
     pub clipboard: std::cell::RefCell<crate::services::clipboard::Clipboard>,
     pub search: search::Search,
+    pub indexer: std::cell::RefCell<indexer::Indexer>,
 }
 
 impl Services {
@@ -15,6 +17,7 @@ impl Services {
             background_worker: background::BackgroundWorker::new(),
             clipboard: std::cell::RefCell::new(clipboard::Clipboard::new()),
             search: search::Search::new(),
+            indexer: std::cell::RefCell::new(indexer::Indexer::new()),
         }
     }
 }
@@ -29,6 +32,18 @@ pub fn poll(
             background::BackgroundResult::HighlightComplete { owner_id, .. } => *owner_id,
             background::BackgroundResult::WrapComplete { owner_id, .. } => *owner_id,
             background::BackgroundResult::ParseComplete { owner_id, .. } => *owner_id,
+            background::BackgroundResult::IndexComplete {
+                owner_id,
+                file_path,
+                buffer_keywords,
+                treesitter_keywords,
+                ..
+            } => {
+                let mut indexer = editor.services.indexer.borrow_mut();
+                indexer.update_buffer(file_path.clone(), buffer_keywords.clone());
+                indexer.update_treesitter(file_path.clone(), treesitter_keywords.clone());
+                *owner_id
+            }
         };
         if let Some(win) = ui.windows.get_mut(&owner_id) {
             if let Some(ref mut controller) = win.controller {

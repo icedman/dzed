@@ -52,6 +52,15 @@ pub enum BackgroundTask {
         task_id: TaskId,
         latest_task_id: Arc<AtomicU64>,
     },
+    /// Index keywords and symbols in a background task.
+    Index {
+        owner_id: usize,
+        file_path: String,
+        snapshot: BufferSnapshot,
+        grammar: Option<Grammar>,
+        task_id: TaskId,
+        latest_task_id: Arc<AtomicU64>,
+    },
 }
 
 /// The output results returned by the background thread worker.
@@ -75,6 +84,14 @@ pub enum BackgroundResult {
         owner_id: usize,
         file_path: String,
         syntax_tree: SyntaxTree,
+        task_id: TaskId,
+    },
+    /// Index task completed successfully.
+    IndexComplete {
+        owner_id: usize,
+        file_path: String,
+        buffer_keywords: std::collections::HashSet<String>,
+        treesitter_keywords: Vec<(String, HashMap<String, String>)>,
         task_id: TaskId,
     },
 }
@@ -206,6 +223,101 @@ impl BackgroundWorker {
                             owner_id,
                             file_path,
                             syntax_tree,
+                            task_id,
+                        });
+                    }
+                    BackgroundTask::Index {
+                        owner_id,
+                        file_path,
+                        snapshot,
+                        grammar,
+                        task_id,
+                        latest_task_id,
+                    } => {
+                        if latest_task_id.load(Ordering::SeqCst) > task_id.0 {
+                            continue;
+                        }
+
+                        // 1. Buffer keywords (split by non-alphanumeric chars)
+                        let rope = snapshot.as_rope();
+                        let text: String = rope.chunks_in_range(0..rope.len()).collect();
+                        
+                        let mut buffer_keywords = std::collections::HashSet::new();
+                        let mut current_word = String::new();
+                        for ch in text.chars() {
+                            if ch.is_alphanumeric() || ch == '_' {
+                                current_word.push(ch);
+                            } else {
+                                if current_word.len() >= 2 {
+                                    buffer_keywords.insert(current_word.clone());
+                                }
+                                current_word.clear();
+                            }
+                        }
+                        if current_word.len() >= 2 {
+                            buffer_keywords.insert(current_word);
+                        }
+
+                        // 2. Treesitter keywords (identifiers/definitions)
+                        let mut treesitter_keywords = Vec::new();
+                        if let Some(grammar) = grammar {
+                            if let Ok(mut parser) = TreeSitterParser::new(grammar) {
+                                if let Ok(syntax_tree) = parser.parse(&snapshot, None) {
+                                    fn walk_node(
+                                        node: tree_sitter::Node<'_>,
+                                        source: &BufferSnapshot,
+                                        out: &mut Vec<(String, HashMap<String, String>)>,
+                                    ) {
+                                        let kind = node.kind();
+                                        if kind.contains("identifier") {
+                                            let text: String = source.as_rope().chunks_in_range(node.byte_range()).collect();
+                                            if !text.is_empty() {
+                                                let mut meta = HashMap::new();
+                                                meta.insert("kind".to_string(), kind.to_string());
+                                                meta.insert("start_row".to_string(), node.start_position().row.to_string());
+                                                meta.insert("start_col".to_string(), node.start_position().column.to_string());
+                                                out.push((text, meta));
+                                            }
+                                        }
+                                        if crate::services::treesitter::tree_sitter::SCOPE_KINDS.contains(&kind) {
+                                            if let Some(name_node) = node.child_by_field_name("name") {
+                                                let text: String = source.as_rope().chunks_in_range(name_node.byte_range()).collect();
+                                                if !text.is_empty() {
+                                                    let mut meta = HashMap::new();
+                                                    meta.insert("kind".to_string(), kind.to_string());
+                                                    meta.insert("definition".to_string(), "true".to_string());
+                                                    meta.insert("start_row".to_string(), node.start_position().row.to_string());
+                                                    meta.insert("start_col".to_string(), node.start_position().column.to_string());
+                                                    out.push((text, meta));
+                                                }
+                                            }
+                                        }
+
+                                        let mut cursor = node.walk();
+                                        if cursor.goto_first_child() {
+                                            loop {
+                                                walk_node(cursor.node(), source, out);
+                                                if !cursor.goto_next_sibling() {
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    walk_node(syntax_tree.tree().root_node(), &snapshot, &mut treesitter_keywords);
+                                }
+                            }
+                        }
+
+                        if latest_task_id.load(Ordering::SeqCst) > task_id.0 {
+                            continue;
+                        }
+
+                        let _ = worker_tx.send(BackgroundResult::IndexComplete {
+                            owner_id,
+                            file_path,
+                            buffer_keywords,
+                            treesitter_keywords,
                             task_id,
                         });
                     }

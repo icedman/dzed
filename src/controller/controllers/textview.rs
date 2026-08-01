@@ -121,6 +121,22 @@ impl ViewController for TextViewController {
                             latest_task_id: document.latest_parse_task_id.clone(),
                         });
                 }
+
+                let index_task_id = document
+                    .latest_index_task_id
+                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+                    + 1;
+                editor
+                    .services
+                    .background_worker
+                    .spawn_task(BackgroundTask::Index {
+                        owner_id: window_id,
+                        file_path: buffer.file_path.clone(),
+                        snapshot: snapshot.clone(),
+                        grammar: buffer.grammar,
+                        task_id: TaskId(index_task_id),
+                        latest_task_id: document.latest_index_task_id.clone(),
+                    });
             }
 
             if wrap_changed {
@@ -287,6 +303,11 @@ impl ViewController for TextViewController {
                             editor.should_redraw = true;
                         }
                     }
+                }
+            }
+            background::BackgroundResult::IndexComplete { task_id, .. } => {
+                if *task_id >= background::TaskId(document.current_index_task_id) {
+                    document.current_index_task_id = task_id.0;
                 }
             }
         }
