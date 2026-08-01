@@ -123,7 +123,6 @@ impl Window {
         rect: Rect,
         editor: &Editor,
         buffer_manager: &mut crate::editor::buffers::BufferManager,
-        active_doc: Option<&crate::editor::document::Document>,
         ui: &crate::ui::Ui,
     ) -> std::io::Result<()> {
         if rect.width == 0 || rect.height == 0 {
@@ -152,7 +151,7 @@ impl Window {
             } else {
                 rect
             };
-            let doc_to_pass = self.doc.as_ref().or(active_doc);
+            let doc_to_pass = self.doc.as_ref();
             if let Ok(Some((cx, cy, shape))) = view.draw(w, inner_rect, editor, buffer_manager, doc_to_pass, ui) {
                 self.cursor_x = Some(cx);
                 self.cursor_y = Some(cy);

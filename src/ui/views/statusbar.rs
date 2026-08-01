@@ -218,7 +218,10 @@ impl View for StatusBarView {
         _doc: Option<&crate::editor::document::Document>,
         ui: &crate::ui::Ui,
     ) -> Result<Option<(u16, u16, Option<crate::ui::CursorShape>)>, Box<dyn std::error::Error>> {
-        self.draw_statusbar(&mut w, rect, editor, buffer_manager, _doc)?;
+        let active_doc = ui.focused_window_id
+            .and_then(|id| ui.windows.get(&id))
+            .and_then(|win| win.doc.as_ref());
+        self.draw_statusbar(&mut w, rect, editor, buffer_manager, active_doc)?;
         Ok(None)
     }
 }

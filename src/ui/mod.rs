@@ -495,43 +495,49 @@ impl Ui {
 
         _ = crossterm::execute!(stdout, crossterm::cursor::Hide);
 
-        // Temporarily take the active document to bypass borrow checker
-        let mut active_doc = self
-            .focused_window_id
-            .and_then(|id| self.windows.get_mut(&id))
-            .and_then(|win| win.doc.take());
-
         let computed = self.cached_layouts.clone();
         for &(win_id, rect) in &computed {
             if let Some(mut win) = self.windows.remove(&win_id) {
-                if Some(win_id) == self.focused_window_id {
-                    win.doc = active_doc.take();
-                }
-
                 win.draw(
                     stdout,
                     rect,
                     editor,
                     buffer_manager,
-                    active_doc.as_ref(),
                     self,
                 )?;
-
-                if Some(win_id) == self.focused_window_id {
-                    active_doc = win.doc.take();
-                }
-
                 self.windows.insert(win_id, win);
             }
         }
 
-        // Put it back permanently
+        // Draw popups
+        let ui_ptr = self as *const Ui;
+        for popup in &mut self.popup_stack {
+            unsafe {
+                popup.window.draw(
+                    stdout,
+                    popup.rect,
+                    editor,
+                    buffer_manager,
+                    &*ui_ptr,
+                )?;
+            }
+        }
+
         if let Some(id) = self.focused_window_id {
-            if let Some(win) = self.windows.get_mut(&id) {
-                win.doc = active_doc;
+            if let Some(win) = self.windows.get(&id) {
                 if let (Some(cx), Some(cy)) = (win.cursor_x, win.cursor_y) {
                     _ = crossterm::execute!(stdout, crossterm::cursor::MoveTo(cx, cy));
                     if let Some(shape) = win.cursor_shape {
+                        _ = write!(stdout, "{}", shape.to_ansi_sequence());
+                    }
+                    _ = crossterm::execute!(stdout, crossterm::cursor::Show);
+                } else {
+                    _ = crossterm::execute!(stdout, crossterm::cursor::Hide);
+                }
+            } else if let Some(p) = self.popup_stack.iter().find(|p| p.window.id == id) {
+                if let (Some(cx), Some(cy)) = (p.window.cursor_x, p.window.cursor_y) {
+                    _ = crossterm::execute!(stdout, crossterm::cursor::MoveTo(cx, cy));
+                    if let Some(shape) = p.window.cursor_shape {
                         _ = write!(stdout, "{}", shape.to_ansi_sequence());
                     }
                     _ = crossterm::execute!(stdout, crossterm::cursor::Show);
