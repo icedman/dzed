@@ -7,7 +7,6 @@ The goal is not to reproduce either editor exactly. DZed explores what a fast, c
 DZed is currently a proof of concept and an active learning project rather than a production-ready editor.
 
 ![DZed screenshot](https://raw.githubusercontent.com/icedman/dzed/refs/heads/main/screenshots/Screenshot%20from%202026-02-02%2021-56-19.png)
-![DZed screenshot](https://raw.githubusercontent.com/icedman/dzed/refs/heads/main/screenshots/Screenshot%20from%202026-07-31%2007-32-03.png)
 
 ## Project Goals
 
@@ -131,3 +130,9 @@ Contributions are welcome, especially those that improve Vim-style editing, deep
 [![Buy Me A Coffee](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://www.buymeacoffee.com/icedman)
 
 If you find the project useful and would like to support continued development, contributions help cover development and AI-assisted tooling costs.
+
+## Visual Progress
+
+![DZed screenshot](https://raw.githubusercontent.com/icedman/dzed/refs/heads/main/screenshots/Screenshot%20from%202026-02-02%2021-56-19.png)
+![DZed screenshot](https://raw.githubusercontent.com/icedman/dzed/refs/heads/main/screenshots/Screenshot%20from%202026-07-31%2007-32-03.png)
+![DZed screenshot](https://raw.githubusercontent.com/icedman/dzed/refs/heads/main/screenshots/Screenshot%20from%2022026-08-01%2008-15-38.png)

@@ -68,74 +68,210 @@ fn row_text(buffer: &BufferSnapshot, row: u32) -> String {
 }
 
 const SCOPE_MAPPINGS: &[(&str, &str)] = &[
+    // Invalid / Errors
+    ("invalid.deprecated", "error"),
+    ("invalid.illegal", "error"),
+    ("invalid", "error"),
+    
+    // Comments
     ("punctuation.definition.comment", "comment"),
+    ("comment.block.documentation", "comment"),
+    ("comment.block", "comment"),
+    ("comment.line", "comment"),
     ("comment", "comment"),
-    ("punctuation.definition.string", "string"),
+    
+    // Regex & Strings
+    ("string.regexp.escaped", "special"),
+    ("string.regexp.escape", "special"),
     ("string.regexp", "special"),
+    ("punctuation.definition.string", "string"),
+    ("string.quoted.double", "string"),
+    ("string.quoted.single", "string"),
+    ("string.quoted", "string"),
+    ("string.interpolated", "special"),
     ("string", "string"),
+    
+    // Booleans, Numbers, Constants
     ("constant.language.boolean", "boolean"),
+    ("constant.language.null", "constant"),
+    ("constant.language", "constant"),
+    ("constant.numeric.float", "float"),
     ("constant.numeric", "number"),
+    ("constant.character.escape", "special"),
     ("constant.character", "character"),
     ("constant.other.symbol", "special"),
     ("constant.other.key", "special"),
+    ("constant.other", "constant"),
     ("constant", "constant"),
+    
+    // Functions & Constructors
     ("entity.name.function.constructor", "constructor"),
     ("meta.constructor", "constructor"),
+    ("entity.name.function.method", "function"),
     ("entity.name.function", "function"),
     ("support.function", "function"),
     ("variable.function", "function"),
+    
+    // Properties & Members
     ("variable.other.member", "property"),
     ("variable.other.property", "property"),
     ("meta.object-key", "property"),
     ("support.type.property-name", "property"),
+    
+    // Variables & Parameters
     ("variable.parameter", "variable"),
+    ("variable.language.this", "special"),
+    ("variable.language.self", "special"),
     ("variable.language", "special"),
     ("variable.other.constant", "constant"),
+    ("variable.other.readwrite", "variable"),
+    ("variable.other", "variable"),
     ("variable", "variable"),
     ("parameter", "variable"),
     ("support.variable", "variable"),
+    
+    // Namespaces & Modules
     ("entity.name.namespace", "module"),
     ("entity.name.module", "module"),
     ("support.other.namespace", "module"),
     ("namespace", "module"),
     ("meta.path", "module"),
     ("meta.block", "module"),
+    
+    // Types & Classes
     ("entity.other.inherited-class", "type"),
+    ("entity.name.class", "type"),
     ("entity.name.type", "type"),
     ("support.type", "type"),
     ("support.class", "type"),
     ("storage.type", "type"),
+    ("storage.modifier", "keyword"),
+    ("storage", "keyword"),
+    
+    // Keywords & Operators
+    ("keyword.operator.logical", "operator"),
+    ("keyword.operator.comparison", "operator"),
+    ("keyword.operator.assignment", "operator"),
     ("keyword.operator", "operator"),
+    ("keyword.control.flow", "keyword"),
+    ("keyword.control.import", "keyword"),
     ("keyword.control", "keyword"),
     ("keyword.declaration", "keyword"),
+    ("keyword.other", "keyword"),
     ("keyword", "keyword"),
-    ("storage", "keyword"),
+    
+    // HTML / XML / Tag Mappings
     ("entity.name.tag", "tag"),
     ("entity.other.attribute-name", "tag_attribute"),
+    ("meta.tag", "tag"),
     ("punctuation.definition.tag", "tag_delimiter"),
+    
+    // Punctuation, Brackets, Delimiters
     ("punctuation.definition.parameters", "delimiter"),
+    ("punctuation.definition.arguments", "delimiter"),
     ("punctuation.section.embedded", "special"),
+    ("punctuation.terminator", "delimiter"),
+    ("punctuation.separator", "delimiter"),
+    ("meta.brace", "delimiter"),
     ("punctuation", "delimiter"),
+    
+    // Markup (Markdown etc)
     ("markup.heading", "heading"),
     ("markup.underline.link", "link"),
+    ("markup.bold", "special"),
+    ("markup.italic", "special"),
+    ("markup.list", "special"),
+    ("markup.quote", "comment"),
+    ("markup", "special"),
 ];
 
 
 fn map_node_kind_to_syntax_key(kind: &str) -> Option<&'static str> {
     if kind.contains("comment") {
         Some("comment")
-    } else if kind.contains("keyword") || kind == "use_declaration" || kind == "let_declaration" || kind == "const_declaration" {
+    } else if kind.contains("keyword")
+        || kind == "use_declaration"
+        || kind == "let_declaration"
+        || kind == "const_declaration"
+        || kind == "type_declaration"
+        || kind == "struct"
+        || kind == "enum"
+        || kind == "union"
+        || kind == "fn"
+        || kind == "impl"
+        || kind == "trait"
+        || kind == "mod"
+        || kind == "as"
+        || kind == "where"
+        || kind == "pub"
+        || kind == "use"
+        || kind == "unsafe"
+        || kind == "extern"
+        || kind == "return"
+        || kind == "if"
+        || kind == "else"
+        || kind == "match"
+        || kind == "while"
+        || kind == "loop"
+        || kind == "for"
+        || kind == "in"
+        || kind == "break"
+        || kind == "continue"
+    {
         Some("keyword")
-    } else if kind.contains("string") {
+    } else if kind.contains("string") || kind == "char_literal" || kind == "character" {
         Some("string")
-    } else if kind.contains("function") || kind == "call_expression" || kind == "field_identifier" {
+    } else if kind.contains("function")
+        || kind == "call_expression"
+        || kind == "field_identifier"
+        || kind == "method_declaration"
+        || kind == "function_item"
+        || kind == "function_signature_item"
+    {
         Some("function")
-    } else if kind.contains("type") || kind == "struct_item" || kind == "enum_item" {
+    } else if kind.contains("type")
+        || kind == "struct_item"
+        || kind == "enum_item"
+        || kind == "type_identifier"
+        || kind == "primitive_type"
+        || kind == "generic_type"
+    {
         Some("type")
-    } else if kind.contains("integer") || kind.contains("float") || kind == "number" {
+    } else if kind.contains("integer") || kind.contains("float") || kind == "number" || kind == "integer_literal" || kind == "float_literal" {
         Some("number")
-    } else if kind.contains("boolean") {
+    } else if kind.contains("boolean") || kind == "boolean_literal" || kind == "true" || kind == "false" {
         Some("boolean")
+    } else if kind == "const" || kind == "constant" || kind == "static" {
+        Some("constant")
+    } else if kind.contains("operator")
+        || kind == "binary_expression"
+        || kind == "unary_expression"
+        || kind == "assignment_expression"
+        || kind == "compound_assignment_expr"
+        || kind == "="
+        || kind == "=="
+        || kind == "!="
+        || kind == "<"
+        || kind == ">"
+        || kind == "<="
+        || kind == ">="
+        || kind == "+"
+        || kind == "-"
+        || kind == "*"
+        || kind == "/"
+        || kind == "%"
+        || kind == "&"
+        || kind == "|"
+        || kind == "^"
+        || kind == "!"
+        || kind == "&&"
+        || kind == "||"
+        || kind == "<<"
+        || kind == ">>"
+    {
+        Some("operator")
+    } else if kind == "{" || kind == "}" || kind == "[" || kind == "]" || kind == "(" || kind == ")" || kind == "," || kind == ";" || kind == "." || kind == ":" || kind == "::" || kind == "->" || kind == "=>" {
+        Some("delimiter")
     } else {
         None
     }

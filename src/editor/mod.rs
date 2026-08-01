@@ -22,6 +22,7 @@ pub struct Editor {
     pub fold: bool,
     pub fold_multiline_only: bool,
     pub textmate_highlights: bool,
+    pub textmate_theme: Option<String>,
     pub treesitter_highlights: bool,
     pub map_scope_to_scheme: bool,
 
@@ -97,6 +98,7 @@ impl Editor {
             buffers_to_redraw: Vec::new(),
             services,
             textmate_highlights: true,
+            textmate_theme: None,
             treesitter_highlights: false,
             map_scope_to_scheme: true,
             last_action: Action::NoOp,
@@ -104,7 +106,7 @@ impl Editor {
             search_pattern: String::new(),
             search_regex: None,
         })
-     }
+    }
 
     pub fn set_pattern(&mut self, pattern: String) {
         if self.search_pattern == pattern && self.search_regex.is_some() {

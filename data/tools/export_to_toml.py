@@ -97,7 +97,7 @@ def convert_json_to_toml(json_path, toml_path, repo_url=None):
         "Constant": "constant",
         "Number": "number",
         "Function": "function",
-        "Identifier": "function",
+        "Identifier": "variable",
         "Type": "type",
         "Operator": "operator",
         "PreProc": "keyword",
@@ -117,12 +117,12 @@ def convert_json_to_toml(json_path, toml_path, repo_url=None):
         "Typedef": "type",
         "Special": "special",
         "SpecialChar": "special",
-        "Tag": "special",
+        "Tag": "tag",
         "Delimiter": "delimiter",
         "SpecialComment": "comment",
         "Debug": "special",
         "Todo": "todo",
-        "Underlined": "underlined",
+        "Underlined": "link",
         "Error": "error",
         "@variable": "variable",
         "@property": "property",
@@ -155,10 +155,141 @@ def convert_json_to_toml(json_path, toml_path, repo_url=None):
             if fg_name:
                 syntax[syntax_key] = fg_name
 
-    if "selection" not in ui and "background" in ui:
-        ui["selection"] = "foreground"
-    if "caret" not in ui and "foreground" in ui:
-        ui["caret"] = "foreground"
+    # Ensure background and foreground exist in ui
+    if "background" not in ui:
+        ui["background"] = palette_hex_to_name.get(sorted_unique_colors[0]) if sorted_unique_colors else "c_0"
+    if "foreground" not in ui:
+        ui["foreground"] = palette_hex_to_name.get(sorted_unique_colors[-1]) if sorted_unique_colors else "c_0"
+
+    # Syntax mappings fallback resolution
+    syntax_keys = [
+        "boolean", "character", "comment", "constant", "constructor", "delimiter",
+        "error", "float", "function", "heading", "keyword", "link", "module",
+        "number", "operator", "property", "special", "string", "tag", "tag_attribute",
+        "tag_delimiter", "todo", "type", "variable"
+    ]
+    
+    syntax_fallbacks = {
+        "boolean": ["constant", "foreground"],
+        "character": ["string", "foreground"],
+        "comment": ["foreground"],
+        "constant": ["foreground"],
+        "constructor": ["function", "foreground"],
+        "delimiter": ["foreground"],
+        "error": ["foreground"],
+        "float": ["number", "constant", "foreground"],
+        "function": ["foreground"],
+        "heading": ["function", "foreground"],
+        "keyword": ["foreground"],
+        "link": ["string", "foreground"],
+        "module": ["type", "foreground"],
+        "number": ["constant", "foreground"],
+        "operator": ["foreground"],
+        "property": ["variable", "foreground"],
+        "special": ["foreground"],
+        "string": ["foreground"],
+        "tag": ["keyword", "foreground"],
+        "tag_attribute": ["property", "variable", "foreground"],
+        "tag_delimiter": ["delimiter", "foreground"],
+        "todo": ["comment", "foreground"],
+        "type": ["foreground"],
+        "variable": ["foreground"],
+    }
+    
+    for key in syntax_keys:
+        if key not in syntax:
+            resolved = None
+            for fb in syntax_fallbacks.get(key, []):
+                if fb == "foreground":
+                    resolved = ui.get("foreground")
+                    break
+                elif fb in syntax:
+                    resolved = syntax[fb]
+                    break
+            if not resolved:
+                resolved = ui.get("foreground")
+            syntax[key] = resolved
+
+    # UI mappings fallback resolution
+    ui_keys = [
+        "background", "border_foreground", "border_background", "caret", "cursor_line",
+        "cursor_line_nr", "diagnostic_error", "diagnostic_hint", "diagnostic_info",
+        "diagnostic_ok", "diagnostic_warn", "diff_add_background", "diff_add_foreground",
+        "diff_change_background", "diff_change_foreground", "diff_delete_background",
+        "diff_delete_foreground", "diff_text_background", "error", "find_highlight",
+        "find_highlight_foreground", "float_background", "float_border_background",
+        "float_border_foreground", "float_foreground", "foreground", "gutter_foreground",
+        "match_paren_background", "match_paren_foreground", "non_text", "pmenu_background",
+        "pmenu_foreground", "pmenu_sbar", "pmenu_sel_background", "pmenu_sel_foreground",
+        "pmenu_thumb", "selection", "special_key", "statusline_background", "statusline_foreground",
+        "statusline_nc_background", "statusline_nc_foreground", "tabline_background",
+        "tabline_fill", "tabline_foreground", "tabline_sel_background", "tabline_sel_foreground",
+        "warning", "whitespace"
+    ]
+    
+    ui_fallbacks = {
+        "border_foreground": ["background"],
+        "border_background": ["background"],
+        "caret": ["foreground"],
+        "cursor_line": ["background"],
+        "cursor_line_nr": ["foreground"],
+        "diagnostic_error": ["error", "foreground"],
+        "diagnostic_warn": ["warning", "foreground"],
+        "diagnostic_info": ["foreground"],
+        "diagnostic_hint": ["foreground"],
+        "diagnostic_ok": ["foreground"],
+        "diff_add_background": ["background"],
+        "diff_add_foreground": ["foreground"],
+        "diff_change_background": ["background"],
+        "diff_change_foreground": ["foreground"],
+        "diff_delete_background": ["background"],
+        "diff_delete_foreground": ["foreground"],
+        "diff_text_background": ["background"],
+        "error": ["foreground"],
+        "find_highlight": ["selection", "background"],
+        "find_highlight_foreground": ["foreground"],
+        "float_background": ["background"],
+        "float_border_background": ["background"],
+        "float_border_foreground": ["border_foreground", "foreground"],
+        "float_foreground": ["foreground"],
+        "gutter_foreground": ["foreground"],
+        "match_paren_background": ["background"],
+        "match_paren_foreground": ["foreground"],
+        "non_text": ["foreground"],
+        "pmenu_background": ["background"],
+        "pmenu_foreground": ["foreground"],
+        "pmenu_sbar": ["background"],
+        "pmenu_sel_background": ["selection", "background"],
+        "pmenu_sel_foreground": ["foreground"],
+        "pmenu_thumb": ["foreground"],
+        "selection": ["background"],
+        "special_key": ["foreground"],
+        "statusline_background": ["background"],
+        "statusline_foreground": ["foreground"],
+        "statusline_nc_background": ["background"],
+        "statusline_nc_foreground": ["foreground"],
+        "tabline_background": ["background"],
+        "tabline_fill": ["background"],
+        "tabline_foreground": ["foreground"],
+        "tabline_sel_background": ["background"],
+        "tabline_sel_foreground": ["foreground"],
+        "warning": ["foreground"],
+        "whitespace": ["gutter_foreground", "foreground"],
+    }
+    
+    if "error" not in ui and "error" in syntax:
+        ui["error"] = syntax["error"]
+        
+    for key in ui_keys:
+        if key not in ui:
+            resolved = None
+            for fb in ui_fallbacks.get(key, []):
+                if fb in ui:
+                    resolved = ui[fb]
+                    break
+            if not resolved:
+                resolved = ui.get("foreground")
+            ui[key] = resolved
 
     author = ""
     github = ""
