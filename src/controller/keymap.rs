@@ -950,6 +950,18 @@ impl Keymap {
             .bind("<C-w><C-o>", Action::OnlyWindow)
             .expect("Valid binding");
         normal_actions
+            .bind("<C-Left>", Action::ResizeLeft)
+            .expect("Valid binding");
+        normal_actions
+            .bind("<C-Right>", Action::ResizeRight)
+            .expect("Valid binding");
+        normal_actions
+            .bind("<C-Up>", Action::ResizeUp)
+            .expect("Valid binding");
+        normal_actions
+            .bind("<C-Down>", Action::ResizeDown)
+            .expect("Valid binding");
+        normal_actions
             .bind("J", Action::JoinLines { count: 1 })
             .expect("Valid binding");
         normal_actions

@@ -45,6 +45,7 @@ pub struct Ui {
     pub windows: HashMap<usize, window::Window>,
     pub focused_window_id: Option<usize>,
     pub last_focused_window_id: Option<usize>,
+    pub needs_clear: bool,
     next_window_id: usize,
 }
 
@@ -122,6 +123,7 @@ impl Ui {
             windows,
             focused_window_id: Some(main_win_id),
             last_focused_window_id: None,
+            needs_clear: true,
             next_window_id: 5,
         }
     }
@@ -367,6 +369,19 @@ impl Ui {
         }
     }
 
+    pub fn adjust_focused_window_size(&mut self, direction: layout::SplitDirection, amount: f32) {
+        let focused_id = match self.focused_window_id {
+            Some(id) if id != WindowId::Tabs as usize
+                && id != WindowId::StatusBar as usize
+                && id != WindowId::CommandLine as usize => id,
+            _ => return,
+        };
+
+        if self.editor_layout.adjust_size(focused_id, direction, amount) {
+            self.last_parent_rect = None; // Force layout recompute
+        }
+    }
+
     pub fn get_focused_window(&self) -> Option<&window::Window> {
         self.focused_window_id.and_then(|id| self.windows.get(&id))
     }
@@ -426,6 +441,7 @@ impl Ui {
                 }
             }
             editor.should_redraw = true;
+            self.needs_clear = true;
         }
 
         let computed = self.cached_layouts.clone();
@@ -463,6 +479,11 @@ impl Ui {
         editor: &mut Editor,
         buffer_manager: &mut crate::editor::buffers::BufferManager,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        if self.needs_clear {
+            _ = crossterm::execute!(stdout, crossterm::terminal::Clear(crossterm::terminal::ClearType::All));
+            self.needs_clear = false;
+        }
+
         _ = crossterm::execute!(stdout, crossterm::cursor::Hide);
 
         // Temporarily take the active document to bypass borrow checker

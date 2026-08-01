@@ -68,6 +68,9 @@ impl Controller {
                 //     _ => {}
                 // }
             }
+            Event::Resize(_, _) => {
+                editor.should_redraw = true;
+            }
             _ => {}
         }
         Ok(ControllerResult::None)
@@ -154,6 +157,22 @@ impl Controller {
                 }
                 actions::Action::OnlyWindow => {
                     ui.only_windows();
+                    editor.should_redraw = true;
+                }
+                actions::Action::ResizeLeft => {
+                    ui.adjust_focused_window_size(crate::ui::layout::SplitDirection::Horizontal, -0.05);
+                    editor.should_redraw = true;
+                }
+                actions::Action::ResizeRight => {
+                    ui.adjust_focused_window_size(crate::ui::layout::SplitDirection::Horizontal, 0.05);
+                    editor.should_redraw = true;
+                }
+                actions::Action::ResizeUp => {
+                    ui.adjust_focused_window_size(crate::ui::layout::SplitDirection::Vertical, 0.05);
+                    editor.should_redraw = true;
+                }
+                actions::Action::ResizeDown => {
+                    ui.adjust_focused_window_size(crate::ui::layout::SplitDirection::Vertical, -0.05);
                     editor.should_redraw = true;
                 }
                 actions::Action::Command(command_string) => {

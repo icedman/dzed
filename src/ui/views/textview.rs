@@ -283,6 +283,38 @@ impl TextView {
             }
         }
 
+        while screen_row < inner_rect.y + inner_rect.height {
+            execute!(w, MoveTo(inner_rect.x, screen_row)).unwrap();
+
+            // Gutter/line numbers area for empty lines
+            if editor.show_line_numbers && document.show_gutter {
+                execute!(w, crossterm::style::SetBackgroundColor(gutter_bg)).unwrap();
+                print!("{}", " ".repeat(gutter_width));
+            }
+
+            // The rest of the line
+            let mut curr_x = inner_rect.x + gutter_width as u16;
+            let mut cols_remaining = (inner_rect.width as usize).saturating_sub(gutter_width);
+
+            let relative_row = (screen_row - inner_rect.y) as u32;
+            let is_handle = relative_row >= start_y && relative_row < start_y + handle_h;
+
+            for _ in 0..cols_remaining {
+                let is_scrollbar =
+                    document.show_scrollbar && curr_x == inner_rect.x + inner_rect.width - 1;
+                let bg_color = if is_scrollbar {
+                    if is_handle { handle_bg } else { track_bg }
+                } else {
+                    editor_bg
+                };
+                execute!(w, crossterm::style::SetBackgroundColor(bg_color)).unwrap();
+                print!(" ");
+                curr_x += 1;
+            }
+
+            screen_row += 1;
+        }
+
         let cursor_shape = match editor.mode {
             Mode::Insert | Mode::Command => Some(crate::ui::CursorShape::Line),
             _ => Some(crate::ui::CursorShape::Block),

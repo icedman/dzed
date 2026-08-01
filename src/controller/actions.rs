@@ -67,6 +67,10 @@ pub enum Action {
     SplitVertical { file_path: Option<String> },
     CloseWindow,
     OnlyWindow,
+    ResizeLeft,
+    ResizeRight,
+    ResizeUp,
+    ResizeDown,
 
     // MOTIONS
     StandBy {
@@ -432,6 +436,10 @@ impl std::fmt::Display for Action {
             Action::SplitVertical { file_path } => write!(f, "SplitVertical({:?})", file_path),
             Action::CloseWindow => write!(f, "CloseWindow"),
             Action::OnlyWindow => write!(f, "OnlyWindow"),
+            Action::ResizeLeft => write!(f, "ResizeLeft"),
+            Action::ResizeRight => write!(f, "ResizeRight"),
+            Action::ResizeUp => write!(f, "ResizeUp"),
+            Action::ResizeDown => write!(f, "ResizeDown"),
             Action::MarkSet { ch } => write!(f, "MarkSet({})", ch),
             Action::MarkJump { ch, select } => write!(f, "MarkJump({}, select={})", ch, select),
             Action::MoveToWord { count, .. } => write!(f, "MoveToWord({})", count),
@@ -702,7 +710,11 @@ impl Action {
             | Action::SplitHorizontal { .. }
             | Action::SplitVertical { .. }
             | Action::CloseWindow
-            | Action::OnlyWindow => self,
+            | Action::OnlyWindow
+            | Action::ResizeLeft
+            | Action::ResizeRight
+            | Action::ResizeUp
+            | Action::ResizeDown => self,
             Action::Delete { .. } => Action::Delete { count },
             Action::Change { .. } => Action::Change { count },
             Action::Yank { .. } => Action::Yank { count },

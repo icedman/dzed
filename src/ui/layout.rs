@@ -211,6 +211,71 @@ impl LayoutNode {
             }
         }
     }
+
+    pub fn contains_leaf(&self, target_id: usize) -> bool {
+        match self {
+            LayoutNode::Leaf { window_id } => *window_id == target_id,
+            LayoutNode::Split { children, .. } => children.iter().any(|c| c.contains_leaf(target_id)),
+        }
+    }
+
+    pub fn adjust_size(&mut self, target_id: usize, expected_direction: SplitDirection, amount: f32) -> bool {
+        match self {
+            LayoutNode::Leaf { .. } => false,
+            LayoutNode::Split { direction, constraints, children } => {
+                // First recurse into children
+                for child in children.iter_mut() {
+                    if child.adjust_size(target_id, expected_direction, amount) {
+                        return true;
+                    }
+                }
+
+                // If no child handled it, but this split is of the correct direction and contains the leaf
+                if *direction == expected_direction {
+                    if let Some(target_idx) = children.iter().position(|c| c.contains_leaf(target_id)) {
+                        // We found the child containing target_id at this level!
+                        // Ensure constraints matches children length.
+                        if constraints.len() != children.len() {
+                            *constraints = vec![SizeConstraint::Percentage(1.0 / children.len() as f32); children.len()];
+                        }
+
+                        // We can only adjust if they are Percentage constraints.
+                        let is_all_percent = constraints.iter().all(|c| matches!(c, SizeConstraint::Percentage(_)));
+                        if is_all_percent {
+                            if let SizeConstraint::Percentage(mut target_w) = constraints[target_idx] {
+                                target_w += amount;
+                                if target_w < 0.05 {
+                                    target_w = 0.05;
+                                } else if target_w > 0.95 {
+                                    target_w = 0.95;
+                                }
+
+                                let diff = target_w - match constraints[target_idx] {
+                                    SizeConstraint::Percentage(w) => w,
+                                    _ => 0.0,
+                                };
+
+                                constraints[target_idx] = SizeConstraint::Percentage(target_w);
+
+                                // Distribute the difference to neighbor(s)
+                                if children.len() > 1 {
+                                    let neighbor_idx = if target_idx > 0 { target_idx - 1 } else { target_idx + 1 };
+                                    if let SizeConstraint::Percentage(ref mut neighbor_w) = constraints[neighbor_idx] {
+                                        *neighbor_w -= diff;
+                                        if *neighbor_w < 0.05 {
+                                            *neighbor_w = 0.05;
+                                        }
+                                    }
+                                }
+                                return true;
+                            }
+                        }
+                    }
+                }
+                false
+            }
+        }
+    }
 }
 
 #[cfg(test)]
