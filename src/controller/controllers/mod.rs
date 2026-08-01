@@ -39,6 +39,7 @@ pub trait ViewController {
         _editor: &mut Editor,
         _buffer_manager: &mut crate::editor::buffers::BufferManager,
         _doc: Option<&mut crate::editor::document::Document>,
+        _colorscheme: &crate::ui::colorscheme::ColorScheme,
     ) -> Result<ControllerResult, Box<dyn std::error::Error>> {
         Ok(ControllerResult::None)
     }

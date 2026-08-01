@@ -1,5 +1,6 @@
 pub mod colorscheme;
 pub mod layout;
+pub mod popup;
 pub mod renderer;
 pub mod views;
 pub mod window;
@@ -46,6 +47,8 @@ pub struct Ui {
     pub focused_window_id: Option<usize>,
     pub last_focused_window_id: Option<usize>,
     pub needs_clear: bool,
+    pub colorscheme: colorscheme::ColorScheme,
+    pub popup_stack: Vec<popup::Popup>,
     next_window_id: usize,
 }
 
@@ -82,7 +85,7 @@ impl Ui {
         let mut main_win = window::Window::new(main_win_id, "Editor".to_string());
         main_win.set_view(Box::new(views::textview::TextView::new()));
         main_win.set_controller(Box::new(controllers::textview::TextViewController::new()));
-        main_win.draw_border = false;
+        main_win.draw_border = true;
         windows.insert(main_win_id, main_win);
 
         // Create tabs window
@@ -113,6 +116,8 @@ impl Ui {
             window_id: main_win_id,
         };
 
+        let colorscheme = colorscheme::ColorScheme::load_default();
+
         Self {
             layout,
             editor_layout,
@@ -124,6 +129,8 @@ impl Ui {
             focused_window_id: Some(main_win_id),
             last_focused_window_id: None,
             needs_clear: true,
+            colorscheme,
+            popup_stack: Vec::new(),
             next_window_id: 5,
         }
     }
@@ -472,9 +479,6 @@ impl Ui {
             }
         }
 
-        // Update cursor blinking.
-        // Update animations.
-
         Ok(())
     }
 
@@ -538,6 +542,14 @@ impl Ui {
         }
 
         Ok(())
+    }
+
+    pub fn theme_color(&self, name: &str, default: crossterm::style::Color) -> crossterm::style::Color {
+        self.colorscheme
+            .ui
+            .get(name)
+            .map(|s| s.color)
+            .unwrap_or(default)
     }
 }
 

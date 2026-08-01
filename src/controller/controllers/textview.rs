@@ -42,9 +42,9 @@ impl ViewController for TextViewController {
         };
 
         document.gutter_width = gutter_width;
-        document.display_map.gutter_width = gutter_width as u32;
+        document.display_map.margin_left = gutter_width as u32;
         let wrap_cols = (rect.width as i32)
-            .saturating_sub(document.display_map.gutter_width as i32)
+            .saturating_sub(document.display_map.margin_left as i32)
             .saturating_sub(document.display_map.margin_right as i32)
             .max(1);
         document
@@ -93,7 +93,7 @@ impl ViewController for TextViewController {
                         snapshot: snapshot.clone(),
                         start_row: hl_start,
                         row_count: hl_end - hl_start,
-                        colorscheme: std::sync::Arc::new(editor.colorscheme.clone()),
+                        colorscheme: std::sync::Arc::new(ui.colorscheme.clone()),
                         syntax_tree: buffer.syntax_tree.clone(),
                         textmate_highlights: editor.textmate_highlights,
                         treesitter_highlights: editor.treesitter_highlights,
@@ -215,7 +215,7 @@ impl ViewController for TextViewController {
                         &snapshot,
                         start_buffer_row,
                         end_buffer_row_exclusive - start_buffer_row,
-                        &editor.colorscheme,
+                        &ui.colorscheme,
                         buffer.syntax_tree.as_ref(),
                         editor.textmate_highlights,
                         editor.treesitter_highlights,
@@ -255,6 +255,7 @@ impl ViewController for TextViewController {
         editor: &mut Editor,
         buffer_manager: &mut crate::editor::buffers::BufferManager,
         document: Option<&mut crate::editor::document::Document>,
+        colorscheme: &crate::ui::colorscheme::ColorScheme,
     ) -> Result<ControllerResult, Box<dyn std::error::Error>> {
         let document = document.expect("TextViewController requires a Document view state");
         match result {
@@ -313,7 +314,7 @@ impl ViewController for TextViewController {
                             document.hl.update_treesitter_highlights(
                                 &buf.buffer.snapshot(),
                                 Some(&syntax_tree),
-                                &editor.colorscheme,
+                                colorscheme,
                                 editor.treesitter_highlights,
                             );
                             editor.buffers_to_redraw.push(document.id);

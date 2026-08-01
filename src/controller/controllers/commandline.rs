@@ -187,8 +187,9 @@ impl ViewController for CommandLineController {
         editor: &mut Editor,
         buffer_manager: &mut crate::editor::buffers::BufferManager,
         doc: Option<&mut crate::editor::document::Document>,
+        colorscheme: &crate::ui::colorscheme::ColorScheme,
     ) -> Result<ControllerResult, Box<dyn std::error::Error>> {
         self.controller
-            .handle_task(result, editor, buffer_manager, doc)
+            .handle_task(result, editor, buffer_manager, doc, colorscheme)
     }
 }

@@ -1,4 +1,5 @@
 use super::layout::Rect;
+use super::renderer::Renderer;
 use super::views::View;
 use crate::controller::controllers::ViewController;
 use crate::editor::Editor;
@@ -9,6 +10,7 @@ use crossterm::{
     style::{Color, Print, ResetColor, SetBackgroundColor, SetForegroundColor},
 };
 use std::io::Write;
+
 
 #[repr(usize)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -41,7 +43,7 @@ impl Window {
             id,
             title,
             draw_border: true,
-            draw_title: false,
+            draw_title: true,
             view: None,
             controller: None,
             buffer_id: None,
@@ -130,70 +132,12 @@ impl Window {
 
         if self.draw_border {
             let is_focused = ui.focused_window_id == Some(self.id);
-            let border_fg = if is_focused {
-                Color::Magenta
-            } else {
-                Color::DarkGrey
-            };
+            Renderer::draw_border(w, rect, is_focused, ui)?;
+        }
 
-            // Draw border
-            execute!(w, SetForegroundColor(border_fg))?;
-
-            // Draw top border
-            execute!(w, MoveTo(rect.x, rect.y))?;
-            if rect.width > 2 {
-                let title_len = self.title.chars().count();
-                if self.draw_title && title_len + 4 < rect.width as usize {
-                    let left_len = (rect.width as usize - title_len - 4) / 2;
-                    let right_len = rect.width as usize - title_len - 4 - left_len;
-                    execute!(
-                        w,
-                        Print(format!(
-                            "┌{} {} {}┐",
-                            "─".repeat(left_len),
-                            self.title,
-                            "─".repeat(right_len)
-                        ))
-                    )?;
-                } else {
-                    execute!(
-                        w,
-                        Print(format!("┌{}┐", "─".repeat(rect.width as usize - 2)))
-                    )?;
-                }
-            } else {
-                execute!(
-                    w,
-                    Print("┌┐".chars().take(rect.width as usize).collect::<String>())
-                )?;
-            }
-
-            // Draw sides
-            for y in 1..rect.height.saturating_sub(1) {
-                execute!(w, MoveTo(rect.x, rect.y + y))?;
-                if rect.width > 1 {
-                    execute!(w, Print("│"))?;
-                    execute!(w, MoveTo(rect.x + rect.width - 1, rect.y + y))?;
-                    execute!(w, Print("│"))?;
-                } else {
-                    execute!(w, Print("│"))?;
-                }
-            }
-
-            // Draw bottom border
-            if rect.height > 1 {
-                execute!(w, MoveTo(rect.x, rect.y + rect.height - 1))?;
-                if rect.width > 1 {
-                    execute!(
-                        w,
-                        Print(format!("└{}┘", "─".repeat(rect.width as usize - 2)))
-                    )?;
-                } else {
-                    execute!(w, Print("└"))?;
-                }
-            }
-
-            execute!(w, ResetColor)?;
+        if self.draw_title {
+            let is_focused = ui.focused_window_id == Some(self.id);
+            Renderer::draw_title(w, rect, &self.title, is_focused, ui)?;
         }
 
         // Draw inner view content

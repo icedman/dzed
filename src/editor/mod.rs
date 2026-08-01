@@ -30,8 +30,6 @@ pub struct Editor {
     pub should_redraw: bool,
     pub buffers_to_redraw: Vec<usize>,
 
-    pub colorscheme: ColorScheme,
-
     pub services: Services,
 
     pub last_action: Action,
@@ -82,12 +80,10 @@ impl Editor {
     }
 
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let colorscheme = ColorScheme::load_default();
         let services = Services::new();
 
         Ok(Self {
             mode: Mode::Normal,
-            colorscheme,
             wrap: false,
             syntax: true,
             tree_sitter: true,

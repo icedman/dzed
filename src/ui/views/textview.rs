@@ -5,6 +5,7 @@ use crate::services::search::TextSearch;
 use crate::ui::colorscheme::ToCrossTerm;
 use crate::ui::layout::Rect;
 use crate::ui::views::View;
+use text::ToPoint;
 
 use std::io::Write;
 
@@ -30,6 +31,7 @@ impl TextView {
         editor: &Editor,
         buffer_manager: &mut crate::editor::buffers::BufferManager,
         document: Option<&crate::editor::document::Document>,
+        ui: &crate::ui::Ui,
     ) -> Result<Option<(u16, u16, Option<crate::ui::CursorShape>)>, Box<dyn std::error::Error>>
     {
         let mut cursor_pos = None;
@@ -44,48 +46,13 @@ impl TextView {
 
         let gutter_width = document.gutter_width;
 
-        let editor_fg = editor
-            .colorscheme
-            .ui
-            .get("foreground")
-            .map(|s| s.color)
-            .unwrap_or(crossterm::style::Color::White);
-        let editor_bg = editor
-            .colorscheme
-            .ui
-            .get("background")
-            .map(|s| s.color)
-            .unwrap_or(crossterm::style::Color::Black);
-        let selection_bg = editor
-            .colorscheme
-            .ui
-            .get("selection")
-            .map(|s| s.color)
-            .unwrap_or(editor_bg);
-        let gutter_fg = editor
-            .colorscheme
-            .ui
-            .get("gutter_foreground")
-            .map(|s| s.color)
-            .unwrap_or(editor_fg);
-        let gutter_bg = editor
-            .colorscheme
-            .ui
-            .get("gutter")
-            .map(|s| s.color)
-            .unwrap_or(editor_bg);
-        let find_fg = editor
-            .colorscheme
-            .ui
-            .get("find_highlight_foreground")
-            .map(|s| s.color)
-            .unwrap_or(editor_fg);
-        let find_bg = editor
-            .colorscheme
-            .ui
-            .get("find_highlight")
-            .map(|s| s.color)
-            .unwrap_or(selection_bg);
+        let editor_fg = ui.theme_color("foreground", crossterm::style::Color::White);
+        let editor_bg = ui.theme_color("background", crossterm::style::Color::Black);
+        let selection_bg = ui.theme_color("selection", editor_bg);
+        let gutter_fg = ui.theme_color("gutter_foreground", editor_fg);
+        let gutter_bg = ui.theme_color("gutter", editor_bg);
+        let find_fg = ui.theme_color("find_highlight_foreground", editor_fg);
+        let find_bg = ui.theme_color("find_highlight", selection_bg);
 
         let mut prev_line_number = -1;
         let mut screen_row = inner_rect.y;
@@ -94,23 +61,16 @@ impl TextView {
         let track_bg = gutter_bg;
         let handle_bg = selection_bg;
 
-        let height = inner_rect.height as u32;
-        let handle_h = if row_count > 0 {
-            ((height as f32 / row_count as f32) * height as f32)
-                .round()
-                .max(1.0) as u32
-        } else {
-            height
-        };
-        let handle_h = handle_h.min(height);
-
-        let start_y = if row_count > height {
-            ((display_snapshot.scroll_y as f32 / (row_count - height) as f32)
-                * (height - handle_h) as f32)
-                .round() as u32
-        } else {
-            0
-        };
+        let cursor_row = document.selections().first().map(|sel| {
+            display_snapshot.point_to_display_point(sel.head().to_point(&buffer.buffer)).row()
+        });
+        let scrollbar = crate::ui::renderer::Scrollbar::new(
+            document.show_scrollbar,
+            inner_rect,
+            row_count,
+            display_snapshot.scroll_y,
+            cursor_row,
+        );
 
         for row in display_snapshot.scroll_y..end_line {
             {
@@ -120,7 +80,6 @@ impl TextView {
                 if editor.show_line_numbers && document.show_gutter {
                     let line_number = display_snapshot.buffer_row_for_display_row(row);
                     execute!(w, crossterm::style::SetForegroundColor(gutter_fg)).unwrap();
-
                     execute!(w, crossterm::style::SetBackgroundColor(gutter_bg)).unwrap();
                     if prev_line_number != line_number as i32 {
                         print!("{:>width$} ", (line_number + 1), width = gutter_width - 1);
@@ -156,8 +115,6 @@ impl TextView {
                 let mut cols_remaining = (inner_rect.width as usize).saturating_sub(gutter_width);
 
                 let mut curr_x = inner_rect.x + gutter_width as u16;
-                let relative_row = (screen_row - inner_rect.y) as u32;
-                let is_handle = relative_row >= start_y && relative_row < start_y + handle_h;
 
                 let mut byte_column = 0;
                 for (column, ch) in text.chars().enumerate() {
@@ -216,10 +173,9 @@ impl TextView {
                     if x_scroll > 0 {
                         x_scroll = x_scroll.saturating_sub(1);
                     } else {
-                        let is_scrollbar = document.show_scrollbar
-                            && curr_x == inner_rect.x + inner_rect.width - 1;
+                        let is_scrollbar = scrollbar.is_scrollbar(curr_x, screen_row);
                         let bg_color = if is_scrollbar {
-                            if is_handle { handle_bg } else { track_bg }
+                            if scrollbar.is_handle(curr_x, screen_row) { handle_bg } else { track_bg }
                         } else {
                             bg
                         };
@@ -231,10 +187,9 @@ impl TextView {
                             '\t' => {
                                 for _i in 0..4 {
                                     // Tab size of 4
-                                    let is_scrollbar_tab =
-                                        curr_x == inner_rect.x + inner_rect.width - 1;
+                                    let is_scrollbar_tab = scrollbar.is_scrollbar(curr_x, screen_row);
                                     let cell_bg = if is_scrollbar_tab {
-                                        if is_handle { handle_bg } else { track_bg }
+                                        if scrollbar.is_handle(curr_x, screen_row) { handle_bg } else { track_bg }
                                     } else if at_cursor
                                         && editor.mode != Mode::Insert
                                         && editor.mode != Mode::Command
@@ -263,11 +218,10 @@ impl TextView {
                     }
                 }
 
-                for _ in 0..cols_remaining {
-                    let is_scrollbar =
-                        document.show_scrollbar && curr_x == inner_rect.x + inner_rect.width - 1;
+                for x in 0..cols_remaining {
+                    let is_scrollbar = scrollbar.is_scrollbar(curr_x, screen_row);
                     let bg_color = if is_scrollbar {
-                        if is_handle { handle_bg } else { track_bg }
+                        if scrollbar.is_handle(curr_x, screen_row) { handle_bg } else { track_bg }
                     } else {
                         editor_bg
                     };
@@ -296,14 +250,10 @@ impl TextView {
             let mut curr_x = inner_rect.x + gutter_width as u16;
             let mut cols_remaining = (inner_rect.width as usize).saturating_sub(gutter_width);
 
-            let relative_row = (screen_row - inner_rect.y) as u32;
-            let is_handle = relative_row >= start_y && relative_row < start_y + handle_h;
-
             for _ in 0..cols_remaining {
-                let is_scrollbar =
-                    document.show_scrollbar && curr_x == inner_rect.x + inner_rect.width - 1;
+                let is_scrollbar = scrollbar.is_scrollbar(curr_x, screen_row);
                 let bg_color = if is_scrollbar {
-                    if is_handle { handle_bg } else { track_bg }
+                    if scrollbar.is_handle(curr_x, screen_row) { handle_bg } else { track_bg }
                 } else {
                     editor_bg
                 };
@@ -331,9 +281,9 @@ impl View for TextView {
         editor: &Editor,
         buffer_manager: &mut crate::editor::buffers::BufferManager,
         document: Option<&crate::editor::document::Document>,
-        _ui: &crate::ui::Ui,
+        ui: &crate::ui::Ui,
     ) -> Result<Option<(u16, u16, Option<crate::ui::CursorShape>)>, Box<dyn std::error::Error>>
     {
-        self.draw_textview(&mut w, rect, editor, buffer_manager, document)
+        self.draw_textview(&mut w, rect, editor, buffer_manager, document, ui)
     }
 }

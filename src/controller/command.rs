@@ -168,7 +168,7 @@ impl Command {
                         .unwrap_or("tokyonight");
                     let loaded = colorscheme::ColorScheme::get_by_name(name)
                         .unwrap_or_else(|| colorscheme::ColorScheme::load_default());
-                    editor.colorscheme = loaded;
+                    ui.colorscheme = loaded;
                     ui.clear_highlights();
                     None
                 }
@@ -473,7 +473,7 @@ mod tests {
             ));
         }
         cmd.ex(&mut ui, &mut editor, &mut buffer_manager);
-        assert_eq!(editor.colorscheme.metadata.name, "catppuccin-mocha");
+        assert_eq!(ui.colorscheme.metadata.name, "catppuccin-mocha");
 
         cmd.set("colorscheme kanagawa");
         let mut ui = crate::ui::Ui::new();
@@ -487,7 +487,7 @@ mod tests {
             ));
         }
         cmd.ex(&mut ui, &mut editor, &mut buffer_manager);
-        assert_eq!(editor.colorscheme.metadata.name, "kanagawa");
+        assert_eq!(ui.colorscheme.metadata.name, "kanagawa");
 
         cmd.set("colo catppuccin");
         let mut ui = crate::ui::Ui::new();
@@ -501,7 +501,7 @@ mod tests {
             ));
         }
         cmd.ex(&mut ui, &mut editor, &mut buffer_manager);
-        assert_eq!(editor.colorscheme.metadata.name, "catppuccin-mocha");
+        assert_eq!(ui.colorscheme.metadata.name, "catppuccin-mocha");
 
         cmd.set("colorscheme unknown_colorscheme");
         let mut ui = crate::ui::Ui::new();
@@ -515,7 +515,7 @@ mod tests {
             ));
         }
         cmd.ex(&mut ui, &mut editor, &mut buffer_manager);
-        assert_eq!(editor.colorscheme.metadata.name, "catppuccin-mocha");
+        assert_eq!(ui.colorscheme.metadata.name, "catppuccin-mocha");
 
         // Test syntax command
         cmd.set("syntax off");
