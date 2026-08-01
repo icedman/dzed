@@ -153,7 +153,20 @@ impl StatusBarView {
                     let indexer = editor.services.indexer.borrow();
                     let hits = indexer.query(word, None);
                     if !hits.is_empty() {
-                        let mut hit_keywords: Vec<String> = hits.iter().map(|e| e.keyword.clone()).collect();
+                        use crate::services::indexer::IndexSource;
+                        let mut hit_keywords: Vec<String> = hits.iter().map(|e| {
+                             let mut sources = Vec::new();
+                             if e.sources.contains(&IndexSource::Buffer) {
+                                 sources.push("Buf");
+                             }
+                             if e.sources.contains(&IndexSource::Treesitter) {
+                                 sources.push("TS");
+                             }
+                             if e.sources.contains(&IndexSource::Lsp) {
+                                 sources.push("Lsp");
+                             }
+                             format!("{}({})", e.keyword, sources.join(","))
+                         }).collect();
                         hit_keywords.sort();
                         autocomplete_str = format!(" [Hits: {}]", hit_keywords.join(", "));
                     }

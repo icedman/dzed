@@ -93,7 +93,7 @@ pub enum BackgroundResult {
         owner_id: usize,
         file_path: String,
         buffer_keywords: HashMap<u32, std::collections::HashSet<String>>,
-        treesitter_keywords: Vec<(String, HashMap<String, String>)>,
+        treesitter_keywords: HashMap<u32, Vec<(String, HashMap<String, String>)>>,
         start_row: u32,
         row_count: u32,
         task_id: TaskId,
@@ -264,25 +264,38 @@ impl BackgroundWorker {
                             }
                         }
 
-                        // 2. Treesitter keywords (identifiers/definitions)
-                        let mut treesitter_keywords = Vec::new();
+                        // 2. Treesitter keywords (identifiers/definitions, grouped by row and pruned by range)
+                        let mut treesitter_keywords = HashMap::new();
                         if let Some(grammar) = grammar {
                             if let Ok(mut parser) = TreeSitterParser::new(grammar) {
                                 if let Ok(syntax_tree) = parser.parse(&snapshot, None) {
                                     fn walk_node(
                                         node: tree_sitter::Node<'_>,
                                         source: &BufferSnapshot,
-                                        out: &mut Vec<(String, HashMap<String, String>)>,
+                                        start_row: u32,
+                                        row_count: u32,
+                                        out: &mut HashMap<u32, Vec<(String, HashMap<String, String>)>>,
                                     ) {
+                                        let start_pos = node.start_position();
+                                        let end_pos = node.end_position();
+                                        if end_pos.row < start_row as usize {
+                                            return;
+                                        }
+                                        if start_pos.row >= (start_row + row_count) as usize {
+                                            return;
+                                        }
+
                                         let kind = node.kind();
                                         if kind.contains("identifier") {
                                             let text: String = source.as_rope().chunks_in_range(node.byte_range()).collect();
                                             if !text.is_empty() {
                                                 let mut meta = HashMap::new();
                                                 meta.insert("kind".to_string(), kind.to_string());
-                                                meta.insert("start_row".to_string(), node.start_position().row.to_string());
-                                                meta.insert("start_col".to_string(), node.start_position().column.to_string());
-                                                out.push((text, meta));
+                                                meta.insert("start_row".to_string(), start_pos.row.to_string());
+                                                meta.insert("start_col".to_string(), start_pos.column.to_string());
+                                                out.entry(start_pos.row as u32)
+                                                    .or_default()
+                                                    .push((text, meta));
                                             }
                                         }
                                         if crate::services::treesitter::tree_sitter::SCOPE_KINDS.contains(&kind) {
@@ -292,9 +305,11 @@ impl BackgroundWorker {
                                                     let mut meta = HashMap::new();
                                                     meta.insert("kind".to_string(), kind.to_string());
                                                     meta.insert("definition".to_string(), "true".to_string());
-                                                    meta.insert("start_row".to_string(), node.start_position().row.to_string());
-                                                    meta.insert("start_col".to_string(), node.start_position().column.to_string());
-                                                    out.push((text, meta));
+                                                    meta.insert("start_row".to_string(), start_pos.row.to_string());
+                                                    meta.insert("start_col".to_string(), start_pos.column.to_string());
+                                                    out.entry(start_pos.row as u32)
+                                                        .or_default()
+                                                        .push((text, meta));
                                                 }
                                             }
                                         }
@@ -302,7 +317,7 @@ impl BackgroundWorker {
                                         let mut cursor = node.walk();
                                         if cursor.goto_first_child() {
                                             loop {
-                                                walk_node(cursor.node(), source, out);
+                                                walk_node(cursor.node(), source, start_row, row_count, out);
                                                 if !cursor.goto_next_sibling() {
                                                     break;
                                                 }
@@ -310,7 +325,13 @@ impl BackgroundWorker {
                                         }
                                     }
 
-                                    walk_node(syntax_tree.tree().root_node(), &snapshot, &mut treesitter_keywords);
+                                    walk_node(
+                                        syntax_tree.tree().root_node(),
+                                        &snapshot,
+                                        start_row,
+                                        row_count,
+                                        &mut treesitter_keywords,
+                                    );
                                 }
                             }
                         }

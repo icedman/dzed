@@ -89,7 +89,7 @@ impl Trie {
 
 pub struct Indexer {
     pub buffer_keywords: HashMap<String, HashMap<u32, HashSet<String>>>,
-    pub treesitter_keywords: HashMap<String, Vec<(String, HashMap<String, String>)>>,
+    pub treesitter_keywords: HashMap<String, HashMap<u32, Vec<(String, HashMap<String, String>)>>>,
     pub lsp_keywords: HashMap<String, Vec<(String, HashMap<String, String>)>>,
     
     pub buffer_trie: Trie,
@@ -122,8 +122,16 @@ impl Indexer {
         self.rebuild_buffer_trie();
     }
 
-    pub fn update_treesitter(&mut self, file_path: String, keywords: Vec<(String, HashMap<String, String>)>) {
-        self.treesitter_keywords.insert(file_path, keywords);
+    pub fn update_treesitter(&mut self, file_path: String, start_row: u32, row_count: u32, keywords: HashMap<u32, Vec<(String, HashMap<String, String>)>>) {
+        let file_map = self.treesitter_keywords.entry(file_path).or_default();
+        // Clear old rows in updated range
+        for row in start_row..(start_row + row_count) {
+            file_map.remove(&row);
+        }
+        // Insert new keywords per row
+        for (row, entries) in keywords {
+            file_map.insert(row, entries);
+        }
         self.rebuild_treesitter_trie();
     }
 
@@ -148,11 +156,13 @@ impl Indexer {
 
     pub fn rebuild_treesitter_trie(&mut self) {
         let mut new_trie = Trie::new();
-        for (file_path, entries) in &self.treesitter_keywords {
-            for (keyword, meta) in entries {
-                let mut metadata = meta.clone();
-                metadata.insert("file_path".to_string(), file_path.clone());
-                new_trie.insert(keyword, IndexSource::Treesitter, metadata);
+        for (file_path, row_map) in &self.treesitter_keywords {
+            for entries in row_map.values() {
+                for (keyword, meta) in entries {
+                    let mut metadata = meta.clone();
+                    metadata.insert("file_path".to_string(), file_path.clone());
+                    new_trie.insert(keyword, IndexSource::Treesitter, metadata);
+                }
             }
         }
         self.treesitter_trie = new_trie;
@@ -245,7 +255,9 @@ mod tests {
         // 2. Treesitter update
         let mut ts_meta = HashMap::new();
         ts_meta.insert("kind".to_string(), "struct".to_string());
-        indexer.update_treesitter("main.rs".to_string(), vec![("foobar".to_string(), ts_meta)]);
+        let mut ts_map = HashMap::new();
+        ts_map.insert(0, vec![("foobar".to_string(), ts_meta)]);
+        indexer.update_treesitter("main.rs".to_string(), 0, 1, ts_map);
 
         // Query prefix "foo" without filter
         let results = indexer.query("foo", None);
